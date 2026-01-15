@@ -1,0 +1,31 @@
+/cov-naucalpan-system
+│
+├── index.html              <-- El único HTML "esqueleto" (carga el Layout base)
+├── style.css               <-- Tu CSS global (Tailwind imports)
+├── /assets                 <-- Imágenes, logos, iconos
+│
+├── /src                    <-- Toda la lógica en JS
+│   ├── /config             <-- Conexión a Supabase/Base de datos
+│   │   └── supabaseClient.js
+│   │
+│   ├── /models             <-- POO: La lógica de datos (SIN HTML)
+│   │   ├── User.js         (Auth, Roles)
+│   │   ├── Vehicle.js      (Estado, Kilometraje, Docs)
+│   │   ├── Trip.js         (Entradas, Salidas, Bitácora)
+│   │   └── Incident.js     (Reportes, Fotos)
+│   │
+│   ├── /components         <-- Fragmentos de UI reutilizables
+│   │   ├── Sidebar.js      (Menú lateral dinámico según rol)
+│   │   ├── Navbar.js       (Barra superior con buscador y notificaciones)
+│   │   ├── QRScanner.js    (Lógica de cámara para vigilancia)
+│   │   └── Card.js         (Tarjetas de KPIs)
+│   │
+│   ├── /views              <-- Aquí van tus HTMLs convertidos a Clases JS
+│   │   ├── /admin          (Dashboard, Matriz, Reportes)
+│   │   ├── /guard          (Escáner, Bitácora en vivo)
+│   │   └── /driver         (Perfil móvil, Checklist)
+│   │
+│   └── /utils              <-- Ayudas (Formateo de fechas, validadores)
+│       └── Router.js       <-- El cerebro que decide qué vista mostrar
+│
+└── README.md               <-- Documentación del proyecto
