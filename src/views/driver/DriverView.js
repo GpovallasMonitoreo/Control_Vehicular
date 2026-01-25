@@ -40,30 +40,8 @@ export class DriverView {
                         <p id="status-desc" class="text-xs font-bold text-white/90 uppercase tracking-widest">Descripción</p>
                     </section>
 
-                    <section class="grid grid-cols-2 gap-3 w-full">
-                        <div class="bg-[#192633] p-4 rounded-xl border border-[#233648] flex flex-col items-center justify-center relative overflow-hidden group">
-                            <div class="absolute top-2 right-2">
-                                <span class="material-symbols-outlined text-[14px] text-success">verified</span>
-                            </div>
-                            <p class="text-[10px] text-[#92adc9] font-bold uppercase tracking-wider mb-1">Confianza</p>
-                            <div class="flex items-baseline gap-1">
-                                <span id="stat-score" class="text-3xl font-black text-white">--</span>
-                                <span class="text-[10px] text-success font-bold">/100</span>
-                            </div>
-                            <div class="w-full h-1 bg-[#233648] rounded-full mt-2 overflow-hidden">
-                                <div id="stat-bar" class="w-[0%] h-full bg-success rounded-full transition-all duration-1000"></div>
-                            </div>
-                        </div>
-                        <div class="bg-[#192633] p-4 rounded-xl border border-[#233648] flex flex-col items-center justify-center relative overflow-hidden">
-                            <p class="text-[10px] text-[#92adc9] font-bold uppercase tracking-wider mb-1">Puntos</p>
-                            <div class="flex items-center gap-2">
-                                <span class="material-symbols-outlined text-warning text-xl">monetization_on</span>
-                                <span class="text-3xl font-black text-white">2,450</span>
-                            </div>
-                        </div>
-                    </section>
-
-                    <section class="flex gap-3 w-full">
+                    <!-- Sección de botones principal (ya no hay estadísticas arriba) -->
+                    <section class="flex gap-3 w-full mt-4">
                         <button id="btn-dashboard-start" class="relative group flex-1 overflow-hidden rounded-xl bg-primary hover:bg-blue-600 text-white shadow-lg transition-all active:scale-[0.98]">
                             <div class="relative flex flex-col items-center justify-center h-24 gap-1 p-2">
                                 <span class="material-symbols-outlined text-3xl">play_circle</span>
@@ -272,8 +250,7 @@ export class DriverView {
             document.getElementById('card-id').innerText = `ID: ${profile.employee_id || id.substring(0,8).toUpperCase()}`;
             document.getElementById('card-photo').style.backgroundImage = `url('${profile.photo_url || ''}')`;
             document.getElementById('card-qr').src = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${id}`;
-            document.getElementById('stat-score').innerText = profile.trust_score || 98;
-            document.getElementById('stat-bar').style.width = `${profile.trust_score || 98}%`;
+            // Se eliminaron las líneas que cargaban el trust_score y la barra de progreso
         }
     }
 
@@ -473,4 +450,5 @@ export class DriverView {
         const select = document.getElementById('request-select');
         select.innerHTML = '<option value="">Selecciona unidad...</option>' + (data||[]).map(v => `<option value="${v.id}">${v.economic_number} - ${v.model}</option>`).join('');
     }
+
 }
