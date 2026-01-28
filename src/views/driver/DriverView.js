@@ -40,7 +40,6 @@ export class DriverView {
                         <p id="status-desc" class="text-xs font-bold text-white/90 uppercase tracking-widest">Descripción</p>
                     </section>
 
-                    <!-- Sección de botones principal (ya no hay estadísticas arriba) -->
                     <section class="flex gap-3 w-full mt-4">
                         <button id="btn-dashboard-start" class="relative group flex-1 overflow-hidden rounded-xl bg-primary hover:bg-blue-600 text-white shadow-lg transition-all active:scale-[0.98]">
                             <div class="relative flex flex-col items-center justify-center h-24 gap-1 p-2">
@@ -250,7 +249,6 @@ export class DriverView {
             document.getElementById('card-id').innerText = `ID: ${profile.employee_id || id.substring(0,8).toUpperCase()}`;
             document.getElementById('card-photo').style.backgroundImage = `url('${profile.photo_url || ''}')`;
             document.getElementById('card-qr').src = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${id}`;
-            // Se eliminaron las líneas que cargaban el trust_score y la barra de progreso
         }
     }
 
