@@ -40,7 +40,31 @@ export class DriverView {
                         <p id="status-desc" class="text-xs font-bold text-white/90 uppercase tracking-widest">Descripción</p>
                     </section>
 
-                    <section class="flex gap-3 w-full mt-4">
+                    <!-- Sección de métricas - OCULTA POR DEFECTO -->
+                    <section id="metrics-section" class="hidden grid-cols-2 gap-3 w-full">
+                        <div class="bg-[#192633] p-4 rounded-xl border border-[#233648] flex flex-col items-center justify-center relative overflow-hidden group">
+                            <div class="absolute top-2 right-2">
+                                <span class="material-symbols-outlined text-[14px] text-success">verified</span>
+                            </div>
+                            <p class="text-[10px] text-[#92adc9] font-bold uppercase tracking-wider mb-1">Confianza</p>
+                            <div class="flex items-baseline gap-1">
+                                <span id="stat-score" class="text-3xl font-black text-white">--</span>
+                                <span class="text-[10px] text-success font-bold">/100</span>
+                            </div>
+                            <div class="w-full h-1 bg-[#233648] rounded-full mt-2 overflow-hidden">
+                                <div id="stat-bar" class="w-[0%] h-full bg-success rounded-full transition-all duration-1000"></div>
+                            </div>
+                        </div>
+                        <div class="bg-[#192633] p-4 rounded-xl border border-[#233648] flex flex-col items-center justify-center relative overflow-hidden">
+                            <p class="text-[10px] text-[#92adc9] font-bold uppercase tracking-wider mb-1">Puntos</p>
+                            <div class="flex items-center gap-2">
+                                <span class="material-symbols-outlined text-warning text-xl">monetization_on</span>
+                                <span class="text-3xl font-black text-white">2,450</span>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="flex gap-3 w-full">
                         <button id="btn-dashboard-start" class="relative group flex-1 overflow-hidden rounded-xl bg-primary hover:bg-blue-600 text-white shadow-lg transition-all active:scale-[0.98]">
                             <div class="relative flex flex-col items-center justify-center h-24 gap-1 p-2">
                                 <span class="material-symbols-outlined text-3xl">play_circle</span>
@@ -238,6 +262,10 @@ export class DriverView {
         this.setupRequestForm();
         this.setupReturnForm();
         this.setupIncidentForm();
+        
+        // MOSTRAR MÉTRICAS SOLO SI NO ES OPERADOR
+        // Por defecto están ocultas, las mostramos si detectamos que NO es operador
+        this.showMetricsIfNotOperator();
     }
 
     async loadProfileData(id) {
@@ -249,6 +277,26 @@ export class DriverView {
             document.getElementById('card-id').innerText = `ID: ${profile.employee_id || id.substring(0,8).toUpperCase()}`;
             document.getElementById('card-photo').style.backgroundImage = `url('${profile.photo_url || ''}')`;
             document.getElementById('card-qr').src = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${id}`;
+            document.getElementById('stat-score').innerText = profile.trust_score || 98;
+            document.getElementById('stat-bar').style.width = `${profile.trust_score || 98}%`;
+        }
+    }
+
+    // MOSTRAR MÉTRICAS SOLO SI NO ES OPERADOR
+    showMetricsIfNotOperator() {
+        const metricsSection = document.getElementById('metrics-section');
+        if (!metricsSection) return;
+        
+        // POR AHORA, MANTENEMOS LAS MÉTRICAS OCULTAS
+        // Cuando identifiquemos cómo detectar administradores, las mostraremos aquí
+        
+        // Ejemplo: si la URL tiene un parámetro ?showMetrics=true, mostrar métricas
+        const urlParams = new URLSearchParams(window.location.search);
+        const showMetrics = urlParams.get('showMetrics') === 'true';
+        
+        if (showMetrics) {
+            metricsSection.classList.remove('hidden');
+            metricsSection.classList.add('grid');
         }
     }
 
@@ -281,19 +329,19 @@ export class DriverView {
 
             if (trip.status === 'requested') {
                 document.getElementById('profile-status').innerText = "Solicitando...";
-                setBanner('yellow', 'PENDIENTE', 'Esperando Supervisor', 'hourglass_top');
+                this.setBanner('yellow', 'PENDIENTE', 'Esperando Supervisor', 'hourglass_top');
                 txtEnd.innerText = "Esperando...";
             } else if (trip.status === 'approved') {
                 document.getElementById('profile-status').innerText = "Aprobado";
-                setBanner('green', 'APROBADO', 'Dirígete a la Caseta de Salida', 'verified');
+                this.setBanner('green', 'APROBADO', 'Dirígete a la Caseta de Salida', 'verified');
                 txtEnd.innerText = "Salida Autorizada";
             } else if (trip.status === 'open') {
                 document.getElementById('profile-status').innerText = "En Ruta";
-                setBanner('blue', 'EN RUTA', 'GPS Activo - Regresar a Caseta', 'local_shipping');
+                this.setBanner('blue', 'EN RUTA', 'GPS Activo - Regresar a Caseta', 'local_shipping');
                 txtEnd.innerText = "Pasar por Caseta 1°"; 
             } else if (trip.status === 'arrived') {
                 document.getElementById('profile-status').innerText = "En Patio";
-                setBanner('orange', 'EN PATIO', 'Finaliza el Viaje Ahora', 'garage');
+                this.setBanner('orange', 'EN PATIO', 'Finaliza el Viaje Ahora', 'garage');
                 btnEnd.disabled = false;
                 btnEnd.className = "relative group flex-1 overflow-hidden rounded-xl bg-orange-600 hover:bg-orange-500 text-white shadow-[0_0_20px_rgba(249,115,22,0.4)] transition-all active:scale-[0.98] animate-pulse";
                 iconEnd.className = "material-symbols-outlined text-3xl text-white";
@@ -303,16 +351,17 @@ export class DriverView {
         } else {
             btnStart.onclick = () => { this.loadVehiclesToSelect(); document.getElementById('modal-request').classList.remove('hidden'); };
         }
+    }
 
-        function setBanner(color, title, desc, iconName) {
-            banner.className = `w-full p-5 rounded-2xl shadow-lg flex flex-col items-center justify-center text-center border-2 mx-auto border-${color}-500 bg-${color}-500/10 mb-4`;
-            document.getElementById('status-title').innerText = title;
-            document.getElementById('status-title').className = `text-2xl font-black text-${color}-500 uppercase tracking-tighter leading-none mb-1`;
-            document.getElementById('status-desc').innerText = desc;
-            document.getElementById('status-desc').className = `text-xs font-bold text-${color}-200 uppercase tracking-widest`;
-            document.getElementById('status-icon').innerText = iconName;
-            document.getElementById('status-icon').className = `material-symbols-outlined text-4xl mb-2 text-${color}-500`;
-        }
+    setBanner(color, title, desc, iconName) {
+        const banner = document.getElementById('status-banner');
+        banner.className = `w-full p-5 rounded-2xl shadow-lg flex flex-col items-center justify-center text-center border-2 mx-auto border-${color}-500 bg-${color}-500/10 mb-4`;
+        document.getElementById('status-title').innerText = title;
+        document.getElementById('status-title').className = `text-2xl font-black text-${color}-500 uppercase tracking-tighter leading-none mb-1`;
+        document.getElementById('status-desc').innerText = desc;
+        document.getElementById('status-desc').className = `text-xs font-bold text-${color}-200 uppercase tracking-widest`;
+        document.getElementById('status-icon').innerText = iconName;
+        document.getElementById('status-icon').className = `material-symbols-outlined text-4xl mb-2 text-${color}-500`;
     }
 
     processImage(file, labelId, color) {
@@ -339,28 +388,53 @@ export class DriverView {
             const checksOk = checks.every(id => document.getElementById(id).checked);
             const selOk = select.value !== "";
             if(filesOk && checksOk && selOk) {
-                btn.disabled = false; btn.className = "w-full py-4 bg-primary text-white font-bold rounded-xl shadow-lg";
+                btn.disabled = false; 
+                btn.className = "w-full py-4 bg-primary text-white font-bold rounded-xl shadow-lg";
             } else {
-                btn.disabled = true; btn.className = "w-full py-4 bg-slate-800 text-slate-500 font-bold rounded-xl cursor-not-allowed";
+                btn.disabled = true; 
+                btn.className = "w-full py-4 bg-slate-800 text-slate-500 font-bold rounded-xl cursor-not-allowed";
             }
         };
 
-        files.forEach((id, i) => document.getElementById(id).addEventListener('change', (e) => {
-            if(e.target.files[0]) { this.processImage(e.target.files[0], `lbl-req-${i+1}`, '#137fec'); validate(); }
-        }));
-        checks.forEach(id => document.getElementById(id).addEventListener('change', validate));
+        files.forEach((id, i) => {
+            document.getElementById(id).addEventListener('change', (e) => {
+                if(e.target.files[0]) { 
+                    this.processImage(e.target.files[0], `lbl-req-${i+1}`, '#137fec'); 
+                    validate(); 
+                }
+            });
+        });
+        
+        checks.forEach(id => {
+            document.getElementById(id).addEventListener('change', validate);
+        });
+        
         select.addEventListener('change', validate);
         
         btn.onclick = async () => {
             btn.innerText = "Enviando...";
-            const requestData = { license: true, uniform: true, tires: true, lights: true, photos_taken: true, timestamp: new Date() };
+            const requestData = { 
+                license: true, 
+                uniform: true, 
+                tires: true, 
+                lights: true, 
+                photos_taken: true, 
+                timestamp: new Date() 
+            };
+            
             const { error } = await supabase.from('trips').insert({ 
                 vehicle_id: select.value, 
                 driver_id: this.userId, 
                 status: 'requested', 
                 request_details: requestData 
             });
-            if(error) alert(error.message); else location.reload();
+            
+            if(error) {
+                alert(error.message);
+                btn.innerText = "ENVIAR TODO";
+            } else {
+                location.reload();
+            }
         };
     }
 
@@ -375,29 +449,59 @@ export class DriverView {
             const filesOk = files.every(id => document.getElementById(id).files.length > 0);
             const checksOk = checks.every(id => document.getElementById(id).checked);
             if (inputsOk && filesOk && checksOk) {
-                btn.disabled = false; btn.className = "w-full py-4 bg-orange-600 text-white font-bold rounded-xl shadow-lg";
+                btn.disabled = false; 
+                btn.className = "w-full py-4 bg-orange-600 text-white font-bold rounded-xl shadow-lg";
             } else {
-                btn.disabled = true; btn.className = "w-full py-4 bg-slate-800 text-slate-500 font-bold rounded-xl cursor-not-allowed";
+                btn.disabled = true; 
+                btn.className = "w-full py-4 bg-slate-800 text-slate-500 font-bold rounded-xl cursor-not-allowed";
             }
         };
 
-        inputs.forEach(id => document.getElementById(id).addEventListener('input', validate));
-        inputs.forEach(id => document.getElementById(id).addEventListener('change', validate));
-        files.forEach((id, i) => document.getElementById(id).addEventListener('change', (e) => {
-             if(e.target.files[0]) { this.processImage(e.target.files[0], `lbl-ret-${i+1}`, '#f97316'); validate(); }
-        }));
-        checks.forEach(id => document.getElementById(id).addEventListener('change', validate));
+        inputs.forEach(id => {
+            document.getElementById(id).addEventListener('input', validate);
+            document.getElementById(id).addEventListener('change', validate);
+        });
+        
+        files.forEach((id, i) => {
+            document.getElementById(id).addEventListener('change', (e) => {
+                if(e.target.files[0]) { 
+                    this.processImage(e.target.files[0], `lbl-ret-${i+1}`, '#f97316'); 
+                    validate(); 
+                }
+            });
+        });
+        
+        checks.forEach(id => {
+            document.getElementById(id).addEventListener('change', validate);
+        });
 
         btn.onclick = async () => {
             btn.innerText = "Finalizando...";
             const { data: trip } = await supabase.from('trips').select('id').eq('driver_id', this.userId).eq('status', 'arrived').single();
+            
+            if (!trip) {
+                alert('No se encontró un viaje para finalizar');
+                btn.innerText = "FINALIZAR ENTREGA";
+                return;
+            }
+            
             const returnData = { 
                 final_km: document.getElementById('return-km').value, 
                 fuel_level: document.getElementById('return-fuel').value,
                 timestamp: new Date() 
             };
-            await supabase.from('trips').update({ status: 'closed', return_details: returnData }).eq('id', trip.id);
-            location.reload();
+            
+            const { error } = await supabase.from('trips').update({ 
+                status: 'closed', 
+                return_details: returnData 
+            }).eq('id', trip.id);
+            
+            if (error) {
+                alert('Error al finalizar el viaje: ' + error.message);
+                btn.innerText = "FINALIZAR ENTREGA";
+            } else {
+                location.reload();
+            }
         };
     }
 
@@ -415,9 +519,9 @@ export class DriverView {
             
             if(!desc) return alert("Por favor describe el incidente.");
             
-            btn.innerText = "Enviando..."; btn.disabled = true;
+            btn.innerText = "Enviando..."; 
+            btn.disabled = true;
 
-            // Obtener vehículo actual si existe viaje
             const { data: trip } = await supabase.from('trips').select('vehicle_id').eq('driver_id', this.userId).neq('status', 'closed').maybeSingle();
             
             const { error } = await supabase.from('incidents').insert({
@@ -432,21 +536,45 @@ export class DriverView {
 
             if(error) {
                 alert("Error: " + error.message);
-                btn.innerText = "ENVIAR REPORTE"; btn.disabled = false;
+                btn.innerText = "ENVIAR REPORTE"; 
+                btn.disabled = false;
             } else {
                 alert("Reporte enviado a central.");
                 document.getElementById('modal-incident').classList.add('hidden');
                 document.getElementById('inc-desc').value = "";
-                // Reset visual button
-                btn.innerText = "ENVIAR REPORTE"; btn.disabled = false;
+                btn.innerText = "ENVIAR REPORTE"; 
+                btn.disabled = false;
             }
         };
     }
 
     async loadVehiclesToSelect() {
-        const { data } = await supabase.from('vehicles').select('id, economic_number, model').eq('status', 'active');
-        const select = document.getElementById('request-select');
-        select.innerHTML = '<option value="">Selecciona unidad...</option>' + (data||[]).map(v => `<option value="${v.id}">${v.economic_number} - ${v.model}</option>`).join('');
+        try {
+            const { data, error } = await supabase.from('vehicles').select('id, economic_number, model').eq('status', 'active');
+            
+            if (error) {
+                console.error('Error al cargar vehículos:', error);
+                return;
+            }
+            
+            const select = document.getElementById('request-select');
+            if (!select) {
+                console.error('Elemento select no encontrado');
+                return;
+            }
+            
+            select.innerHTML = '<option value="">Selecciona unidad...</option>';
+            
+            if (data && data.length > 0) {
+                data.forEach(v => {
+                    const option = document.createElement('option');
+                    option.value = v.id;
+                    option.textContent = `${v.economic_number} - ${v.model}`;
+                    select.appendChild(option);
+                });
+            }
+        } catch (err) {
+            console.error('Error en loadVehiclesToSelect:', err);
+        }
     }
-
 }
