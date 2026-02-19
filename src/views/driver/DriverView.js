@@ -95,7 +95,7 @@ export class DriverView {
                             </div>
 
                             <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100 mb-6 w-full" id="access-code-container">
-                                </div>
+                            </div>
 
                             <div class="w-full text-left bg-slate-50 p-4 rounded-2xl border border-slate-100 mb-4">
                                 <h4 class="text-slate-800 text-xs font-black uppercase mb-3 flex items-center gap-2 border-b border-slate-200 pb-2">
@@ -173,16 +173,13 @@ export class DriverView {
         this.initLiveMap();
         this.setupIncidentForm();
 
-        // Escucha en Tiempo Real EXCLUSIVA para los viajes de este conductor
         supabase.channel('driver_realtime')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'trips', filter: `driver_id=eq.${this.userId}` }, (payload) => {
-                // Se actualiza en automático cuando se aprueba, se asigna o se le da salida en caseta
                 this.loadDashboardState();
                 if(navigator.vibrate) navigator.vibrate([100, 50, 100]);
             }).subscribe();
     }
 
-    // --- MAPA EN VIVO CON SEGUIMIENTO DE RUTA REAL ---
     initLiveMap() {
         if (!window.L) return;
         const L = window.L;
@@ -212,7 +209,6 @@ export class DriverView {
 
         if (this.watchPositionId) navigator.geolocation.clearWatch(this.watchPositionId);
 
-        // Solicita permisos y arranca seguimiento continuo
         this.watchPositionId = navigator.geolocation.watchPosition((pos) => {
             const { latitude, longitude, speed } = pos.coords;
             const latlng = [latitude, longitude];
@@ -227,7 +223,6 @@ export class DriverView {
             const speedKmh = Math.round((speed || 0) * 3.6);
             document.getElementById('live-speed').innerText = speedKmh;
 
-            // Envía coordenadas reales a la central (Si está en ruta activa)
             if(this.currentTrip && this.currentTrip.status === 'in_progress') {
                 supabase.from('trip_locations').insert({ 
                     trip_id: this.currentTrip.id, 
@@ -239,7 +234,7 @@ export class DriverView {
                 });
             }
         }, (err) => {
-            if (err.code === 1) { // PERMISSION_DENIED
+            if (err.code === 1) { 
                 alert("Para registrar tu ruta debes permitir el acceso a tu ubicación en tu navegador.");
                 gpsIndicator.innerHTML = `<span class="material-symbols-outlined text-[12px]">location_off</span> Bloqueado`;
                 gpsIndicator.className = "text-red-500 font-bold text-[10px] uppercase flex items-center justify-center gap-1 mt-2";
@@ -247,7 +242,6 @@ export class DriverView {
         }, { enableHighAccuracy: true, maximumAge: 10000, timeout: 10000 });
     }
 
-    // --- CARGA DE DATOS ---
     async loadProfileData() {
         const { data: p } = await supabase.from('profiles').select('*').eq('id', this.userId).single();
         if(p) {
@@ -257,7 +251,6 @@ export class DriverView {
             document.getElementById('card-full-name').innerText = p.full_name;
             document.getElementById('card-photo').style.backgroundImage = `url('${p.photo_url || ''}')`;
             document.getElementById('lic-number').innerText = p.license_number || 'A-XXXXXXXX';
-            // Carga de responsable
             document.getElementById('profile-manager').innerText = p.supervisor_name || 'Central Operativa (Default)';
         }
     }
@@ -285,7 +278,7 @@ export class DriverView {
             `;
 
             this.renderMechanicChecklist(trip, checkCont);
-            this.renderAccessCode(trip); // <--- Aquí inyectamos el código alphanumérico
+            this.renderAccessCode(trip);
 
             if (trip.status === 'driver_accepted') {
                 btnStart.classList.remove('hidden');
@@ -303,7 +296,7 @@ export class DriverView {
         if(!confirm("¿Confirmas que deseas iniciar tu ruta y encender el rastreo GPS?")) return;
         const { error } = await supabase.from('trips').update({ status: 'in_progress', start_time: new Date().toISOString() }).eq('id', tripId);
         if(!error) {
-            // El realtime trigger recargará el DashboardState
+            this.loadDashboardState();
             this.switchTab('ruta');
         }
     }
@@ -318,6 +311,35 @@ export class DriverView {
                 <button class="bg-primary text-white text-[10px] font-bold px-3 py-1.5 rounded uppercase">Solicitar</button>
             </div>
         `).join('');
+    }
+
+    // --- FUNCIÓN CORREGIDA PARA SOLICITAR UNIDAD (VISUAL INMEDIATO + ERROR HANDLING) ---
+    async requestUnit(id) {
+        if(!confirm("Al solicitar esta unidad entrará a revisión del taller. ¿Continuar?")) return;
+        
+        const container = document.getElementById('unidad-content');
+        container.innerHTML = `
+            <div class="text-center py-10">
+                <div class="animate-spin text-primary mb-3"><span class="material-symbols-outlined text-4xl">autorenew</span></div>
+                <p class="text-white font-bold">Solicitando unidad...</p>
+            </div>
+        `;
+
+        const { error } = await supabase.from('trips').insert({ 
+            driver_id: this.userId, 
+            vehicle_id: id, 
+            status: 'requested' 
+        });
+
+        if (error) {
+            alert("Error al solicitar unidad: " + error.message);
+            this.loadDashboardState(); // Restaura la vista si falla
+            return;
+        }
+
+        // Forzar la actualización visual al instante
+        await this.loadDashboardState();
+        this.switchTab('checklist');
     }
 
     renderMechanicChecklist(trip, container) {
@@ -342,14 +364,7 @@ export class DriverView {
         }
     }
 
-    async requestUnit(id) {
-        if(!confirm("Al solicitar esta unidad entrará a revisión del taller. ¿Continuar?")) return;
-        await supabase.from('trips').insert({ driver_id: this.userId, vehicle_id: id, status: 'requested' });
-        // No necesitamos recargar manual porque el "realtime" lo hará por nosotros
-    }
-
     async confirmReception(id) {
-        // Generar un código alfanumérico ÚNICO de 5 caracteres al momento de aceptar la unidad
         const accessCode = Math.random().toString(36).substring(2, 7).toUpperCase();
         
         await supabase.from('trips').update({ 
@@ -357,10 +372,10 @@ export class DriverView {
             access_code: accessCode
         }).eq('id', id);
         
+        await this.loadDashboardState();
         this.switchTab('perfil');
     }
 
-    // --- NUEVO: RENDER DE CÓDIGO ALFANUMÉRICO (REEMPLAZA AL QR) ---
     renderAccessCode(trip) {
         const container = document.getElementById('access-code-container');
         
@@ -383,7 +398,6 @@ export class DriverView {
         }
     }
 
-    // --- FORMULARIO DE INCIDENTES INTACTO ---
     setupIncidentForm() {
         const input = document.getElementById('input-incident-camera');
         const grid = document.getElementById('incident-preview-grid');
