@@ -321,9 +321,6 @@ export class DriverView {
         await this.loadDashboardState();
         this.setupEventListeners();
 
-        // Verificar que el bucket existe
-        await this.verifyStorageBucket();
-
         // Suscripción en tiempo real a cambios en el viaje
         supabase.channel('driver_realtime')
             .on('postgres_changes', { 
@@ -335,27 +332,6 @@ export class DriverView {
                 this.loadDashboardState();
                 if(navigator.vibrate) navigator.vibrate([100]);
             }).subscribe();
-    }
-
-    async verifyStorageBucket() {
-        try {
-            const { data: buckets, error } = await supabase.storage.listBuckets();
-            if (error) {
-                console.error('Error verificando buckets:', error);
-                return;
-            }
-            
-            const bucketName = 'trip-photos';
-            const bucketExists = buckets?.some(b => b.name === bucketName);
-            
-            if (!bucketExists) {
-                console.warn(`Bucket '${bucketName}' no encontrado. Las fotos no podrán subirse.`);
-            } else {
-                console.log(`Bucket '${bucketName}' encontrado correctamente`);
-            }
-        } catch (error) {
-            console.error('Error verificando storage:', error);
-        }
     }
 
     setupEventListeners() {
@@ -1058,6 +1034,15 @@ export class DriverView {
             return;
         }
 
+        // VERIFICAR AUTENTICACIÓN
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        
+        if (!session) {
+            alert("Error de autenticación. Por favor, recarga la página.");
+            console.error('No hay sesión activa');
+            return;
+        }
+
         const btn = document.getElementById('btn-confirm-reception');
         const originalText = btn.innerHTML;
         btn.innerHTML = `<span class="material-symbols-outlined animate-spin">progress_activity</span> SUBIENDO...`;
@@ -1066,13 +1051,15 @@ export class DriverView {
         try {
             const bucketName = 'trip-photos';
             
-            // 1. PREPARAR NOMBRE DE ARCHIVO
+            // Usar el UID real del usuario autenticado
+            const userId = session.user.id;
             const fileExt = this.receptionPhotoFile.name.split('.').pop() || 'jpg';
-            const fileName = `${this.userId}/${id}/reception_${Date.now()}.${fileExt}`;
+            const fileName = `${userId}/${id}/reception_${Date.now()}.${fileExt}`;
             
             console.log('Subiendo archivo:', fileName);
+            console.log('Usuario autenticado:', userId);
 
-            // 2. SUBIR LA IMAGEN
+            // SUBIR LA IMAGEN
             const { data: uploadData, error: uploadError } = await supabase.storage
                 .from(bucketName)
                 .upload(fileName, this.receptionPhotoFile, {
@@ -1086,10 +1073,10 @@ export class DriverView {
                 
                 if (uploadError.message?.includes('duplicate')) {
                     throw new Error('La imagen ya existe. Intenta de nuevo.');
-                } else if (uploadError.message?.includes('permission')) {
-                    throw new Error('No tienes permiso para subir imágenes. Verifica las políticas RLS.');
+                } else if (uploadError.message?.includes('permission') || uploadError.message?.includes('policy')) {
+                    throw new Error('Error de permisos. Verifica las políticas RLS en Storage.');
                 } else if (uploadError.message?.includes('bucket')) {
-                    throw new Error(`Bucket '${bucketName}' no encontrado. Créalo en Storage.`);
+                    throw new Error(`Bucket '${bucketName}' no encontrado.`);
                 } else {
                     throw uploadError;
                 }
@@ -1097,10 +1084,10 @@ export class DriverView {
 
             console.log('Upload successful:', uploadData);
 
-            // 3. GENERAR CÓDIGO DE ACCESO
+            // GENERAR CÓDIGO DE ACCESO
             const accessCode = Math.random().toString(36).substring(2, 7).toUpperCase();
 
-            // 4. ACTUALIZAR BASE DE DATOS
+            // ACTUALIZAR BASE DE DATOS
             const { error: updateError } = await supabase
                 .from('trips')
                 .update({ 
@@ -1118,7 +1105,7 @@ export class DriverView {
 
             if (updateError) throw updateError;
 
-            // 5. GUARDAR REFERENCIA LOCAL
+            // GUARDAR REFERENCIA LOCAL
             localStorage.setItem(`trip_${id}_photo`, fileName);
 
             btn.innerHTML = `<span class="material-symbols-outlined">check_circle</span> ¡LISTO!`;
