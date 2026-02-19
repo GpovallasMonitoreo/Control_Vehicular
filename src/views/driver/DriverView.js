@@ -3,6 +3,7 @@ import { supabase } from '../../config/supabaseClient.js';
 export class DriverView {
     constructor() {
         this.activeTab = 'unidad';
+        // Usuario fijo para pruebas - el que ya existe en tu BD
         this.userId = 'd0c1e2f3-0000-0000-0000-000000000001'; 
         this.currentTrip = null;
         this.watchPositionId = null;
@@ -315,13 +316,14 @@ export class DriverView {
     }
 
     async onMount() {
+        // Usar el userId fijo de pruebas
         this.userId = 'd0c1e2f3-0000-0000-0000-000000000001'; 
         
         await this.loadProfileData();
         await this.loadDashboardState();
         this.setupEventListeners();
 
-        // Suscripción en tiempo real a cambios en el viaje
+        // Suscripción en tiempo real a cambios en el viaje (sin autenticación)
         supabase.channel('driver_realtime')
             .on('postgres_changes', { 
                 event: '*', 
@@ -350,7 +352,7 @@ export class DriverView {
         }, 30000);
     }
 
-    // ==================== SISTEMA GPS MEJORADO ====================
+    // ==================== SISTEMA GPS ====================
     startTracking() {
         if (!navigator.geolocation) {
             alert("El dispositivo no tiene sensor GPS.");
@@ -757,7 +759,18 @@ export class DriverView {
 
     // ==================== FUNCIONES DE PERFIL Y CHECKLIST ====================
     async loadProfileData() {
-        const { data: p } = await supabase.from('profiles').select('*').eq('id', this.userId).single();
+        // Usar el userId fijo en lugar de la sesión
+        const { data: p, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', this.userId)
+            .single();
+            
+        if (error) {
+            console.error('Error cargando perfil:', error);
+            return;
+        }
+        
         if(p) {
             this.profile = p;
             document.getElementById('profile-name').innerText = p.full_name;
@@ -1034,15 +1047,6 @@ export class DriverView {
             return;
         }
 
-        // VERIFICAR AUTENTICACIÓN
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        
-        if (!session) {
-            alert("Error de autenticación. Por favor, recarga la página.");
-            console.error('No hay sesión activa');
-            return;
-        }
-
         const btn = document.getElementById('btn-confirm-reception');
         const originalText = btn.innerHTML;
         btn.innerHTML = `<span class="material-symbols-outlined animate-spin">progress_activity</span> SUBIENDO...`;
@@ -1051,13 +1055,13 @@ export class DriverView {
         try {
             const bucketName = 'trip-photos';
             
-            // Usar el UID real del usuario autenticado
-            const userId = session.user.id;
+            // Usar el userId fijo en lugar de la sesión
+            const userId = this.userId;
             const fileExt = this.receptionPhotoFile.name.split('.').pop() || 'jpg';
             const fileName = `${userId}/${id}/reception_${Date.now()}.${fileExt}`;
             
             console.log('Subiendo archivo:', fileName);
-            console.log('Usuario autenticado:', userId);
+            console.log('Usuario:', userId);
 
             // SUBIR LA IMAGEN
             const { data: uploadData, error: uploadError } = await supabase.storage
@@ -1104,9 +1108,6 @@ export class DriverView {
                 .eq('id', id);
 
             if (updateError) throw updateError;
-
-            // GUARDAR REFERENCIA LOCAL
-            localStorage.setItem(`trip_${id}_photo`, fileName);
 
             btn.innerHTML = `<span class="material-symbols-outlined">check_circle</span> ¡LISTO!`;
             
