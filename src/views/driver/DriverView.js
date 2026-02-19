@@ -15,6 +15,30 @@ export class DriverView {
         this.gpsRetryCount = 0;
         this.maxGpsRetries = 3;
         
+        // Nuevas propiedades para logística
+        this.tripLogistics = {
+            startTime: null,
+            endTime: null,
+            startOdometer: null,
+            endOdometer: null,
+            totalDistance: 0,
+            fuelConsumption: 0,
+            averageSpeed: 0,
+            maxSpeed: 0,
+            idleTime: 0,
+            movingTime: 0,
+            lastSpeed: 0,
+            lastUpdateTime: null,
+            routePoints: [],
+            destinationETA: null,
+            returnETA: null,
+            currentDestination: null,
+            tripType: 'outbound', // 'outbound' o 'return'
+            destinationReached: false,
+            returnStarted: false,
+            supervisor: null
+        };
+        
         window.conductorModule = this;
     }
 
@@ -76,9 +100,19 @@ export class DriverView {
                     </section>
 
                     <section id="tab-ruta" class="tab-content hidden h-full flex flex-col relative">
-                        <div id="route-controls" class="absolute top-4 left-4 right-4 z-[1000] hidden">
+                        <div id="route-controls" class="absolute top-4 left-4 right-4 z-[1000] space-y-2">
                             <button id="btn-start-route" class="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-black rounded-2xl shadow-[0_0_30px_rgba(16,185,129,0.4)] flex items-center justify-center gap-2 transition-all active:scale-95 uppercase text-sm tracking-widest border-2 border-white/20">
                                 <span class="material-symbols-outlined animate-pulse">satellite_alt</span> Iniciar Navegación y GPS
+                            </button>
+                            
+                            <!-- Nuevo botón para registrar llegada a destino -->
+                            <button id="btn-destination-arrived" class="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white font-black rounded-2xl shadow-[0_0_30px_rgba(59,130,246,0.4)] hidden items-center justify-center gap-2 transition-all active:scale-95 uppercase text-sm tracking-widest border-2 border-white/20">
+                                <span class="material-symbols-outlined">location_city</span> Registrar Llegada a Destino
+                            </button>
+                            
+                            <!-- Nuevo botón para iniciar viaje de regreso -->
+                            <button id="btn-return-trip" class="w-full py-4 bg-orange-600 hover:bg-orange-500 text-white font-black rounded-2xl shadow-[0_0_30px_rgba(249,115,22,0.4)] hidden items-center justify-center gap-2 transition-all active:scale-95 uppercase text-sm tracking-widest border-2 border-white/20">
+                                <span class="material-symbols-outlined">turn_left</span> Iniciar Viaje de Regreso
                             </button>
                         </div>
                         
@@ -90,14 +124,46 @@ export class DriverView {
 
                         <div id="live-map" class="w-full flex-1 bg-slate-800"></div>
 
-                        <div class="p-5 bg-[#111a22] border-t border-[#233648] grid grid-cols-2 gap-4">
-                            <div class="bg-[#192633] p-3 rounded-xl border border-[#233648] text-center">
-                                <p class="text-[10px] text-[#92adc9] font-bold uppercase mb-1">Velocidad</p>
-                                <span id="live-speed" class="text-2xl font-black text-white">0</span> <small class="text-white/50 text-[10px]">km/h</small>
+                        <!-- Panel de información de logística mejorado -->
+                        <div class="p-5 bg-[#111a22] border-t border-[#233648] space-y-3">
+                            <!-- Grid de información principal -->
+                            <div class="grid grid-cols-3 gap-2">
+                                <div class="bg-[#192633] p-2 rounded-xl border border-[#233648] text-center">
+                                    <p class="text-[8px] text-[#92adc9] font-bold uppercase mb-1">Velocidad</p>
+                                    <span id="live-speed" class="text-xl font-black text-white">0</span> 
+                                    <small class="text-white/50 text-[8px]">km/h</small>
+                                </div>
+                                <div class="bg-[#192633] p-2 rounded-xl border border-[#233648] text-center">
+                                    <p class="text-[8px] text-[#92adc9] font-bold uppercase mb-1">Distancia</p>
+                                    <span id="live-distance" class="text-xl font-black text-white">0</span>
+                                    <small class="text-white/50 text-[8px]">km</small>
+                                </div>
+                                <div class="bg-[#192633] p-2 rounded-xl border border-[#233648] text-center">
+                                    <p class="text-[8px] text-[#92adc9] font-bold uppercase mb-1">Consumo</p>
+                                    <span id="live-fuel" class="text-xl font-black text-white">0</span>
+                                    <small class="text-white/50 text-[8px]">L</small>
+                                </div>
                             </div>
-                            <div class="bg-[#192633] p-3 rounded-xl border border-[#233648] text-center">
-                                <p class="text-[10px] text-[#92adc9] font-bold uppercase mb-1">GPS Monitor</p>
-                                <div id="gps-status-indicator" class="text-slate-500 font-bold text-[10px] uppercase flex flex-col items-center justify-center gap-1 mt-2">
+                            
+                            <!-- Información de ETA y tiempos -->
+                            <div class="bg-[#192633] p-3 rounded-xl border border-[#233648]">
+                                <div class="flex justify-between items-center mb-2">
+                                    <p class="text-[8px] text-[#92adc9] font-bold uppercase">Tiempo Transcurrido</p>
+                                    <span id="trip-duration" class="text-xs font-bold text-white">00:00:00</span>
+                                </div>
+                                <div class="flex justify-between items-center mb-2">
+                                    <p class="text-[8px] text-[#92adc9] font-bold uppercase">ETA Destino</p>
+                                    <span id="eta-destination" class="text-xs font-bold text-emerald-400">--:--</span>
+                                </div>
+                                <div class="flex justify-between items-center">
+                                    <p class="text-[8px] text-[#92adc9] font-bold uppercase">ETA Regreso</p>
+                                    <span id="eta-return" class="text-xs font-bold text-orange-400">--:--</span>
+                                </div>
+                            </div>
+                            
+                            <!-- Indicador de estado GPS -->
+                            <div class="bg-[#192633] p-2 rounded-xl border border-[#233648]">
+                                <div id="gps-status-indicator" class="text-slate-500 font-bold text-[10px] uppercase flex flex-col items-center justify-center gap-1">
                                     <div class="flex items-center gap-1">
                                         <span class="material-symbols-outlined text-[12px]">pause_circle</span> 
                                         <span>Pausado</span>
@@ -119,19 +185,77 @@ export class DriverView {
 
                             <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100 mb-6 w-full" id="access-code-container"></div>
 
+                            <!-- Sección de datos personales mejorada con supervisor -->
                             <div class="w-full text-left bg-slate-50 p-4 rounded-2xl border border-slate-100 mb-4">
                                 <h4 class="text-slate-800 text-xs font-black uppercase mb-3 flex items-center gap-2 border-b border-slate-200 pb-2">
-                                    <span class="material-symbols-outlined text-sm text-primary">badge</span> Datos
+                                    <span class="material-symbols-outlined text-sm text-primary">badge</span> Datos Personales
                                 </h4>
                                 <div class="space-y-3">
                                     <div class="flex justify-between items-center border-b border-slate-200 pb-2">
                                         <span class="text-[10px] text-slate-500 font-bold uppercase">Supervisor</span>
                                         <span id="profile-manager" class="text-slate-800 text-xs font-bold">--</span>
                                     </div>
+                                    <div class="flex justify-between items-center border-b border-slate-200 pb-2">
+                                        <span class="text-[10px] text-slate-500 font-bold uppercase">Cargo</span>
+                                        <span id="profile-role" class="text-slate-800 text-xs font-bold">Conductor</span>
+                                    </div>
                                     <div class="flex justify-between items-center">
                                         <span class="text-[10px] text-slate-500 font-bold uppercase">Licencia</span>
                                         <span id="lic-number" class="text-slate-800 text-xs font-mono font-bold">--</span>
                                     </div>
+                                </div>
+                            </div>
+
+                            <!-- Nueva sección de estadísticas del viaje actual -->
+                            <div id="trip-stats-container" class="w-full text-left bg-slate-50 p-4 rounded-2xl border border-slate-100 mb-4 hidden">
+                                <h4 class="text-slate-800 text-xs font-black uppercase mb-3 flex items-center gap-2 border-b border-slate-200 pb-2">
+                                    <span class="material-symbols-outlined text-sm text-primary">analytics</span> Estadísticas del Viaje
+                                </h4>
+                                <div class="space-y-2 text-[10px]">
+                                    <div class="flex justify-between">
+                                        <span class="text-slate-500">Distancia total:</span>
+                                        <span id="stats-distance" class="text-slate-900 font-bold">0 km</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-slate-500">Combustible estimado:</span>
+                                        <span id="stats-fuel" class="text-slate-900 font-bold">0 L</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-slate-500">Velocidad promedio:</span>
+                                        <span id="stats-avg-speed" class="text-slate-900 font-bold">0 km/h</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-slate-500">Tiempo en movimiento:</span>
+                                        <span id="stats-moving-time" class="text-slate-900 font-bold">00:00</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-slate-500">Hora salida:</span>
+                                        <span id="stats-start-time" class="text-slate-900 font-bold">--:--</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-slate-500">Hora llegada destino:</span>
+                                        <span id="stats-destination-time" class="text-slate-900 font-bold">--:--</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Nueva sección para configuración de vehículo -->
+                            <div id="vehicle-config-container" class="w-full text-left bg-slate-50 p-4 rounded-2xl border border-slate-100 mb-4 hidden">
+                                <h4 class="text-slate-800 text-xs font-black uppercase mb-3 flex items-center gap-2 border-b border-slate-200 pb-2">
+                                    <span class="material-symbols-outlined text-sm text-primary">settings</span> Configuración del Vehículo
+                                </h4>
+                                <div class="space-y-3">
+                                    <div>
+                                        <label class="text-[9px] text-slate-500 font-bold uppercase block mb-1">Rendimiento (km/L)</label>
+                                        <input type="number" id="vehicle-fuel-efficiency" value="8" step="0.1" min="1" max="30" class="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-900">
+                                    </div>
+                                    <div>
+                                        <label class="text-[9px] text-slate-500 font-bold uppercase block mb-1">Odómetro inicial (km)</label>
+                                        <input type="number" id="vehicle-start-odometer" step="0.1" class="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-900">
+                                    </div>
+                                    <button onclick="window.conductorModule.saveVehicleConfig()" class="w-full py-2 bg-primary text-white text-xs font-bold rounded-lg uppercase">
+                                        Guardar Configuración
+                                    </button>
                                 </div>
                             </div>
 
@@ -165,6 +289,40 @@ export class DriverView {
                     </div>
                 </div>
 
+                <!-- Nuevo modal para ingresar destino -->
+                <div id="modal-destination" class="hidden absolute inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
+                    <div class="bg-[#1c2127] w-full max-w-md rounded-3xl p-6 border border-primary/30">
+                        <h3 class="text-white font-bold text-lg mb-4 flex items-center gap-2">
+                            <span class="material-symbols-outlined text-primary">pin_drop</span> Ingresar Destino
+                        </h3>
+                        <p class="text-[#92adc9] text-xs mb-4">Ingresa la dirección o coordenadas de tu destino para calcular ETA y distancia</p>
+                        
+                        <div class="space-y-4 mb-6">
+                            <div>
+                                <label class="text-[10px] text-[#92adc9] font-bold uppercase block mb-1">Dirección</label>
+                                <input type="text" id="destination-address" class="w-full bg-[#111a22] border border-[#233648] text-white p-3 rounded-xl text-sm" placeholder="Ej: Av. Principal #123">
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="text-[10px] text-[#92adc9] font-bold uppercase block mb-1">Latitud</label>
+                                    <input type="number" id="destination-lat" step="any" class="w-full bg-[#111a22] border border-[#233648] text-white p-3 rounded-xl text-sm" placeholder="19.4326">
+                                </div>
+                                <div>
+                                    <label class="text-[10px] text-[#92adc9] font-bold uppercase block mb-1">Longitud</label>
+                                    <input type="number" id="destination-lng" step="any" class="w-full bg-[#111a22] border border-[#233648] text-white p-3 rounded-xl text-sm" placeholder="-99.1332">
+                                </div>
+                            </div>
+                            <button onclick="window.conductorModule.getCurrentLocationAsDestination()" class="w-full py-2 bg-[#233648] text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1">
+                                <span class="material-symbols-outlined text-sm">my_location</span> Usar mi ubicación actual
+                            </button>
+                        </div>
+                        
+                        <div class="flex gap-3">
+                            <button onclick="document.getElementById('modal-destination').classList.add('hidden')" class="flex-1 py-4 bg-slate-800 text-white rounded-xl font-bold uppercase text-xs">Cancelar</button>
+                            <button onclick="window.conductorModule.saveDestination()" class="flex-1 py-4 bg-primary text-white rounded-xl font-bold uppercase text-xs">Guardar Destino</button>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
         `;
@@ -178,6 +336,7 @@ export class DriverView {
         this.initLiveMap();
         this.setupIncidentForm();
         this.setupGPSEventListeners();
+        this.loadVehicleConfig();
 
         supabase.channel('driver_realtime')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'trips', filter: `driver_id=eq.${this.userId}` }, () => {
@@ -205,6 +364,261 @@ export class DriverView {
                 }
             }
         });
+    }
+
+    // Nuevo método para cargar configuración del vehículo
+    loadVehicleConfig() {
+        const savedEfficiency = localStorage.getItem('vehicle_fuel_efficiency');
+        if (savedEfficiency) {
+            document.getElementById('vehicle-fuel-efficiency').value = savedEfficiency;
+        }
+    }
+
+    // Nuevo método para guardar configuración del vehículo
+    saveVehicleConfig() {
+        const efficiency = document.getElementById('vehicle-fuel-efficiency').value;
+        const startOdometer = document.getElementById('vehicle-start-odometer').value;
+        
+        localStorage.setItem('vehicle_fuel_efficiency', efficiency);
+        
+        if (startOdometer && this.currentTrip) {
+            this.tripLogistics.startOdometer = parseFloat(startOdometer);
+            this.updateTripStats();
+        }
+        
+        alert('Configuración guardada');
+    }
+
+    // Nuevo método para obtener ubicación actual como destino
+    getCurrentLocationAsDestination() {
+        if (!navigator.geolocation) {
+            alert("El dispositivo no tiene GPS");
+            return;
+        }
+
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                document.getElementById('destination-lat').value = pos.coords.latitude;
+                document.getElementById('destination-lng').value = pos.coords.longitude;
+                document.getElementById('destination-address').value = "Ubicación actual";
+            },
+            (err) => {
+                alert("No se pudo obtener la ubicación actual");
+            }
+        );
+    }
+
+    // Nuevo método para guardar destino
+    saveDestination() {
+        const lat = parseFloat(document.getElementById('destination-lat').value);
+        const lng = parseFloat(document.getElementById('destination-lng').value);
+        const address = document.getElementById('destination-address').value;
+
+        if (!lat || !lng) {
+            alert("Ingresa coordenadas válidas");
+            return;
+        }
+
+        this.tripLogistics.currentDestination = { lat, lng, address };
+        
+        // Guardar en Supabase
+        if (this.currentTrip) {
+            supabase.from('trip_destinations').insert({
+                trip_id: this.currentTrip.id,
+                destination_lat: lat,
+                destination_lng: lng,
+                destination_address: address,
+                created_at: new Date().toISOString()
+            });
+        }
+
+        document.getElementById('modal-destination').classList.add('hidden');
+        
+        // Mostrar el botón de llegada a destino
+        document.getElementById('btn-destination-arrived').classList.remove('hidden');
+        
+        // Calcular ETA inicial
+        this.calculateETA();
+    }
+
+    // Nuevo método para calcular ETA
+    calculateETA() {
+        if (!this.tripLogistics.currentDestination || !this.map) return;
+
+        const currentPos = this.marker.getLatLng();
+        const dest = this.tripLogistics.currentDestination;
+        
+        // Calcular distancia usando fórmula de Haversine
+        const R = 6371; // Radio de la Tierra en km
+        const dLat = this.deg2rad(dest.lat - currentPos.lat);
+        const dLon = this.deg2rad(dest.lng - currentPos.lng);
+        const a = 
+            Math.sin(dLat/2) * Math.sin(dLat/2) +
+            Math.cos(this.deg2rad(currentPos.lat)) * Math.cos(this.deg2rad(dest.lat)) * 
+            Math.sin(dLon/2) * Math.sin(dLon/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        const distance = R * c;
+
+        // Estimar tiempo basado en velocidad promedio
+        const avgSpeed = this.tripLogistics.averageSpeed || 40; // km/h
+        const timeHours = distance / avgSpeed;
+        const timeMinutes = Math.round(timeHours * 60);
+
+        // Calcular ETA
+        const now = new Date();
+        const eta = new Date(now.getTime() + timeMinutes * 60000);
+        
+        if (this.tripLogistics.tripType === 'outbound' && !this.tripLogistics.destinationReached) {
+            document.getElementById('eta-destination').innerText = 
+                eta.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            this.tripLogistics.destinationETA = eta;
+        } else if (this.tripLogistics.returnStarted) {
+            document.getElementById('eta-return').innerText = 
+                eta.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            this.tripLogistics.returnETA = eta;
+        }
+
+        return distance;
+    }
+
+    deg2rad(deg) {
+        return deg * (Math.PI/180);
+    }
+
+    // Nuevo método para registrar llegada a destino
+    async registerDestinationArrival() {
+        if (!this.currentTrip) return;
+
+        const btn = document.getElementById('btn-destination-arrived');
+        btn.innerText = "Registrando...";
+        btn.disabled = true;
+
+        this.tripLogistics.destinationReached = true;
+        this.tripLogistics.tripType = 'return';
+        
+        // Registrar en Supabase
+        await supabase.from('trip_logistics').insert({
+            trip_id: this.currentTrip.id,
+            event_type: 'destination_arrival',
+            timestamp: new Date().toISOString(),
+            lat: this.marker.getLatLng().lat,
+            lng: this.marker.getLatLng().lng,
+            total_distance: this.tripLogistics.totalDistance,
+            fuel_consumption: this.tripLogistics.fuelConsumption
+        });
+
+        // Ocultar botón de llegada y mostrar botón de regreso
+        btn.classList.add('hidden');
+        document.getElementById('btn-return-trip').classList.remove('hidden');
+        
+        // Actualizar estadísticas en perfil
+        this.updateTripStats();
+        
+        alert("Llegada a destino registrada. Puedes iniciar el viaje de regreso cuando estés listo.");
+    }
+
+    // Nuevo método para iniciar viaje de regreso
+    async startReturnTrip() {
+        if (!this.currentTrip) return;
+
+        const btn = document.getElementById('btn-return-trip');
+        btn.innerText = "Iniciando...";
+        btn.disabled = true;
+
+        this.tripLogistics.returnStarted = true;
+        
+        // Registrar en Supabase
+        await supabase.from('trip_logistics').insert({
+            trip_id: this.currentTrip.id,
+            event_type: 'return_started',
+            timestamp: new Date().toISOString(),
+            lat: this.marker.getLatLng().lat,
+            lng: this.marker.getLatLng().lng
+        });
+
+        btn.classList.add('hidden');
+        
+        alert("Viaje de regreso iniciado. El sistema calculará la ruta de retorno.");
+    }
+
+    // Nuevo método para finalizar viaje
+    async finishTrip() {
+        if (!this.currentTrip) return;
+
+        if (!confirm("¿Finalizar viaje? Se registrarán todas las estadísticas.")) return;
+
+        this.tripLogistics.endTime = new Date();
+        
+        // Calcular estadísticas finales
+        const totalMinutes = (this.tripLogistics.endTime - this.tripLogistics.startTime) / 60000;
+        const totalHours = totalMinutes / 60;
+        
+        const finalStats = {
+            trip_id: this.currentTrip.id,
+            end_time: this.tripLogistics.endTime.toISOString(),
+            total_distance: this.tripLogistics.totalDistance,
+            total_duration_minutes: totalMinutes,
+            average_speed: this.tripLogistics.averageSpeed,
+            max_speed: this.tripLogistics.maxSpeed,
+            moving_time_minutes: this.tripLogistics.movingTime / 60,
+            idle_time_minutes: this.tripLogistics.idleTime / 60,
+            fuel_consumption: this.tripLogistics.fuelConsumption,
+            start_odometer: this.tripLogistics.startOdometer,
+            end_odometer: this.tripLogistics.startOdometer ? 
+                this.tripLogistics.startOdometer + this.tripLogistics.totalDistance : null
+        };
+
+        // Guardar en Supabase
+        await supabase.from('trip_summaries').insert(finalStats);
+        
+        // Actualizar estado del viaje
+        await supabase.from('trips').update({ 
+            status: 'completed',
+            ended_at: new Date().toISOString()
+        }).eq('id', this.currentTrip.id);
+
+        alert("Viaje finalizado. Estadísticas guardadas.");
+        this.stopTracking();
+        await this.loadDashboardState();
+        this.switchTab('unidad');
+    }
+
+    // Nuevo método para actualizar estadísticas en tiempo real
+    updateTripStats() {
+        if (!this.currentTrip) return;
+
+        // Actualizar elementos UI
+        document.getElementById('live-distance').innerText = this.tripLogistics.totalDistance.toFixed(1);
+        document.getElementById('live-fuel').innerText = this.tripLogistics.fuelConsumption.toFixed(1);
+        
+        // Calcular duración
+        if (this.tripLogistics.startTime) {
+            const duration = Math.floor((new Date() - this.tripLogistics.startTime) / 1000);
+            const hours = Math.floor(duration / 3600);
+            const minutes = Math.floor((duration % 3600) / 60);
+            const seconds = duration % 60;
+            document.getElementById('trip-duration').innerText = 
+                `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        }
+
+        // Actualizar estadísticas en perfil si la pestaña está visible
+        if (this.activeTab === 'perfil' && this.currentTrip) {
+            document.getElementById('trip-stats-container').classList.remove('hidden');
+            document.getElementById('vehicle-config-container').classList.remove('hidden');
+            
+            document.getElementById('stats-distance').innerText = this.tripLogistics.totalDistance.toFixed(1) + ' km';
+            document.getElementById('stats-fuel').innerText = this.tripLogistics.fuelConsumption.toFixed(1) + ' L';
+            document.getElementById('stats-avg-speed').innerText = Math.round(this.tripLogistics.averageSpeed) + ' km/h';
+            
+            const movingMinutes = Math.floor(this.tripLogistics.movingTime / 60);
+            document.getElementById('stats-moving-time').innerText = 
+                `${Math.floor(movingMinutes / 60)}h ${movingMinutes % 60}m`;
+            
+            if (this.tripLogistics.startTime) {
+                document.getElementById('stats-start-time').innerText = 
+                    this.tripLogistics.startTime.toLocaleTimeString();
+            }
+        }
     }
 
     initLiveMap() {
@@ -251,6 +665,7 @@ export class DriverView {
     handlePositionUpdate(pos) {
         const { latitude, longitude, speed, accuracy, altitude } = pos.coords;
         const latlng = [latitude, longitude];
+        const now = new Date();
         
         if(this.map) {
             // Centramos el mapa en la posición actual con animación suave
@@ -273,6 +688,101 @@ export class DriverView {
         const speedKmh = Math.round((speed || 0) * 3.6);
         document.getElementById('live-speed').innerText = speedKmh;
 
+        // === NUEVA LÓGICA DE LOGÍSTICA ===
+        if (this.currentTrip && this.currentTrip.status === 'in_progress') {
+            
+            // Inicializar tiempo de inicio si es la primera posición
+            if (!this.tripLogistics.startTime) {
+                this.tripLogistics.startTime = now;
+                this.tripLogistics.lastUpdateTime = now;
+            }
+            
+            // Calcular tiempo entre actualizaciones
+            const timeDiff = (now - this.tripLogistics.lastUpdateTime) / 1000; // segundos
+            
+            // Determinar si está en movimiento (velocidad > 1 km/h)
+            const isMoving = speedKmh > 1;
+            
+            if (isMoving) {
+                this.tripLogistics.movingTime += timeDiff;
+            } else {
+                this.tripLogistics.idleTime += timeDiff;
+            }
+            
+            // Actualizar velocidad máxima
+            if (speedKmh > this.tripLogistics.maxSpeed) {
+                this.tripLogistics.maxSpeed = speedKmh;
+            }
+            
+            // Calcular distancia usando la fórmula de Haversine entre puntos
+            if (this.tripLogistics.lastPosition) {
+                const lastPos = this.tripLogistics.lastPosition;
+                const distance = this.calculateDistance(
+                    lastPos.lat, lastPos.lng,
+                    latitude, longitude
+                );
+                
+                // Solo sumar si es una distancia razonable (evitar saltos erráticos)
+                if (distance < 0.5) { // Menos de 500 metros entre actualizaciones
+                    this.tripLogistics.totalDistance += distance;
+                    
+                    // Calcular consumo de combustible (promedio 8 km/L, configurable)
+                    const fuelEfficiency = parseFloat(localStorage.getItem('vehicle_fuel_efficiency')) || 8;
+                    this.tripLogistics.fuelConsumption = this.tripLogistics.totalDistance / fuelEfficiency;
+                }
+            }
+            
+            // Guardar posición actual para próxima iteración
+            this.tripLogistics.lastPosition = { lat: latitude, lng: longitude, speed: speedKmh, timestamp: now };
+            
+            // Calcular velocidad promedio
+            const totalTimeHours = (now - this.tripLogistics.startTime) / 3600000;
+            if (totalTimeHours > 0) {
+                this.tripLogistics.averageSpeed = this.tripLogistics.totalDistance / totalTimeHours;
+            }
+            
+            // Actualizar UI de estadísticas
+            this.updateTripStats();
+            
+            // Calcular ETA si hay destino
+            if (this.tripLogistics.currentDestination) {
+                this.calculateETA();
+            }
+            
+            // Guardar punto de ruta para análisis posterior
+            this.tripLogistics.routePoints.push({
+                lat: latitude,
+                lng: longitude,
+                speed: speedKmh,
+                timestamp: now.toISOString(),
+                distance: this.tripLogistics.totalDistance
+            });
+            
+            // Limitar puntos guardados
+            if (this.tripLogistics.routePoints.length > 1000) {
+                this.tripLogistics.routePoints.shift();
+            }
+            
+            // Enviar a Supabase con datos de logística
+            supabase.from('trip_locations').insert({ 
+                trip_id: this.currentTrip.id, 
+                lat: latitude, 
+                lng: longitude, 
+                speed: speedKmh,
+                accuracy: accuracy,
+                altitude: altitude || 0,
+                total_distance: this.tripLogistics.totalDistance,
+                fuel_consumption: this.tripLogistics.fuelConsumption,
+                moving_time: this.tripLogistics.movingTime,
+                idle_time: this.tripLogistics.idleTime,
+                timestamp: now.toISOString()
+            }).then(({ error }) => {
+                if (error) console.error('Error guardando ubicación:', error);
+            });
+        }
+        
+        this.tripLogistics.lastUpdateTime = now;
+        
         // Actualizar indicador de precisión GPS
         const gpsIndicator = document.getElementById('gps-status-indicator');
         const accuracyText = accuracy < 20 ? 'Alta' : (accuracy < 50 ? 'Media' : 'Baja');
@@ -283,26 +793,24 @@ export class DriverView {
                 <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
                 <span class="${colorClass}">${speedKmh} km/h | ${accuracyText}</span>
             </div>
-            <span class="text-[8px] text-slate-400">${new Date().toLocaleTimeString()}</span>
+            <span class="text-[8px] text-slate-400">${now.toLocaleTimeString()}</span>
         `;
-
-        // Enviar a Supabase si el viaje está activo
-        if(this.currentTrip && this.currentTrip.status === 'in_progress') {
-            supabase.from('trip_locations').insert({ 
-                trip_id: this.currentTrip.id, 
-                lat: latitude, 
-                lng: longitude, 
-                speed: speedKmh,
-                accuracy: accuracy,
-                altitude: altitude || 0,
-                timestamp: new Date().toISOString()
-            }).then(({ error }) => {
-                if (error) console.error('Error guardando ubicación:', error);
-            });
-        }
         
         // Resetear contador de reintentos cuando hay éxito
         this.gpsRetryCount = 0;
+    }
+
+    // Método auxiliar para calcular distancia entre dos puntos (Haversine)
+    calculateDistance(lat1, lon1, lat2, lon2) {
+        const R = 6371; // Radio de la Tierra en km
+        const dLat = this.deg2rad(lat2 - lat1);
+        const dLon = this.deg2rad(lon2 - lon1);
+        const a = 
+            Math.sin(dLat/2) * Math.sin(dLat/2) +
+            Math.cos(this.deg2rad(lat1)) * Math.cos(this.deg2rad(lat2)) * 
+            Math.sin(dLon/2) * Math.sin(dLon/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        return R * c;
     }
 
     handleGPSError(err) {
@@ -470,6 +978,13 @@ export class DriverView {
                 );
                 
                 if (btnStart) btnStart.classList.add('hidden');
+                
+                // Mostrar modal para ingresar destino si no hay uno configurado
+                if (!this.tripLogistics.currentDestination && this.currentTrip?.status === 'in_progress') {
+                    setTimeout(() => {
+                        document.getElementById('modal-destination').classList.remove('hidden');
+                    }, 2000);
+                }
             },
             // Error - manejar permisos
             (err) => {
@@ -507,7 +1022,33 @@ export class DriverView {
             document.getElementById('card-full-name').innerText = p.full_name;
             document.getElementById('card-photo').style.backgroundImage = `url('${p.photo_url || ''}')`;
             document.getElementById('lic-number').innerText = p.license_number || 'No Registrada';
-            document.getElementById('profile-manager').innerText = p.supervisor_name || 'Central COV';
+            
+            // Mostrar supervisor con verificación de jerarquía
+            if (p.role === 'supervisor' || p.role === 'admin') {
+                document.getElementById('profile-manager').innerText = 'Supervisor';
+                document.getElementById('profile-role').innerText = p.role === 'admin' ? 'Administrador' : 'Supervisor';
+                this.tripLogistics.supervisor = { name: p.full_name, role: p.role };
+            } else {
+                document.getElementById('profile-manager').innerText = p.supervisor_name || 'Central COV';
+                document.getElementById('profile-role').innerText = 'Conductor';
+                
+                // Cargar datos del supervisor si existe
+                if (p.supervisor_id) {
+                    this.loadSupervisorData(p.supervisor_id);
+                }
+            }
+        }
+    }
+
+    // Nuevo método para cargar datos del supervisor
+    async loadSupervisorData(supervisorId) {
+        const { data: supervisor } = await supabase.from('profiles')
+            .select('full_name, email, phone')
+            .eq('id', supervisorId)
+            .single();
+            
+        if (supervisor) {
+            this.tripLogistics.supervisor = supervisor;
         }
     }
 
@@ -520,6 +1061,8 @@ export class DriverView {
         const checkCont = document.getElementById('checklist-content');
         const waitingMsg = document.getElementById('route-waiting-msg');
         const btnStart = document.getElementById('btn-start-route');
+        const btnDestination = document.getElementById('btn-destination-arrived');
+        const btnReturn = document.getElementById('btn-return-trip');
 
         if (!trip) {
             await this.renderAvailableUnits(unityCont);
@@ -549,12 +1092,20 @@ export class DriverView {
                     waitingMsg.classList.add('hidden');
                 }
                 
-                // Configurar botón de inicio manual
+                // Configurar botones
                 if (btnStart) {
                     btnStart.classList.remove('hidden');
                     btnStart.onclick = () => {
                         this.startTracking();
                     };
+                }
+                
+                if (btnDestination) {
+                    btnDestination.onclick = () => this.registerDestinationArrival();
+                }
+                
+                if (btnReturn) {
+                    btnReturn.onclick = () => this.startReturnTrip();
                 }
                 
                 // INICIAR GPS AUTOMÁTICAMENTE si estamos en la pestaña de ruta
@@ -563,12 +1114,53 @@ export class DriverView {
                         this.startTracking();
                     }, 1000);
                 }
+
+                // Cargar datos de logística previos
+                this.loadTripLogistics(trip.id);
             } else {
                 document.getElementById('profile-status').innerText = "Trámite Interno";
                 if (waitingMsg) waitingMsg.classList.remove('hidden');
                 if (btnStart) btnStart.classList.add('hidden');
+                if (btnDestination) btnDestination.classList.add('hidden');
+                if (btnReturn) btnReturn.classList.add('hidden');
                 this.stopTracking(); // Detener GPS si no corresponde
             }
+        }
+    }
+
+    // Nuevo método para cargar logística del viaje
+    async loadTripLogistics(tripId) {
+        // Cargar destino si existe
+        const { data: destinations } = await supabase
+            .from('trip_destinations')
+            .select('*')
+            .eq('trip_id', tripId)
+            .order('created_at', { ascending: false })
+            .limit(1);
+
+        if (destinations && destinations.length > 0) {
+            this.tripLogistics.currentDestination = {
+                lat: destinations[0].destination_lat,
+                lng: destinations[0].destination_lng,
+                address: destinations[0].destination_address
+            };
+        }
+
+        // Cargar resumen si existe
+        const { data: summaries } = await supabase
+            .from('trip_summaries')
+            .select('*')
+            .eq('trip_id', tripId)
+            .limit(1);
+
+        if (summaries && summaries.length > 0) {
+            const s = summaries[0];
+            this.tripLogistics.totalDistance = s.total_distance || 0;
+            this.tripLogistics.fuelConsumption = s.fuel_consumption || 0;
+            this.tripLogistics.averageSpeed = s.average_speed || 0;
+            this.tripLogistics.maxSpeed = s.max_speed || 0;
+            this.tripLogistics.movingTime = s.moving_time_minutes * 60 || 0;
+            this.tripLogistics.idleTime = s.idle_time_minutes * 60 || 0;
         }
     }
 
@@ -765,6 +1357,16 @@ export class DriverView {
                     }
                 }
             }, 300);
+        } else if (tabId === 'perfil') {
+            // Mostrar estadísticas en perfil si hay viaje activo
+            if (this.currentTrip && this.currentTrip.status === 'in_progress') {
+                document.getElementById('trip-stats-container').classList.remove('hidden');
+                document.getElementById('vehicle-config-container').classList.remove('hidden');
+                this.updateTripStats();
+            } else {
+                document.getElementById('trip-stats-container').classList.add('hidden');
+                document.getElementById('vehicle-config-container').classList.add('hidden');
+            }
         } else {
             // Si salimos de la pestaña ruta, podemos pausar el GPS para ahorrar batería
             if (tabId !== 'ruta' && this.currentTrip?.status !== 'in_progress') {
