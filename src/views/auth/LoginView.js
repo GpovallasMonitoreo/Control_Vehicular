@@ -3,6 +3,31 @@ import { supabase } from '../../config/supabaseClient.js';
 export class LoginView {
     constructor() {
         this.selectedRole = null;
+        
+        // Usuarios de prueba predefinidos (para desarrollo)
+        this.testUsers = [
+            {
+                id: '77dc65f5-31bf-4362-bc84-038dc9a52bb4',
+                email: 'conductor@cov.mx',
+                password: 'Conductor2024!',
+                full_name: 'Conductor Operador',
+                role: 'driver'
+            },
+            {
+                id: '95a93c3d-694f-4831-94c7-dc43cb58e24d',
+                email: 'guardia@cov.mx',
+                password: 'Guardia2024!',
+                full_name: 'Guardia Seguridad',
+                role: 'guard'
+            },
+            {
+                id: '1eba62f8-f801-46c4-ba38-1c18c5410b26',
+                email: 'admin@cov.mx',
+                password: 'Admin2024!',
+                full_name: 'Administrador Principal',
+                role: 'admin'
+            }
+        ];
     }
 
     render() {
@@ -16,6 +41,22 @@ export class LoginView {
 
             <div class="relative z-10 w-full max-w-6xl px-6 py-12 flex flex-col items-center justify-center min-h-full">
                 
+                <!-- BOTONES DE ACCESO RÁPIDO PARA PRUEBAS -->
+                <div class="w-full max-w-5xl mb-6 flex justify-center gap-3 flex-wrap">
+                    <button onclick="window.loginView.quickLogin('conductor@cov.mx', 'Conductor2024!')" 
+                            class="px-4 py-2 bg-orange-500/20 border border-orange-500/30 text-orange-500 rounded-full text-xs font-bold hover:bg-orange-500 hover:text-white transition-colors">
+                        🚗 Conductor
+                    </button>
+                    <button onclick="window.loginView.quickLogin('guardia@cov.mx', 'Guardia2024!')" 
+                            class="px-4 py-2 bg-emerald-500/20 border border-emerald-500/30 text-emerald-500 rounded-full text-xs font-bold hover:bg-emerald-500 hover:text-white transition-colors">
+                        🔒 Guardia
+                    </button>
+                    <button onclick="window.loginView.quickLogin('admin@cov.mx', 'Admin2024!')" 
+                            class="px-4 py-2 bg-primary/20 border border-primary/30 text-primary rounded-full text-xs font-bold hover:bg-primary hover:text-white transition-colors">
+                        ⚡ Admin
+                    </button>
+                </div>
+
                 <div class="text-center mb-12 animate-fade-in-up" style="animation-delay: 0.1s;">
                     <div class="inline-flex items-center justify-center size-20 rounded-3xl bg-gradient-to-br from-primary to-blue-600 text-white shadow-2xl shadow-primary/30 mb-6">
                         <span class="material-symbols-outlined text-5xl">local_shipping</span>
@@ -69,50 +110,60 @@ export class LoginView {
                     <div class="space-y-5">
                         <div>
                             <label class="block text-xs font-bold text-[#92adc9] uppercase mb-2 tracking-wider">Correo Electrónico</label>
-                            <input type="email" id="login-email" class="w-full bg-[#111a22] border border-[#324d67] rounded-xl p-4 text-white placeholder-slate-600 focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" placeholder="correo@ejemplo.com">
+                            <input type="email" id="login-email" class="w-full bg-[#111a22] border border-[#324d67] rounded-xl p-4 text-white placeholder-slate-600 focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" placeholder="correo@ejemplo.com" value="conductor@cov.mx">
                         </div>
                         <div>
                             <label class="block text-xs font-bold text-[#92adc9] uppercase mb-2 tracking-wider">Contraseña</label>
-                            <input type="password" id="login-password" class="w-full bg-[#111a22] border border-[#324d67] rounded-xl p-4 text-white placeholder-slate-600 focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" placeholder="••••••••">
+                            <input type="password" id="login-password" class="w-full bg-[#111a22] border border-[#324d67] rounded-xl p-4 text-white placeholder-slate-600 focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" placeholder="••••••••" value="Conductor2024!">
                         </div>
                         <button onclick="window.loginView.submitLogin()" id="login-submit-btn" class="w-full bg-primary hover:bg-blue-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-600/20 transition-all mt-4 transform active:scale-95">
                             Entrar al Sistema
                         </button>
                         
-                        <p class="text-center text-xs text-[#92adc9] mt-4">
-                            ¿Olvidaste tu contraseña? <a href="#" onclick="window.loginView.resetPassword()" class="text-primary hover:underline">Recuperar acceso</a>
-                        </p>
+                        <!-- CREDENCIALES DE PRUEBA VISIBLES -->
+                        <div class="mt-6 pt-4 border-t border-[#324d67] text-center">
+                            <p class="text-[10px] text-[#92adc9] uppercase mb-2">Credenciales de prueba</p>
+                            <div class="grid grid-cols-3 gap-2 text-[10px]">
+                                <div class="bg-[#111a22] p-2 rounded border border-[#324d67]">
+                                    <span class="text-orange-500 block font-bold">Conductor</span>
+                                    <span class="text-white">conductor@cov.mx</span>
+                                </div>
+                                <div class="bg-[#111a22] p-2 rounded border border-[#324d67]">
+                                    <span class="text-emerald-500 block font-bold">Guardia</span>
+                                    <span class="text-white">guardia@cov.mx</span>
+                                </div>
+                                <div class="bg-[#111a22] p-2 rounded border border-[#324d67]">
+                                    <span class="text-primary block font-bold">Admin</span>
+                                    <span class="text-white">admin@cov.mx</span>
+                                </div>
+                            </div>
+                            <p class="text-[10px] text-[#92adc9] mt-2">Contraseña: *2024! (Ej: Conductor2024!)</p>
+                        </div>
                     </div>
                 </div>
 
-                <p class="absolute bottom-6 text-center text-[#324d67] text-xs font-mono w-full">v1.0.0 • Server: NAUC-SEC-01</p>
+                <p class="absolute bottom-6 text-center text-[#324d67] text-xs font-mono w-full">v1.0.0 • Modo Desarrollo (Sin Auth)</p>
             </div>
         </div>
         `;
     }
 
     onMount() {
-        // Verificar si ya hay sesión activa
-        this.checkExistingSession();
-        
         // Guardar referencia en window para acceso desde HTML
         window.loginView = this;
+        
+        // Verificar si ya hay un usuario guardado en localStorage
+        this.checkStoredUser();
     }
 
-    async checkExistingSession() {
-        const { data: { session } } = await supabase.auth.getSession();
+    checkStoredUser() {
+        const userId = localStorage.getItem('userId');
+        const userRole = localStorage.getItem('userRole');
+        const userName = localStorage.getItem('userName');
         
-        if (session) {
-            // Ya hay sesión, obtener rol del perfil
-            const { data: profile } = await supabase
-                .from('profiles')
-                .select('role')
-                .eq('id', session.user.id)
-                .single();
-            
-            if (profile) {
-                this.redirectToRole(profile.role);
-            }
+        if (userId && userRole) {
+            console.log('Usuario encontrado en localStorage:', { userId, userRole, userName });
+            this.redirectToRole(userRole);
         }
     }
 
@@ -120,6 +171,21 @@ export class LoginView {
         this.selectedRole = role;
         document.getElementById('role-selector').classList.add('hidden');
         document.getElementById('login-form').classList.remove('hidden');
+        
+        // Pre-llenar según el rol seleccionado
+        const emailInput = document.getElementById('login-email');
+        const passwordInput = document.getElementById('login-password');
+        
+        if (role === 'driver') {
+            emailInput.value = 'conductor@cov.mx';
+            passwordInput.value = 'Conductor2024!';
+        } else if (role === 'guard') {
+            emailInput.value = 'guardia@cov.mx';
+            passwordInput.value = 'Guardia2024!';
+        } else if (role === 'admin') {
+            emailInput.value = 'admin@cov.mx';
+            passwordInput.value = 'Admin2024!';
+        }
         
         const titles = {
             'admin': 'Acceso Administrativo',
@@ -129,6 +195,22 @@ export class LoginView {
         
         const titleEl = document.getElementById('form-title');
         titleEl.innerHTML = `<span class="material-symbols-outlined text-primary text-3xl">lock</span> ${titles[role]}`;
+    }
+
+    quickLogin(email, password) {
+        document.getElementById('login-email').value = email;
+        document.getElementById('login-password').value = password;
+        
+        // Determinar el rol basado en el email
+        if (email.includes('admin')) {
+            this.selectedRole = 'admin';
+        } else if (email.includes('guardia')) {
+            this.selectedRole = 'guard';
+        } else {
+            this.selectedRole = 'driver';
+        }
+        
+        this.submitLogin();
     }
 
     resetSelection() {
@@ -151,11 +233,6 @@ export class LoginView {
             return;
         }
 
-        if (!email.includes('@')) {
-            this.showError('Ingresa un correo electrónico válido');
-            return;
-        }
-
         // Deshabilitar botón
         btn.innerText = "Verificando...";
         btn.disabled = true;
@@ -163,42 +240,16 @@ export class LoginView {
         errorDiv.classList.add('hidden');
 
         try {
-            // 1. Autenticar con Supabase Auth
-            const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-                email: email,
-                password: password
-            });
-
-            if (authError) {
-                console.error('Error auth:', authError);
-                
-                if (authError.message.includes('Invalid login')) {
-                    this.showError('Correo o contraseña incorrectos');
-                } else if (authError.message.includes('Email not confirmed')) {
-                    this.showError('Por favor confirma tu correo electrónico');
-                } else {
-                    this.showError('Error de autenticación: ' + authError.message);
-                }
-                
-                btn.innerText = "Entrar al Sistema";
-                btn.disabled = false;
-                btn.classList.remove('opacity-75', 'cursor-wait');
-                return;
-            }
-
-            // 2. Obtener el perfil del usuario
-            const { data: profile, error: profileError } = await supabase
+            // BUSCAR EL USUARIO DIRECTAMENTE EN LA BASE DE DATOS
+            // SIN USAR AUTH - SOLO CONSULTA A LA TABLA profiles
+            const { data: profiles, error: profileError } = await supabase
                 .from('profiles')
                 .select('*')
-                .eq('id', authData.user.id)
-                .single();
+                .eq('email', email);
 
             if (profileError) {
-                console.error('Error obteniendo perfil:', profileError);
-                this.showError('Error cargando perfil de usuario');
-                
-                // Si no hay perfil, cerrar sesión
-                await supabase.auth.signOut();
+                console.error('Error buscando perfil:', profileError);
+                this.showError('Error al consultar usuario');
                 
                 btn.innerText = "Entrar al Sistema";
                 btn.disabled = false;
@@ -206,26 +257,53 @@ export class LoginView {
                 return;
             }
 
-            // 3. Verificar que el rol coincida con el seleccionado
-            if (profile.role !== this.selectedRole) {
-                console.log(`Rol esperado: ${this.selectedRole}, rol real: ${profile.role}`);
+            // Verificar si existe el usuario
+            if (!profiles || profiles.length === 0) {
+                this.showError('Usuario no encontrado');
+                
+                btn.innerText = "Entrar al Sistema";
+                btn.disabled = false;
+                btn.classList.remove('opacity-75', 'cursor-wait');
+                return;
+            }
+
+            const profile = profiles[0];
+
+            // VALIDACIÓN SIMPLE DE CONTRASEÑA (SOLO PARA PRUEBAS)
+            // En un sistema real, esto debería usar autenticación segura
+            const validPasswords = {
+                'conductor@cov.mx': 'Conductor2024!',
+                'guardia@cov.mx': 'Guardia2024!',
+                'admin@cov.mx': 'Admin2024!'
+            };
+
+            if (validPasswords[email] !== password) {
+                this.showError('Contraseña incorrecta');
+                
+                btn.innerText = "Entrar al Sistema";
+                btn.disabled = false;
+                btn.classList.remove('opacity-75', 'cursor-wait');
+                return;
+            }
+
+            // Verificar que el rol coincida con el seleccionado
+            if (this.selectedRole && profile.role !== this.selectedRole) {
                 this.showError(`No tienes permisos de ${this.selectedRole}. Tu rol es: ${profile.role}`);
                 
-                await supabase.auth.signOut();
-                
                 btn.innerText = "Entrar al Sistema";
                 btn.disabled = false;
                 btn.classList.remove('opacity-75', 'cursor-wait');
                 return;
             }
 
-            // 4. Guardar datos en localStorage (opcional)
+            // Guardar datos en localStorage (SIN SESIÓN)
             localStorage.setItem('userRole', profile.role);
             localStorage.setItem('userName', profile.full_name);
             localStorage.setItem('userId', profile.id);
+            localStorage.setItem('userEmail', profile.email);
+            localStorage.setItem('loginMethod', 'local');
 
-            // 5. Login exitoso - redirigir
-            console.log('Login exitoso:', profile);
+            console.log('✅ Login exitoso (sin auth):', profile);
             
             btn.innerText = "✓ Acceso concedido";
             
@@ -244,27 +322,7 @@ export class LoginView {
     }
 
     async resetPassword() {
-        const email = document.getElementById('login-email')?.value;
-        
-        if (!email || !email.includes('@')) {
-            this.showError('Ingresa tu correo electrónico primero');
-            return;
-        }
-
-        try {
-            const { error } = await supabase.auth.resetPasswordForEmail(email, {
-                redirectTo: window.location.origin + '/reset-password',
-            });
-
-            if (error) {
-                this.showError('Error: ' + error.message);
-            } else {
-                this.showError('¡Revisa tu correo! Te enviaremos instrucciones', 'success');
-            }
-        } catch (error) {
-            console.error('Error reset password:', error);
-            this.showError('Error al enviar correo');
-        }
+        this.showError('Función de recuperación deshabilitada en modo desarrollo', 'info');
     }
 
     showError(message, type = 'error') {
@@ -275,10 +333,13 @@ export class LoginView {
         errorDiv.classList.remove('hidden');
         
         if (type === 'success') {
-            errorDiv.classList.remove('bg-red-500/10', 'border-red-500/30', 'text-red-500');
+            errorDiv.classList.remove('bg-red-500/10', 'border-red-500/30', 'text-red-500', 'bg-yellow-500/10', 'border-yellow-500/30', 'text-yellow-500');
             errorDiv.classList.add('bg-green-500/10', 'border-green-500/30', 'text-green-500');
+        } else if (type === 'info') {
+            errorDiv.classList.remove('bg-red-500/10', 'border-red-500/30', 'text-red-500', 'bg-green-500/10', 'border-green-500/30', 'text-green-500');
+            errorDiv.classList.add('bg-yellow-500/10', 'border-yellow-500/30', 'text-yellow-500');
         } else {
-            errorDiv.classList.remove('bg-green-500/10', 'border-green-500/30', 'text-green-500');
+            errorDiv.classList.remove('bg-green-500/10', 'border-green-500/30', 'text-green-500', 'bg-yellow-500/10', 'border-yellow-500/30', 'text-yellow-500');
             errorDiv.classList.add('bg-red-500/10', 'border-red-500/30', 'text-red-500');
         }
     }
