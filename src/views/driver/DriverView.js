@@ -321,6 +321,9 @@ export class DriverView {
         await this.loadDashboardState();
         this.setupEventListeners();
 
+        // Verificar que el bucket existe
+        await this.verifyStorageBucket();
+
         // Suscripción en tiempo real a cambios en el viaje
         supabase.channel('driver_realtime')
             .on('postgres_changes', { 
@@ -332,6 +335,27 @@ export class DriverView {
                 this.loadDashboardState();
                 if(navigator.vibrate) navigator.vibrate([100]);
             }).subscribe();
+    }
+
+    async verifyStorageBucket() {
+        try {
+            const { data: buckets, error } = await supabase.storage.listBuckets();
+            if (error) {
+                console.error('Error verificando buckets:', error);
+                return;
+            }
+            
+            const bucketName = 'trip-photos';
+            const bucketExists = buckets?.some(b => b.name === bucketName);
+            
+            if (!bucketExists) {
+                console.warn(`Bucket '${bucketName}' no encontrado. Las fotos no podrán subirse.`);
+            } else {
+                console.log(`Bucket '${bucketName}' encontrado correctamente`);
+            }
+        } catch (error) {
+            console.error('Error verificando storage:', error);
+        }
     }
 
     setupEventListeners() {
@@ -363,7 +387,6 @@ export class DriverView {
         }
 
         const gpsIndicator = document.getElementById('gps-status-indicator');
-        const headerIndicator = document.getElementById('gps-header-indicator');
         
         gpsIndicator.innerHTML = `
             <div class="flex items-center justify-center gap-2 text-yellow-400">
@@ -386,7 +409,7 @@ export class DriverView {
                         enableHighAccuracy: true, 
                         maximumAge: 0,
                         timeout: 10000,
-                        distanceFilter: 10 // Actualizar cada 10 metros
+                        distanceFilter: 10
                     }
                 );
             },
@@ -399,8 +422,6 @@ export class DriverView {
     }
 
     handleFirstPosition(pos) {
-        const { latitude, longitude, speed } = pos.coords;
-        
         // Registrar hora de salida si es la primera posición
         if (!this.tripLogistics.startTime) {
             this.tripLogistics.startTime = new Date();
@@ -664,7 +685,7 @@ export class DriverView {
     async endTrip() {
         if (!confirm('¿Finalizar viaje? Se registrarán todos los datos.')) return;
 
-        const entryKm = document.getElementById('exit-km-input').value; // Podrías cambiar esto por un input específico
+        const entryKm = document.getElementById('exit-km-input').value;
         if (!entryKm) {
             alert('Ingresa el kilometraje de entrada');
             return;
@@ -1043,20 +1064,43 @@ export class DriverView {
         btn.disabled = true;
 
         try {
-            // 1. SUBIR LA IMAGEN A SUPABASE STORAGE
-            const fileExt = this.receptionPhotoFile.name.split('.').pop();
+            const bucketName = 'trip-photos';
+            
+            // 1. PREPARAR NOMBRE DE ARCHIVO
+            const fileExt = this.receptionPhotoFile.name.split('.').pop() || 'jpg';
             const fileName = `${this.userId}/${id}/reception_${Date.now()}.${fileExt}`;
             
+            console.log('Subiendo archivo:', fileName);
+
+            // 2. SUBIR LA IMAGEN
             const { data: uploadData, error: uploadError } = await supabase.storage
-                .from('trip-photos')
-                .upload(fileName, this.receptionPhotoFile);
+                .from(bucketName)
+                .upload(fileName, this.receptionPhotoFile, {
+                    cacheControl: '3600',
+                    upsert: false,
+                    contentType: this.receptionPhotoFile.type
+                });
 
-            if (uploadError) throw uploadError;
+            if (uploadError) {
+                console.error('Error detallado:', uploadError);
+                
+                if (uploadError.message?.includes('duplicate')) {
+                    throw new Error('La imagen ya existe. Intenta de nuevo.');
+                } else if (uploadError.message?.includes('permission')) {
+                    throw new Error('No tienes permiso para subir imágenes. Verifica las políticas RLS.');
+                } else if (uploadError.message?.includes('bucket')) {
+                    throw new Error(`Bucket '${bucketName}' no encontrado. Créalo en Storage.`);
+                } else {
+                    throw uploadError;
+                }
+            }
 
-            // 2. GENERAR CÓDIGO DE ACCESO
+            console.log('Upload successful:', uploadData);
+
+            // 3. GENERAR CÓDIGO DE ACCESO
             const accessCode = Math.random().toString(36).substring(2, 7).toUpperCase();
 
-            // 3. ACTUALIZAR LA BASE DE DATOS
+            // 4. ACTUALIZAR BASE DE DATOS
             const { error: updateError } = await supabase
                 .from('trips')
                 .update({ 
@@ -1066,14 +1110,15 @@ export class DriverView {
                     checklist_exit: {
                         photo_taken_at: new Date().toISOString(),
                         accepted_at: new Date().toISOString(),
-                        vehicle_condition: 'good'
+                        vehicle_condition: 'good',
+                        photo_uploaded: true
                     }
                 })
                 .eq('id', id);
 
             if (updateError) throw updateError;
 
-            // 4. GUARDAR UNA COPIA LOCAL POR SI ACASO
+            // 5. GUARDAR REFERENCIA LOCAL
             localStorage.setItem(`trip_${id}_photo`, fileName);
 
             btn.innerHTML = `<span class="material-symbols-outlined">check_circle</span> ¡LISTO!`;
@@ -1084,8 +1129,8 @@ export class DriverView {
             }, 1000);
 
         } catch (error) {
-            console.error('Error:', error);
-            alert('Error al procesar: ' + error.message);
+            console.error('Error completo:', error);
+            alert('Error: ' + (error.message || 'No se pudo subir la imagen'));
             btn.innerHTML = originalText;
             btn.disabled = false;
         }
