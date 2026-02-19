@@ -1,4 +1,4 @@
-import { supabase } from '../../config/supabaseClient.js';
+// IMPORTANTE: Ya no importamos supabase aquí, usamos window.supabaseClient
 
 export class InventoryStockView {
     constructor() {
@@ -13,9 +13,14 @@ export class InventoryStockView {
     }
 
     async loadData() {
+        if (!window.supabaseClient) {
+            console.error("🔴 Error: Supabase global no encontrado.");
+            return;
+        }
+
         const [itemsRes, servicesRes] = await Promise.all([
-            supabase.from('inventory_items').select('*').order('name'),
-            supabase.from('service_templates').select(`
+            window.supabaseClient.from('inventory_items').select('*').order('name'),
+            window.supabaseClient.from('service_templates').select(`
                 id, name, description, labor_time, labor_unit, labor_cost, 
                 service_template_items ( quantity, inventory_items ( id, name, cost, unit ) )
             `)
@@ -194,7 +199,6 @@ export class InventoryStockView {
         }).join('');
     }
 
-    // --- MODALES (NUEVO INSUMO Y NUEVA RECETA) ---
     openProductModal(itemId = null) {
         const item = itemId ? this.items.find(i => i.id === itemId) : null;
         const modal = document.getElementById('stock-modal');
@@ -276,9 +280,9 @@ export class InventoryStockView {
 
         let error;
         if (id) {
-            ({ error } = await supabase.from('inventory_items').update(data).eq('id', id));
+            ({ error } = await window.supabaseClient.from('inventory_items').update(data).eq('id', id));
         } else {
-            ({ error } = await supabase.from('inventory_items').insert([data]));
+            ({ error } = await window.supabaseClient.from('inventory_items').insert([data]));
         }
 
         if (error) alert("Error: " + error.message);
@@ -293,7 +297,6 @@ export class InventoryStockView {
         const modal = document.getElementById('stock-modal');
         const content = document.getElementById('stock-modal-content');
         
-        // Select Options con estilo
         const invOptions = this.items.map(i => `<option value="${i.id}" data-cost="${i.cost}" data-name="${i.name}" data-unit="${i.unit}">${i.name} (Disp: ${i.stock} | $${i.cost})</option>`).join('');
 
         content.className = "bg-[#1c2127] w-full max-w-4xl rounded-2xl shadow-2xl p-6 border border-[#324d67] overflow-hidden flex flex-col h-[90vh] animate-fade-in-up font-display";
@@ -308,7 +311,6 @@ export class InventoryStockView {
             </div>
 
             <div class="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-6">
-                
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                         <label class="block text-[10px] font-bold text-[#92adc9] uppercase tracking-wider mb-1">Nombre del Paquete / Servicio</label>
@@ -321,7 +323,6 @@ export class InventoryStockView {
                 </div>
 
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 h-full">
-                    
                     <div class="space-y-6">
                         <div class="bg-[#111a22] border border-[#324d67] p-5 rounded-xl shadow-lg">
                             <h4 class="text-xs font-bold text-orange-500 uppercase tracking-widest border-b border-[#324d67] pb-2 mb-4 flex items-center gap-2">
@@ -410,7 +411,6 @@ export class InventoryStockView {
         
         if(!opt || !select.value || qty <= 0) return alert("Selecciona un insumo válido.");
 
-        // Si ya existe, suma cantidad
         const exists = this.tempRecipeItems.find(i => i.id === select.value);
         if(exists) exists.qty += qty;
         else {
@@ -470,9 +470,8 @@ export class InventoryStockView {
         const l_cost = document.getElementById('rec-labor-cost').value;
         
         if(!name) return alert("El nombre del servicio es obligatorio.");
-        // Permitimos guardar recetas solo de mano de obra (sin insumos)
 
-        const { data, error } = await supabase.from('service_templates').insert([{ 
+        const { data, error } = await window.supabaseClient.from('service_templates').insert([{ 
             name: name, 
             description: desc,
             labor_time: l_time,
@@ -488,7 +487,7 @@ export class InventoryStockView {
                 item_id: i.id, 
                 quantity: i.qty 
             }));
-            await supabase.from('service_template_items').insert(items);
+            await window.supabaseClient.from('service_template_items').insert(items);
         }
         
         alert("✅ Receta de servicio guardada en el catálogo.");
