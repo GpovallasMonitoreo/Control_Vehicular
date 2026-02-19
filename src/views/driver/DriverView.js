@@ -3,12 +3,13 @@ import { supabase } from '../../config/supabaseClient.js';
 export class DriverView {
     constructor() {
         this.activeTab = 'unidad';
-        this.userId = null;
-        this.profile = null;
+        this.userId = 'd0c1e2f3-0000-0000-0000-000000000001'; 
         this.currentTrip = null;
         this.watchPositionId = null;
-        this.map = null; // Para la ruta en vivo
+        this.map = null; 
         this.marker = null;
+        this.polyline = null; // NUEVO: Para la línea del camino
+        this.routeCoords = []; // NUEVO: Para guardar el historial de puntos
         
         window.conductorModule = this;
     }
@@ -49,20 +50,26 @@ export class DriverView {
                             <h3 class="text-white font-bold mb-4 flex items-center gap-2">
                                 <span class="material-symbols-outlined text-primary">fact_check</span> Validación Mecánica
                             </h3>
-                            <div id="checklist-content" class="space-y-3">
-                                </div>
+                            <div id="checklist-content" class="space-y-3"></div>
                         </div>
                     </section>
 
-                    <section id="tab-ruta" class="tab-content hidden h-full flex flex-col">
+                    <section id="tab-ruta" class="tab-content hidden h-full flex flex-col relative">
                         <div id="live-map" class="w-full flex-1 bg-slate-900"></div>
+                        
+                        <div id="route-controls" class="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] w-[90%]">
+                            <button id="btn-start-route" class="hidden w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-black rounded-2xl shadow-[0_0_20px_rgba(16,185,129,0.4)] flex items-center justify-center gap-2 transition-all active:scale-95 uppercase text-sm tracking-widest">
+                                <span class="material-symbols-outlined">play_circle</span> Iniciar Mi Ruta Ahora
+                            </button>
+                        </div>
+
                         <div class="p-5 bg-[#111a22] border-t border-[#233648] grid grid-cols-2 gap-4">
                             <div class="bg-[#192633] p-3 rounded-xl border border-[#233648] text-center">
                                 <p class="text-[10px] text-[#92adc9] font-bold uppercase mb-1">Velocidad</p>
                                 <span id="live-speed" class="text-2xl font-black text-white">0</span> <small class="text-white/50 text-[10px]">km/h</small>
                             </div>
                             <div class="bg-[#192633] p-3 rounded-xl border border-[#233648] text-center">
-                                <p class="text-[10px] text-[#92adc9] font-bold uppercase mb-1">Distancia</p>
+                                <p class="text-[10px] text-[#92adc9] font-bold uppercase mb-1">Distancia Recorrida</p>
                                 <span id="live-distance" class="text-2xl font-black text-white">0.0</span> <small class="text-white/50 text-[10px]">km</small>
                             </div>
                         </div>
@@ -100,9 +107,6 @@ export class DriverView {
                                     </div>
                                 </div>
                             </div>
-                            <button onclick="window.print()" class="mt-4 w-full py-3 bg-[#111a22] text-white rounded-xl font-bold text-xs uppercase flex items-center justify-center gap-2">
-                                <span class="material-symbols-outlined text-sm">print</span> Imprimir Gafete de Salida
-                            </button>
                         </div>
                     </section>
                 </main>
@@ -121,18 +125,6 @@ export class DriverView {
                         <span class="material-symbols-outlined">person</span><span class="text-[9px] font-bold uppercase">Perfil</span>
                     </button>
                 </nav>
-
-                <div id="modal-incident" class="hidden absolute inset-0 z-50 flex items-end justify-center bg-black/90 backdrop-blur-sm">
-                    <div class="bg-[#1c2127] w-full rounded-t-3xl p-6 border-t border-red-500/30">
-                        <h3 class="text-white font-bold text-lg mb-4 flex items-center gap-2"><span class="material-symbols-outlined text-red-500">warning</span> Reportar Incidente</h3>
-                        <textarea id="inc-desc" class="w-full bg-[#111a22] border border-[#233648] text-white p-4 rounded-xl outline-none mb-4 h-32" placeholder="Describe lo sucedido..."></textarea>
-                        <div class="flex gap-3">
-                            <button onclick="document.getElementById('modal-incident').classList.add('hidden')" class="flex-1 py-4 bg-slate-800 text-white rounded-xl font-bold uppercase text-xs">Cancelar</button>
-                            <button id="btn-send-incident" class="flex-1 py-4 bg-red-600 text-white rounded-xl font-bold uppercase text-xs">Enviar Reporte</button>
-                        </div>
-                    </div>
-                </div>
-
             </div>
         </div>
         `;
@@ -140,40 +132,72 @@ export class DriverView {
 
     async onMount() {
         this.userId = 'd0c1e2f3-0000-0000-0000-000000000001'; 
-        
         await this.loadProfileData();
         await this.loadDashboardState();
         this.initLiveMap();
 
-        // Suscripción a cambios en Supabase
         supabase.channel('driver_realtime').on('postgres_changes', { event: '*', schema: 'public', table: 'trips' }, () => {
             this.loadDashboardState();
         }).subscribe();
     }
 
-    // --- MAPA EN VIVO ---
+    // --- MAPA EN VIVO MEJORADO ---
     initLiveMap() {
         if (!window.L) return;
-        this.map = L.map('live-map', { zoomControl: false }).setView([19.4326, -99.1332], 15);
+        const L = window.L;
+        this.map = L.map('live-map', { zoomControl: false }).setView([19.4326, -99.1332], 16);
+        
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(this.map);
         
+        // Marcador del vehículo
         this.marker = L.marker([19.4326, -99.1332], {
-            icon: L.divIcon({ className: 'bg-primary w-4 h-4 rounded-full border-2 border-white shadow-lg' })
+            icon: L.divIcon({ className: 'bg-primary w-5 h-5 rounded-full border-2 border-white shadow-[0_0_15px_rgba(19,127,236,0.8)]' })
+        }).addTo(this.map);
+
+        // NUEVO: Polilínea para marcar la ruta recorrida
+        this.polyline = L.polyline([], {
+            color: '#137fec',
+            weight: 5,
+            opacity: 0.7,
+            lineJoin: 'round'
         }).addTo(this.map);
     }
 
     startTracking() {
         if (!navigator.geolocation) return;
+        
+        // Limpiamos historial si iniciamos ruta nueva
+        this.routeCoords = [];
+        this.polyline.setLatLngs([]);
+
         this.watchPositionId = navigator.geolocation.watchPosition((pos) => {
             const { latitude, longitude, speed } = pos.coords;
             const latlng = [latitude, longitude];
+            
+            // Actualizar Mapa
             this.map.panTo(latlng);
             this.marker.setLatLng(latlng);
-            document.getElementById('live-speed').innerText = Math.round((speed || 0) * 3.6);
-        }, null, { enableHighAccuracy: true });
+            
+            // NUEVO: Agregar punto a la ruta y pintar
+            this.routeCoords.push(latlng);
+            this.polyline.setLatLngs(this.routeCoords);
+
+            // Actualizar UI
+            const speedKmh = Math.round((speed || 0) * 3.6);
+            document.getElementById('live-speed').innerText = speedKmh;
+
+            // Guardar en Supabase para el Administrador
+            if(this.currentTrip) {
+                supabase.from('trip_locations').insert({ 
+                    trip_id: this.currentTrip.id, 
+                    lat: latitude, 
+                    lng: longitude, 
+                    speed: speedKmh 
+                });
+            }
+        }, (err) => console.error(err), { enableHighAccuracy: true });
     }
 
-    // --- CARGA DE ESTADOS ---
     async loadProfileData() {
         const { data: p } = await supabase.from('profiles').select('*').eq('id', this.userId).single();
         if(p) {
@@ -192,11 +216,13 @@ export class DriverView {
         
         const unityCont = document.getElementById('unidad-content');
         const checkCont = document.getElementById('checklist-content');
+        const btnStart = document.getElementById('btn-start-route');
 
         if (!trip) {
             this.renderAvailableUnits(unityCont);
             document.getElementById('profile-status').innerText = "Disponible";
             this.generateQR(null);
+            btnStart.classList.add('hidden');
         } else {
             unityCont.innerHTML = `
                 <div class="bg-primary/10 border border-primary/30 p-5 rounded-2xl text-center">
@@ -206,14 +232,35 @@ export class DriverView {
                 </div>
             `;
 
-            // Lógica de Checklist y Mecánico
             this.renderMechanicChecklist(trip, checkCont);
             this.generateQR(trip);
 
-            if (trip.status === 'in_progress') {
+            // CONTROL DEL BOTÓN DE RUTA
+            if (trip.status === 'driver_accepted') {
+                btnStart.classList.remove('hidden');
+                btnStart.onclick = () => this.startTripExecution(trip.id);
+                document.getElementById('profile-status').innerText = "En Caseta";
+            } else if (trip.status === 'in_progress') {
+                btnStart.classList.add('hidden');
                 document.getElementById('profile-status').innerText = "En Ruta";
-                this.startTracking();
+                if(!this.watchPositionId) this.startTracking();
             }
+        }
+    }
+
+    // NUEVO: Función para ejecutar el inicio de ruta
+    async startTripExecution(tripId) {
+        if(!confirm("¿Deseas iniciar tu ruta y el seguimiento GPS ahora?")) return;
+        
+        const { error } = await supabase.from('trips').update({ 
+            status: 'in_progress',
+            start_time: new Date()
+        }).eq('id', tripId);
+
+        if(!error) {
+            this.loadDashboardState();
+            this.switchTab('ruta');
+            this.startTracking();
         }
     }
 
@@ -230,64 +277,44 @@ export class DriverView {
     }
 
     renderMechanicChecklist(trip, container) {
-        const items = [
-            { n: 'Líquidos y Aceite', k: 'oil' },
-            { n: 'Anticongelante', k: 'coolant' },
-            { n: 'Sistema de Luces', k: 'lights' },
-            { n: 'Estado de Llantas', k: 'tires' }
-        ];
-
         if (trip.status === 'requested') {
             container.innerHTML = `
                 <div class="text-center py-6">
                     <div class="animate-spin text-primary mb-3"><span class="material-symbols-outlined text-4xl">autorenew</span></div>
-                    <p class="text-white font-bold">Solicitud Pendiente</p>
-                    <p class="text-xs text-slate-500 mt-2">Dirígete con el <b class="text-primary">MECÁNICO</b> para la validación física de la unidad.</p>
+                    <p class="text-white font-bold">Esperando Mecánico</p>
+                    <p class="text-xs text-slate-500 mt-2">Pasa al taller para la revisión.</p>
                 </div>
             `;
         } else {
             container.innerHTML = `
                 <div class="space-y-2 mb-6">
-                    ${items.map(i => `
-                        <div class="flex justify-between items-center bg-[#111a22] p-3 rounded-lg border border-[#233648]">
-                            <span class="text-xs text-white">${i.n}</span>
-                            <span class="text-[10px] font-black text-green-500 uppercase">OK - Verificado</span>
-                        </div>
-                    `).join('')}
+                    <div class="flex justify-between items-center bg-[#111a22] p-3 rounded-lg border border-green-500/30">
+                        <span class="text-xs text-white">Inspección Mecánica</span>
+                        <span class="text-[10px] font-black text-green-500 uppercase">Aprobada</span>
+                    </div>
                 </div>
-                <div class="bg-blue-500/10 p-4 rounded-xl border border-blue-500/30 mb-4">
-                    <p class="text-[10px] text-blue-400 font-bold uppercase mb-1">Evidencia Mecánica</p>
-                    <p class="text-xs text-white">Fotos frontales, traseras y laterales verificadas en sistema.</p>
-                </div>
-                <button onclick="window.conductorModule.confirmReception('${trip.id}')" class="w-full py-4 bg-primary text-white font-black rounded-xl uppercase text-xs shadow-lg">Confirmar y Recibir Unidad</button>
+                <button onclick="window.conductorModule.confirmReception('${trip.id}')" class="w-full py-4 bg-primary text-white font-black rounded-xl uppercase text-xs shadow-lg">Firmar y Recibir Unidad</button>
             `;
         }
     }
 
     async requestUnit(id) {
-        if(!confirm("¿Deseas solicitar esta unidad para revisión?")) return;
+        if(!confirm("¿Solicitar esta unidad?")) return;
         await supabase.from('trips').insert({ driver_id: this.userId, vehicle_id: id, status: 'requested' });
         this.loadDashboardState();
     }
 
     async confirmReception(id) {
         await supabase.from('trips').update({ status: 'driver_accepted' }).eq('id', id);
-        this.switchTab('perfil');
         this.loadDashboardState();
+        this.switchTab('perfil');
     }
 
     generateQR(trip) {
         const qrImg = document.getElementById('card-qr');
         const statusMsg = document.getElementById('qr-status-msg');
-
         if (trip && (trip.status === 'driver_accepted' || trip.status === 'in_progress')) {
-            const data = JSON.stringify({
-                t_id: trip.id,
-                v_id: trip.vehicle_id,
-                plate: trip.vehicles.plate,
-                d_id: this.userId,
-                auth: 'OK'
-            });
+            const data = JSON.stringify({ t_id: trip.id, v_id: trip.vehicle_id, plate: trip.vehicles.plate, d_id: this.userId, auth: 'OK' });
             qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(data)}&color=0d141c`;
             qrImg.classList.remove('opacity-20');
             statusMsg.innerHTML = `PASE AUTORIZADO: <b class="text-primary">${trip.vehicles.plate}</b>`;
@@ -303,13 +330,6 @@ export class DriverView {
         document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active', 'text-primary'));
         document.getElementById(`tab-${tabId}`).classList.remove('hidden');
         document.getElementById(`nav-${tabId}`).classList.add('active', 'text-primary');
-        if(tabId === 'ruta') {
-            setTimeout(() => this.map.invalidateSize(), 200);
-        }
-    }
-
-    translateStatus(s) {
-        const d = { requested: 'En Taller', mechanic_approved: 'Aprobado Taller', driver_accepted: 'Pase Activo', in_progress: 'En Ruta' };
-        return d[s] || s;
+        if(tabId === 'ruta' && this.map) setTimeout(() => this.map.invalidateSize(), 200);
     }
 }
