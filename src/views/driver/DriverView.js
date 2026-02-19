@@ -176,7 +176,6 @@ export class DriverView {
         supabase.channel('driver_realtime')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'trips', filter: `driver_id=eq.${this.userId}` }, (payload) => {
                 this.loadDashboardState();
-                if(navigator.vibrate) navigator.vibrate([100, 50, 100]);
             }).subscribe();
     }
 
@@ -229,8 +228,6 @@ export class DriverView {
                     lat: latitude, 
                     lng: longitude, 
                     speed: speedKmh 
-                }).then(({error}) => {
-                    if(error) console.error("Error transmitiendo GPS:", error);
                 });
             }
         }, (err) => {
@@ -255,8 +252,17 @@ export class DriverView {
         }
     }
 
+    // --- CARGA DE ESTADO MEJORADA (Evita errores si hay múltiples registros fantasmas) ---
     async loadDashboardState() {
-        const { data: trip } = await supabase.from('trips').select(`*, vehicles(*)`).eq('driver_id', this.userId).neq('status', 'closed').maybeSingle();
+        // En lugar de maybeSingle(), sacamos el más reciente. Así no falla si hubo un doble clic por accidente.
+        const { data: trips } = await supabase.from('trips')
+            .select(`*, vehicles(*)`)
+            .eq('driver_id', this.userId)
+            .neq('status', 'closed')
+            .order('created_at', { ascending: false })
+            .limit(1);
+
+        const trip = trips && trips.length > 0 ? trips[0] : null;
         this.currentTrip = trip;
         
         const unityCont = document.getElementById('unidad-content');
@@ -264,7 +270,7 @@ export class DriverView {
         const btnStart = document.getElementById('btn-start-route');
 
         if (!trip) {
-            this.renderAvailableUnits(unityCont);
+            await this.renderAvailableUnits(unityCont);
             document.getElementById('profile-status').innerText = "Disponible";
             this.renderAccessCode(null);
             btnStart.classList.add('hidden');
@@ -294,11 +300,9 @@ export class DriverView {
 
     async startTripExecution(tripId) {
         if(!confirm("¿Confirmas que deseas iniciar tu ruta y encender el rastreo GPS?")) return;
-        const { error } = await supabase.from('trips').update({ status: 'in_progress', start_time: new Date().toISOString() }).eq('id', tripId);
-        if(!error) {
-            this.loadDashboardState();
-            this.switchTab('ruta');
-        }
+        await supabase.from('trips').update({ status: 'in_progress', start_time: new Date().toISOString() }).eq('id', tripId);
+        await this.loadDashboardState();
+        this.switchTab('ruta');
     }
 
     async renderAvailableUnits(container) {
@@ -306,24 +310,33 @@ export class DriverView {
         if(!vehs || vehs.length === 0) { container.innerHTML = '<p class="text-slate-500 text-center py-10 border border-dashed border-[#233648] rounded-xl">Sin unidades activas.</p>'; return; }
         
         container.innerHTML = vehs.map(v => `
-            <div onclick="window.conductorModule.requestUnit('${v.id}')" class="bg-[#192633] p-4 rounded-xl border border-[#233648] flex justify-between items-center cursor-pointer hover:border-primary transition-colors">
+            <div class="bg-[#192633] p-4 rounded-xl border border-[#233648] flex justify-between items-center">
                 <div><p class="text-white font-bold text-lg leading-none">${v.plate}</p><p class="text-[10px] text-slate-400 mt-1">${v.model}</p></div>
-                <button class="bg-primary text-white text-[10px] font-bold px-3 py-1.5 rounded uppercase">Solicitar</button>
+                <button onclick="window.conductorModule.requestUnit('${v.id}')" class="bg-primary hover:bg-blue-600 active:scale-95 text-white text-[10px] font-bold px-4 py-2 rounded-lg uppercase shadow-lg transition-all">Solicitar</button>
             </div>
         `).join('');
     }
 
-    // --- FUNCIÓN CORREGIDA PARA SOLICITAR UNIDAD (VISUAL INMEDIATO + ERROR HANDLING) ---
+    // --- FUNCIÓN DE SOLICITUD BLINDADA ---
     async requestUnit(id) {
-        if(!confirm("Al solicitar esta unidad entrará a revisión del taller. ¿Continuar?")) return;
-        
+        // Bloquear de inmediato para evitar el doble clic
         const container = document.getElementById('unidad-content');
         container.innerHTML = `
-            <div class="text-center py-10">
+            <div class="text-center py-10 bg-[#111a22] rounded-2xl border border-[#324d67]">
                 <div class="animate-spin text-primary mb-3"><span class="material-symbols-outlined text-4xl">autorenew</span></div>
-                <p class="text-white font-bold">Solicitando unidad...</p>
+                <p class="text-white font-bold">Creando solicitud...</p>
+                <p class="text-xs text-slate-500 mt-1">Por favor espera.</p>
             </div>
         `;
+
+        // Doble validación: Revisar si la base de datos ya tiene un viaje activo antes de insertar
+        const { data: activeTrips } = await supabase.from('trips').select('id').eq('driver_id', this.userId).neq('status', 'closed');
+        
+        if (activeTrips && activeTrips.length > 0) {
+            alert("Ya tienes un viaje en progreso. Actualizando pantalla.");
+            await this.loadDashboardState();
+            return;
+        }
 
         const { error } = await supabase.from('trips').insert({ 
             driver_id: this.userId, 
@@ -332,12 +345,10 @@ export class DriverView {
         });
 
         if (error) {
-            alert("Error al solicitar unidad: " + error.message);
-            this.loadDashboardState(); // Restaura la vista si falla
-            return;
+            alert("Error del sistema: " + error.message);
         }
-
-        // Forzar la actualización visual al instante
+        
+        // Forzamos la actualización de la pantalla de forma estricta
         await this.loadDashboardState();
         this.switchTab('checklist');
     }
@@ -346,9 +357,9 @@ export class DriverView {
         if (trip.status === 'requested') {
             container.innerHTML = `
                 <div class="text-center py-6">
-                    <div class="animate-spin text-primary mb-3"><span class="material-symbols-outlined text-4xl">autorenew</span></div>
+                    <div class="animate-spin text-orange-500 mb-3"><span class="material-symbols-outlined text-4xl">engineering</span></div>
                     <p class="text-white font-bold text-lg">En Revisión de Taller</p>
-                    <p class="text-xs text-slate-400 mt-2">La unidad debe ser inspeccionada y liberada por el mecánico antes de que la aceptes.</p>
+                    <p class="text-xs text-slate-400 mt-2">Pasa con el <b class="text-primary">MECÁNICO</b> para que inspeccione y libere la unidad en el sistema.</p>
                 </div>
             `;
         } else {
@@ -359,7 +370,7 @@ export class DriverView {
                         <span class="text-[10px] font-black text-green-500 uppercase flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">check_circle</span> Aprobado</span>
                     </div>
                 </div>
-                <button onclick="window.conductorModule.confirmReception('${trip.id}')" class="w-full py-4 bg-primary text-white font-black rounded-xl uppercase text-sm shadow-[0_0_15px_rgba(19,127,236,0.3)] active:scale-95 transition-all">Firmar de Conformidad</button>
+                <button onclick="window.conductorModule.confirmReception('${trip.id}')" class="w-full py-4 bg-primary text-white font-black rounded-xl uppercase text-sm shadow-[0_0_15px_rgba(19,127,236,0.3)] active:scale-95 transition-all">Firmar y Recibir Unidad</button>
             `;
         }
     }
