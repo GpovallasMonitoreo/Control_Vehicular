@@ -12,56 +12,45 @@ export class ScannerView {
             
             <div class="flex items-center justify-between border-b border-[#324d67] p-4 bg-[#111a22] shrink-0 shadow-lg">
                 <div class="flex items-center gap-3">
-                    <div class="bg-emerald-500/20 p-2 rounded-lg text-emerald-500 flex items-center justify-center">
+                    <div class="bg-emerald-500/20 p-2 rounded-lg text-emerald-500">
                         <span class="material-symbols-outlined text-2xl">shield_person</span>
                     </div>
                     <div>
                         <h2 class="text-xl font-black text-white tracking-tight leading-none">Caseta de Vigilancia</h2>
-                        <p class="text-[#92adc9] text-[10px] uppercase font-bold tracking-widest mt-1">Control de Accesos COV</p>
+                        <p class="text-[#92adc9] text-[10px] uppercase font-bold tracking-widest mt-1">Validación de Accesos</p>
                     </div>
                 </div>
-                <button onclick="window.location.reload()" class="px-4 py-2 rounded-lg bg-[#1c2127] border border-[#324d67] text-[#92adc9] text-xs font-bold hover:text-white hover:border-primary transition-all flex items-center gap-2">
-                    <span class="material-symbols-outlined text-sm">refresh</span> Reiniciar Cámara
+                <button onclick="window.location.reload()" class="px-4 py-2 rounded-lg bg-[#1c2127] border border-[#324d67] text-[#92adc9] text-xs font-bold hover:text-white transition-all flex items-center gap-2">
+                    <span class="material-symbols-outlined text-sm">refresh</span> Reintentar
                 </button>
             </div>
 
             <div class="flex-1 p-6 overflow-y-auto w-full max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8 h-full">
                 
                 <div class="flex flex-col gap-4">
-                     <div class="bg-black rounded-3xl overflow-hidden border-4 border-[#324d67] shadow-[0_0_30px_rgba(0,0,0,0.5)] relative aspect-square flex flex-col group">
+                     <div class="bg-black rounded-3xl overflow-hidden border-4 border-[#324d67] shadow-2xl relative aspect-square flex flex-col group">
                         <div id="reader" class="w-full flex-1 bg-black min-h-[300px]"></div>
-                        
-                        <div class="absolute inset-0 border-[40px] border-black/40 pointer-events-none flex items-center justify-center">
-                            <div class="w-full h-full border-2 border-emerald-500/50 rounded-xl relative">
-                                <div class="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-emerald-500"></div>
-                                <div class="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-emerald-500"></div>
-                                <div class="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-emerald-500"></div>
-                                <div class="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-emerald-500"></div>
-                            </div>
-                        </div>
-
                         <div class="absolute bottom-0 inset-x-0 bg-emerald-900/90 backdrop-blur-sm p-3 text-center z-10">
-                            <p class="text-white text-xs font-bold flex items-center justify-center gap-2">
-                                <span class="w-2 h-2 rounded-full bg-white animate-ping"></span>
-                                LISTO PARA ESCANEAR GAFETE O INGRESAR CÓDIGO
+                            <p class="text-white text-xs font-bold flex items-center justify-center gap-2 uppercase tracking-tighter">
+                                <span class="w-2 h-2 rounded-full bg-white animate-ping"></span> Escaneo en Vivo Activo
                             </p>
                         </div>
                      </div>
                      
                      <div class="flex gap-2">
-                        <input id="scan-input" type="text" maxlength="6" class="flex-1 bg-[#111a22] border border-[#324d67] text-white font-bold rounded-xl p-4 placeholder-slate-600 focus:border-primary outline-none text-center tracking-[10px] text-2xl font-mono" placeholder="000000">
-                        <button id="btn-validate" class="bg-primary hover:bg-blue-600 text-white font-bold px-6 rounded-xl transition-colors shadow-lg shadow-primary/20">
-                            <span class="material-symbols-outlined">key</span>
+                        <input id="scan-input" type="text" maxlength="8" class="flex-1 bg-[#111a22] border border-[#324d67] text-white font-black rounded-xl p-4 placeholder-slate-600 focus:border-primary outline-none text-center tracking-[8px] text-2xl font-mono uppercase" placeholder="CÓDIGO">
+                        <button id="btn-validate" class="bg-primary hover:bg-blue-600 text-white font-bold px-6 rounded-xl transition-all shadow-lg shadow-primary/20">
+                            <span class="material-symbols-outlined">verified_user</span>
                         </button>
                      </div>
                 </div>
 
-                <div id="result-area" class="bg-[#1c2127] rounded-3xl p-8 border border-[#324d67] flex flex-col items-center justify-center text-center shadow-2xl h-full relative overflow-hidden">
-                    <div class="size-28 rounded-full bg-[#111a22] border-4 border-[#233648] flex items-center justify-center mb-6 shadow-inner">
-                        <span class="material-symbols-outlined text-7xl text-slate-700">qr_code_2</span>
+                <div id="result-area" class="bg-[#1c2127] rounded-3xl p-8 border border-[#324d67] flex flex-col items-center justify-center text-center shadow-2xl h-full min-h-[350px] relative overflow-hidden">
+                    <div class="size-24 rounded-full bg-[#111a22] border-2 border-[#324d67] flex items-center justify-center mb-6">
+                        <span class="material-symbols-outlined text-6xl text-slate-700">qr_code_2</span>
                     </div>
-                    <h3 class="text-2xl font-black text-white mb-2 uppercase tracking-tighter">Esperando Validación</h3>
-                    <p class="text-[#92adc9] text-sm max-w-xs mx-auto">Coloque el QR o ingrese el código numérico de 6 dígitos proporcionado por el taller.</p>
+                    <h3 class="text-2xl font-black text-white mb-2">Esperando Escaneo</h3>
+                    <p class="text-[#92adc9] text-sm max-w-xs mx-auto">Coloque el QR o ingrese el código de 6 dígitos generado por el taller.</p>
                 </div>
 
             </div>
@@ -73,128 +62,165 @@ export class ScannerView {
         this.html5QrCode = new Html5Qrcode("reader");
         const config = { fps: 15, qrbox: { width: 250, height: 250 } };
         
-        this.html5QrCode.start({ facingMode: "environment" }, config, (decoded) => {
-            this.handleScan(decoded);
-        }).catch(err => console.error("Error cámara:", err));
+        // Iniciar cámara con manejo de error mejorado
+        this.html5QrCode.start({ facingMode: "environment" }, config, 
+            (decoded) => this.handleScan(decoded),
+            (err) => { /* Silenciar spam de logs de escaneo fallido */ }
+        ).catch(err => {
+            console.error("Error cámara:", err);
+            document.getElementById('result-area').innerHTML = `
+                <div class="bg-red-500/10 border border-red-500/30 p-6 rounded-2xl text-center">
+                    <span class="material-symbols-outlined text-red-500 text-5xl mb-4">videocam_off</span>
+                    <h3 class="text-white font-bold">Cámara Bloqueada</h3>
+                    <p class="text-[#92adc9] text-sm mt-2">Permite el acceso a la cámara en los ajustes de tu navegador para usar el escáner.</p>
+                </div>
+            `;
+        });
 
         document.getElementById('btn-validate').onclick = () => {
-            const manualCode = document.getElementById('scan-input').value;
-            if(manualCode) this.handleScan(manualCode);
+            const val = document.getElementById('scan-input').value;
+            if(val) this.handleScan(val);
         };
     }
 
     async handleScan(code) {
         if(!code) return;
         const area = document.getElementById('result-area');
-        area.innerHTML = `<div class="flex flex-col items-center animate-pulse"><div class="size-16 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4"></div><p class="text-primary font-black uppercase tracking-widest text-sm">Validando Código...</p></div>`;
+        area.innerHTML = `<div class="flex flex-col items-center animate-pulse"><div class="size-12 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4"></div><p class="text-primary font-bold uppercase text-xs tracking-widest">Validando con la nube...</p></div>`;
 
         try {
-            // 1. VALIDAR SI ES CÓDIGO NUMÉRICO (De Taller)
-            const isNumericCode = /^\d{6}$/.test(code.trim());
+            let trip = null;
+            const cleanCode = code.trim();
 
-            if (isNumericCode) {
-                // Buscamos el viaje que tenga este código de emergencia activo
-                const { data: trip, error } = await supabase
+            // --- LÓGICA 1: CÓDIGO NUMÉRICO (EMERGENCIA) ---
+            if (/^\d{6}$/.test(cleanCode)) {
+                console.log("🔍 Buscando código de emergencia:", cleanCode);
+                const { data, error } = await supabase
                     .from('trips')
-                    .select(`*, vehicles(*), profiles(full_name)`)
-                    .eq('emergency_code', code.trim())
+                    .select('*, vehicles(*), profiles(*)')
+                    .eq('emergency_code', cleanCode)
                     .neq('status', 'closed')
-                    .gt('emergency_expiry', new Date().toISOString()) // Validar vigencia
                     .maybeSingle();
 
-                if (!trip) throw new Error("Código inválido, expirado o ya utilizado.");
+                if (error) throw error;
+                if (!data) throw new Error("CÓDIGO NO ENCONTRADO O YA UTILIZADO");
 
-                this.renderResult('orange', 'ACCESO REMOTO', 
-                    `UNIDAD: ${trip.vehicles.economic_number}<br>CÓDIGO DE EMERGENCIA VALIDADO<br>Conductor: ${trip.profiles.full_name}`, 
-                    { 
-                        text: (trip.status === 'driver_accepted' || trip.status === 'mechanic_approved') ? 'AUTORIZAR SALIDA' : 'AUTORIZAR ENTRADA', 
-                        action: () => (trip.status === 'driver_accepted' || trip.status === 'mechanic_approved') ? this.registerExit(trip.id) : this.registerEntry(trip.id) 
-                    }
-                );
+                // Validar expiración
+                if (data.emergency_expiry && new Date() > new Date(data.emergency_expiry)) {
+                    throw new Error("EL CÓDIGO HA EXPIRADO (Válido solo por 1 hora)");
+                }
+                trip = data;
+                this.renderResult('orange', 'ACCESO POR CÓDIGO', `UNIDAD: ${trip.vehicles.economic_number}<br>Chofer: ${trip.profiles.full_name}<br><span class="text-xs text-orange-400">Pase remoto validado.</span>`, 
+                    { text: trip.status === 'driver_accepted' ? 'AUTORIZAR SALIDA' : 'AUTORIZAR ENTRADA', action: () => this.executeAction(trip) });
                 return;
             }
 
-            // 2. LÓGICA ORIGINAL PARA QR (ID DE CONDUCTOR O JSON)
+            // --- LÓGICA 2: QR DINÁMICO (JSON: Conductor + Carro) ---
             try {
-                const parsed = JSON.parse(code);
-                if (parsed.v_id) { // Si el QR contiene el ID del vehículo directamente
-                    const { data: trip } = await supabase.from('trips').select(`*, vehicles(*), profiles(full_name)`).eq('vehicle_id', parsed.v_id).neq('status', 'closed').maybeSingle();
-                    if (!trip) throw new Error("No hay viaje activo para esta unidad.");
-                    this.renderResult('green', 'GAFETE DIGITAL', `UNIDAD: ${trip.vehicles.economic_number}<br>Conductor: ${trip.profiles.full_name}`, 
-                        { text: 'AUTORIZAR PASO', action: () => trip.status === 'in_progress' ? this.registerEntry(trip.id) : this.registerExit(trip.id) });
-                    return;
+                const parsed = JSON.parse(cleanCode);
+                if (parsed.trip_id || parsed.v_id) {
+                    const idToSearch = parsed.trip_id || parsed.v_id;
+                    const field = parsed.trip_id ? 'id' : 'vehicle_id';
+                    
+                    const { data, error } = await supabase.from('trips').select('*, vehicles(*), profiles(*)').eq(field, idToSearch).neq('status', 'closed').maybeSingle();
+                    if (data) {
+                        trip = data;
+                        this.renderResult('green', 'GAFETE DIGITAL', `UNIDAD: ${trip.vehicles.economic_number}<br>Chofer: ${trip.profiles.full_name}`, 
+                            { text: trip.status === 'in_progress' ? 'REGISTRAR ENTRADA' : 'REGISTRAR SALIDA', action: () => this.executeAction(trip) });
+                        return;
+                    }
                 }
-            } catch (e) { /* No es JSON */ }
+            } catch (e) { /* No es JSON, seguimos a UUID */ }
 
-            // Validación por ID de Perfil (UUID del Conductor)
-            const { data: driver } = await supabase.from('profiles').select('*').eq('id', code.trim()).single();
-            if(!driver) throw new Error("Identificación no válida.");
+            // --- LÓGICA 3: QR ESTÁNDAR (ID DEL CONDUCTOR) ---
+            const { data: driver } = await supabase.from('profiles').select('*').eq('id', cleanCode).maybeSingle();
+            if (driver) {
+                const { data: tripData } = await supabase.from('trips').select('*, vehicles(*), profiles(*)').eq('driver_id', driver.id).neq('status', 'closed').maybeSingle();
+                if (!tripData) throw new Error(`El conductor ${driver.full_name} no tiene un viaje activo en sistema.`);
+                
+                this.processStandardFlow(tripData);
+                return;
+            }
 
-            const { data: trip } = await supabase.from('trips').select(`*, vehicles(*)`).eq('driver_id', driver.id).neq('status', 'closed').maybeSingle();
-            if (!trip) throw new Error("El conductor no tiene un viaje activo.");
-
-            this.processStandardTrip(trip, driver.full_name);
+            throw new Error("FORMATO DE CÓDIGO NO RECONOCIDO");
 
         } catch (e) {
-            this.renderResult('error', 'DENEGADO', e.message);
+            this.renderResult('error', 'ACCESO DENEGADO', e.message);
+            if(navigator.vibrate) navigator.vibrate(500);
         }
     }
 
-    processStandardTrip(trip, driverName) {
+    processStandardFlow(trip) {
         if (trip.status === 'requested' || trip.status === 'mechanic_approved') {
-            this.renderResult('yellow', 'PENDIENTE', 'Falta firma del conductor o revisión.');
-        } else if (trip.status === 'driver_accepted') {
-            this.renderResult('green', 'AUTORIZADO', `Salida: ${trip.vehicles.economic_number}<br>${driverName}`, 
-                { text: 'REGISTRAR SALIDA', action: () => this.registerExit(trip.id) });
-        } else if (trip.status === 'in_progress') {
-            this.renderResult('blue', 'RETORNO', `Entrada: ${trip.vehicles.economic_number}<br>${driverName}`, 
-                { text: 'REGISTRAR ENTRADA', action: () => this.registerEntry(trip.id) });
+            this.renderResult('yellow', 'PENDIENTE', `La unidad ${trip.vehicles.economic_number} aún no ha sido liberada por el mecánico o el chofer.`);
+        } else {
+            const isEntry = trip.status === 'in_progress';
+            this.renderResult(isEntry ? 'blue' : 'green', isEntry ? 'RETORNO' : 'AUTORIZADO', 
+                `UNIDAD: ${trip.vehicles.economic_number}<br>Chofer: ${trip.profiles.full_name}`, 
+                { text: isEntry ? 'REGISTRAR ENTRADA' : 'REGISTRAR SALIDA', action: () => this.executeAction(trip) });
         }
     }
 
     renderResult(color, title, desc, btnObj = null) {
-        const colors = {
-            green: 'text-green-500 border-green-500 bg-green-500/10',
-            orange: 'text-orange-500 border-orange-500 bg-orange-500/10',
-            yellow: 'text-yellow-500 border-yellow-500 bg-yellow-500/10',
-            blue: 'text-blue-500 border-blue-500 bg-blue-500/10',
-            error: 'text-red-500 border-red-500 bg-red-500/10'
+        const themes = {
+            green: 'border-green-500 bg-green-500/10 text-green-500',
+            orange: 'border-orange-500 bg-orange-500/10 text-orange-500',
+            blue: 'border-blue-500 bg-blue-500/10 text-blue-500',
+            yellow: 'border-yellow-500 bg-yellow-500/10 text-yellow-500',
+            error: 'border-red-500 bg-red-500/10 text-red-500'
         };
-        const c = colors[color] || colors.error;
-        const icon = color === 'error' ? 'cancel' : 'verified';
+        const theme = themes[color] || themes.error;
 
         document.getElementById('result-area').innerHTML = `
             <div class="w-full animate-fade-in-up">
-                <div class="w-full p-8 rounded-3xl border-4 ${c} mb-6 shadow-2xl">
-                    <span class="material-symbols-outlined text-6xl mb-2">${icon}</span>
-                    <h2 class="text-4xl font-black uppercase mb-3">${title}</h2>
-                    <p class="text-white text-sm leading-relaxed">${desc}</p>
+                <div class="w-full p-8 rounded-3xl border-4 ${theme} mb-6 shadow-2xl relative overflow-hidden">
+                    <h2 class="text-4xl font-black uppercase mb-3 leading-tight">${title}</h2>
+                    <p class="text-white text-base font-bold leading-relaxed">${desc}</p>
                 </div>
-                ${btnObj ? `<button id="btn-action" class="w-full py-5 rounded-2xl font-black text-xl bg-white text-black shadow-xl hover:bg-emerald-500 hover:text-white transition-all active:scale-95 uppercase tracking-widest">${btnObj.text}</button>` : 
-                `<button onclick="window.location.reload()" class="w-full py-4 rounded-2xl font-black text-lg bg-[#233648] text-white">VOLVER A INTENTAR</button>`}
+                ${btnObj ? `
+                    <button id="btn-execute" class="w-full py-5 rounded-2xl font-black text-xl bg-white text-black shadow-xl hover:bg-primary hover:text-white transition-all active:scale-95 uppercase tracking-widest">
+                        ${btnObj.text}
+                    </button>
+                    <button onclick="window.location.reload()" class="mt-4 text-[#92adc9] text-xs font-bold uppercase hover:text-white transition-colors">Cancelar</button>
+                ` : `<button onclick="window.location.reload()" class="w-full py-4 rounded-2xl font-black text-lg bg-[#233648] text-white border border-[#324d67]">VOLVER A INTENTAR</button>`}
             </div>
         `;
-        if(btnObj) document.getElementById('btn-action').onclick = btnObj.action;
+        if(btnObj) document.getElementById('btn-execute').onclick = btnObj.action;
     }
 
-    async registerExit(tripId) {
-        const { error } = await supabase.from('trips').update({ status: 'in_progress', exit_gate_time: new Date(), emergency_code: null }).eq('id', tripId);
-        if (error) alert(error.message); else this.showSuccessOverlay("SALIDA REGISTRADA");
+    async executeAction(trip) {
+        const btn = document.getElementById('btn-execute');
+        btn.innerText = "REGISTRANDO..."; btn.disabled = true;
+
+        const isExit = (trip.status === 'driver_accepted' || trip.status === 'approved' || trip.emergency_code);
+        const newStatus = isExit ? 'in_progress' : 'arrived';
+        const timeField = isExit ? 'exit_gate_time' : 'entry_gate_time';
+
+        const { error } = await supabase.from('trips').update({ 
+            status: newStatus, 
+            [timeField]: new Date(),
+            emergency_code: null // Se quema el código al usarlo
+        }).eq('id', trip.id);
+
+        if (error) {
+            alert("Error BD: " + error.message);
+            btn.disabled = false;
+        } else {
+            this.showSuccess(isExit ? "SALIDA EXITOSA" : "ENTRADA EXITOSA");
+        }
     }
 
-    async registerEntry(tripId) {
-        const { error } = await supabase.from('trips').update({ status: 'arrived', entry_gate_time: new Date(), emergency_code: null }).eq('id', tripId);
-        if (error) alert(error.message); else this.showSuccessOverlay("ENTRADA REGISTRADA");
-    }
-
-    showSuccessOverlay(msg) {
+    showSuccess(msg) {
         document.getElementById('result-area').innerHTML = `
             <div class="flex flex-col items-center animate-fade-in">
                 <div class="size-32 rounded-full bg-emerald-500 flex items-center justify-center text-white shadow-[0_0_50px_rgba(16,185,129,0.4)] mb-6">
                     <span class="material-symbols-outlined text-7xl animate-bounce">check_circle</span>
                 </div>
                 <h2 class="text-3xl font-black text-white uppercase">${msg}</h2>
+                <p class="text-emerald-400 font-bold mt-2 tracking-widest animate-pulse">BARRERA LIBERADA</p>
                 <button onclick="window.location.reload()" class="mt-10 bg-[#233648] text-white px-8 py-3 rounded-xl font-bold uppercase text-sm">Siguiente</button>
-            </div>`;
+            </div>
+        `;
+        if(navigator.vibrate) navigator.vibrate([100, 50, 100]);
     }
 }
