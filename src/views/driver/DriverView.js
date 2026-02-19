@@ -15,7 +15,19 @@ export class DriverView {
         window.conductorModule = this;
     }
 
+    // --- INYECCIÓN DEL CSS DE LEAFLET PARA EVITAR MAPAS ROTOS ---
+    injectLeafletCSS() {
+        if (!document.getElementById('leaflet-css')) {
+            const link = document.createElement('link');
+            link.id = 'leaflet-css';
+            link.rel = 'stylesheet';
+            link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+            document.head.appendChild(link);
+        }
+    }
+
     render() {
+        this.injectLeafletCSS();
         return `
         <div class="fixed inset-0 w-full h-full bg-[#0d141c] font-display flex justify-center overflow-hidden">
             <div class="w-full md:max-w-md bg-[#111a22] h-full relative shadow-2xl border-x border-[#233648] flex flex-col">
@@ -30,7 +42,7 @@ export class DriverView {
                                     <span class="animate-ping absolute h-full w-full rounded-full bg-green-400 opacity-75"></span>
                                     <span class="relative rounded-full h-2 w-2 bg-green-500"></span>
                                 </span>
-                                <span id="profile-status" class="text-[#92adc9] text-[10px] font-bold uppercase">Conectado a Central</span>
+                                <span id="profile-status" class="text-[#92adc9] text-[10px] font-bold uppercase">Sincronizado</span>
                             </div>
                         </div>
                     </div>
@@ -54,20 +66,26 @@ export class DriverView {
                     <section id="tab-checklist" class="tab-content hidden p-5 space-y-4">
                         <div class="bg-[#192633] border border-[#233648] rounded-2xl p-5 shadow-xl">
                             <h3 class="text-white font-bold mb-4 flex items-center gap-2 border-b border-[#233648] pb-3">
-                                <span class="material-symbols-outlined text-primary">fact_check</span> Validación Mecánica
+                                <span class="material-symbols-outlined text-primary">engineering</span> Proceso de Taller
                             </h3>
                             <div id="checklist-content" class="space-y-3"></div>
                         </div>
                     </section>
 
                     <section id="tab-ruta" class="tab-content hidden h-full flex flex-col relative">
-                        <div id="live-map" class="w-full flex-1 bg-slate-900"></div>
-                        
-                        <div id="route-controls" class="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] w-[90%]">
-                            <button id="btn-start-route" class="hidden w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-black rounded-2xl shadow-lg flex items-center justify-center gap-2 transition-all active:scale-95 uppercase text-sm tracking-widest">
-                                <span class="material-symbols-outlined animate-pulse">satellite_alt</span> Iniciar Ruta y GPS
+                        <div id="route-controls" class="absolute top-4 left-4 right-4 z-[1000] hidden">
+                            <button id="btn-start-route" class="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-black rounded-2xl shadow-[0_0_30px_rgba(16,185,129,0.4)] flex items-center justify-center gap-2 transition-all active:scale-95 uppercase text-sm tracking-widest border-2 border-white/20">
+                                <span class="material-symbols-outlined animate-pulse">satellite_alt</span> Iniciar Navegación y GPS
                             </button>
                         </div>
+                        
+                        <div id="route-waiting-msg" class="absolute inset-0 z-50 bg-[#0d141c]/80 backdrop-blur flex flex-col items-center justify-center p-6 text-center">
+                            <span class="material-symbols-outlined text-6xl text-[#324d67] mb-4">gpp_maybe</span>
+                            <h3 class="text-white font-bold text-xl uppercase tracking-widest">Esperando Salida</h3>
+                            <p class="text-[#92adc9] text-xs mt-2">Muestra tu código al guardia en caseta para que autorice tu salida y se habilite el mapa.</p>
+                        </div>
+
+                        <div id="live-map" class="w-full flex-1 bg-slate-800"></div>
 
                         <div class="p-5 bg-[#111a22] border-t border-[#233648] grid grid-cols-2 gap-4">
                             <div class="bg-[#192633] p-3 rounded-xl border border-[#233648] text-center">
@@ -75,9 +93,9 @@ export class DriverView {
                                 <span id="live-speed" class="text-2xl font-black text-white">0</span> <small class="text-white/50 text-[10px]">km/h</small>
                             </div>
                             <div class="bg-[#192633] p-3 rounded-xl border border-[#233648] text-center">
-                                <p class="text-[10px] text-[#92adc9] font-bold uppercase mb-1">GPS Central</p>
+                                <p class="text-[10px] text-[#92adc9] font-bold uppercase mb-1">GPS Monitor</p>
                                 <span id="gps-status-indicator" class="text-slate-500 font-bold text-[10px] uppercase flex items-center justify-center gap-1 mt-2">
-                                    En Espera...
+                                    <span class="material-symbols-outlined text-[12px]">pause_circle</span> Pausado
                                 </span>
                             </div>
                         </div>
@@ -85,7 +103,6 @@ export class DriverView {
 
                     <section id="tab-perfil" class="tab-content hidden p-5 space-y-5">
                         <div class="bg-white rounded-3xl p-6 shadow-2xl flex flex-col items-center text-center">
-                            
                             <div class="w-full flex justify-between items-start mb-6">
                                 <div class="text-left flex-1">
                                     <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Gafete Digital</span>
@@ -94,65 +111,47 @@ export class DriverView {
                                 <div class="h-16 w-16 bg-slate-100 rounded-xl border border-slate-200 bg-cover bg-center shadow-md shrink-0" id="card-photo"></div>
                             </div>
 
-                            <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100 mb-6 w-full" id="access-code-container">
-                            </div>
+                            <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100 mb-6 w-full" id="access-code-container"></div>
 
                             <div class="w-full text-left bg-slate-50 p-4 rounded-2xl border border-slate-100 mb-4">
                                 <h4 class="text-slate-800 text-xs font-black uppercase mb-3 flex items-center gap-2 border-b border-slate-200 pb-2">
-                                    <span class="material-symbols-outlined text-sm text-primary">badge</span> Datos de Empleado
+                                    <span class="material-symbols-outlined text-sm text-primary">badge</span> Datos
                                 </h4>
                                 <div class="space-y-3">
                                     <div class="flex justify-between items-center border-b border-slate-200 pb-2">
-                                        <span class="text-[10px] text-slate-500 font-bold uppercase">Supervisor Responsable</span>
+                                        <span class="text-[10px] text-slate-500 font-bold uppercase">Supervisor</span>
                                         <span id="profile-manager" class="text-slate-800 text-xs font-bold">--</span>
                                     </div>
-                                    <div class="flex justify-between items-center border-b border-slate-200 pb-2">
-                                        <span class="text-[10px] text-slate-500 font-bold uppercase">Licencia de Conducir</span>
-                                        <span id="lic-number" class="text-slate-800 text-xs font-mono font-bold">--</span>
-                                    </div>
                                     <div class="flex justify-between items-center">
-                                        <span class="text-[10px] text-slate-500 font-bold uppercase">Vigencia</span>
-                                        <span id="lic-expiry" class="px-2 py-1 bg-green-100 text-green-700 rounded text-[10px] font-black uppercase">Vigente</span>
+                                        <span class="text-[10px] text-slate-500 font-bold uppercase">Licencia</span>
+                                        <span id="lic-number" class="text-slate-800 text-xs font-mono font-bold">--</span>
                                     </div>
                                 </div>
                             </div>
 
                             <button onclick="window.print()" class="w-full py-4 bg-[#111a22] hover:bg-[#1c2127] text-white rounded-xl font-bold text-xs uppercase flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all">
-                                <span class="material-symbols-outlined text-sm">print</span> Imprimir Gafete Oficial
+                                <span class="material-symbols-outlined text-sm">print</span> Imprimir Gafete
                             </button>
-
                         </div>
                     </section>
                 </main>
 
                 <nav class="absolute bottom-0 w-full bg-[#111a22] border-t border-[#233648] flex justify-around items-center h-20 z-30 pb-safe">
-                    <button onclick="window.conductorModule.switchTab('unidad')" id="nav-unidad" class="nav-btn active text-primary flex flex-col items-center gap-1">
-                        <span class="material-symbols-outlined">directions_car</span><span class="text-[9px] font-bold uppercase">Unidad</span>
-                    </button>
-                    <button onclick="window.conductorModule.switchTab('checklist')" id="nav-checklist" class="nav-btn text-slate-500 flex flex-col items-center gap-1">
-                        <span class="material-symbols-outlined">fact_check</span><span class="text-[9px] font-bold uppercase">Check</span>
-                    </button>
-                    <button onclick="window.conductorModule.switchTab('ruta')" id="nav-ruta" class="nav-btn text-slate-500 flex flex-col items-center gap-1">
-                        <span class="material-symbols-outlined">route</span><span class="text-[9px] font-bold uppercase">Ruta</span>
-                    </button>
-                    <button onclick="window.conductorModule.switchTab('perfil')" id="nav-perfil" class="nav-btn text-slate-500 flex flex-col items-center gap-1">
-                        <span class="material-symbols-outlined">person</span><span class="text-[9px] font-bold uppercase">Perfil</span>
-                    </button>
+                    <button onclick="window.conductorModule.switchTab('unidad')" id="nav-unidad" class="nav-btn active text-primary flex flex-col items-center gap-1"><span class="material-symbols-outlined">directions_car</span><span class="text-[9px] font-bold uppercase">Unidad</span></button>
+                    <button onclick="window.conductorModule.switchTab('checklist')" id="nav-checklist" class="nav-btn text-slate-500 flex flex-col items-center gap-1"><span class="material-symbols-outlined">engineering</span><span class="text-[9px] font-bold uppercase">Taller</span></button>
+                    <button onclick="window.conductorModule.switchTab('ruta')" id="nav-ruta" class="nav-btn text-slate-500 flex flex-col items-center gap-1"><span class="material-symbols-outlined">route</span><span class="text-[9px] font-bold uppercase">Ruta</span></button>
+                    <button onclick="window.conductorModule.switchTab('perfil')" id="nav-perfil" class="nav-btn text-slate-500 flex flex-col items-center gap-1"><span class="material-symbols-outlined">badge</span><span class="text-[9px] font-bold uppercase">Pase</span></button>
                 </nav>
 
                 <div id="modal-incident" class="hidden absolute inset-0 z-50 flex items-end justify-center bg-black/90 backdrop-blur-sm">
                     <div class="bg-[#1c2127] w-full rounded-t-3xl p-6 border-t border-red-500/30">
                         <h3 class="text-white font-bold text-lg mb-4 flex items-center gap-2"><span class="material-symbols-outlined text-red-500">warning</span> Reportar Incidente</h3>
                         <textarea id="inc-desc" class="w-full bg-[#111a22] border border-[#233648] text-white p-4 rounded-xl outline-none mb-4 h-32" placeholder="Describe lo sucedido..."></textarea>
-                        
                         <div class="flex gap-2 mb-4">
                             <input type="file" id="input-incident-camera" accept="image/*" capture="environment" class="hidden">
-                            <label for="input-incident-camera" class="w-full h-12 bg-[#233648] text-white rounded-lg flex items-center justify-center gap-2 cursor-pointer font-bold text-xs transition-colors border border-[#324d67]">
-                                <span class="material-symbols-outlined text-sm">photo_camera</span> TOMAR FOTO EVIDENCIA
-                            </label>
+                            <label for="input-incident-camera" class="w-full h-12 bg-[#233648] text-white rounded-lg flex items-center justify-center gap-2 cursor-pointer font-bold text-xs transition-colors border border-[#324d67]"><span class="material-symbols-outlined text-sm">photo_camera</span> TOMAR FOTO EVIDENCIA</label>
                         </div>
                         <div id="incident-preview-grid" class="grid grid-cols-4 gap-2 mb-6"></div>
-
                         <div class="flex gap-3">
                             <button onclick="document.getElementById('modal-incident').classList.add('hidden')" class="flex-1 py-4 bg-slate-800 text-white rounded-xl font-bold uppercase text-xs">Cancelar</button>
                             <button id="btn-send-incident" class="flex-1 py-4 bg-red-600 text-white rounded-xl font-bold uppercase text-xs">Enviar Reporte</button>
@@ -174,34 +173,44 @@ export class DriverView {
         this.setupIncidentForm();
 
         supabase.channel('driver_realtime')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'trips', filter: `driver_id=eq.${this.userId}` }, (payload) => {
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'trips', filter: `driver_id=eq.${this.userId}` }, () => {
                 this.loadDashboardState();
+                if(navigator.vibrate) navigator.vibrate([100]);
             }).subscribe();
     }
 
+    // --- MAPA CORREGIDO Y GPS PERSISTENTE ---
     initLiveMap() {
         if (!window.L) return;
         const L = window.L;
-        this.map = L.map('live-map', { zoomControl: false }).setView([19.4326, -99.1332], 16);
         
+        // Coordenadas base (Naucalpan)
+        this.map = L.map('live-map', { zoomControl: false }).setView([19.4326, -99.1332], 16);
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(this.map);
         
         this.marker = L.marker([19.4326, -99.1332], {
             icon: L.divIcon({ className: 'bg-primary w-5 h-5 rounded-full border-2 border-white shadow-[0_0_15px_rgba(19,127,236,0.8)]' })
         }).addTo(this.map);
 
-        this.polyline = L.polyline([], { color: '#137fec', weight: 5, opacity: 0.7, lineJoin: 'round' }).addTo(this.map);
+        this.polyline = L.polyline([], { color: '#137fec', weight: 5, opacity: 0.8, lineJoin: 'round' }).addTo(this.map);
+        
+        // Forzamos renderizado por si la pestaña estaba oculta
+        setTimeout(() => { this.map.invalidateSize(); }, 500);
     }
 
     startTracking() {
         if (!navigator.geolocation) {
-            alert("Tu dispositivo no soporta GPS.");
+            alert("El dispositivo no tiene sensor GPS.");
             return;
         }
 
         const gpsIndicator = document.getElementById('gps-status-indicator');
-        gpsIndicator.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Transmitiendo`;
-        gpsIndicator.className = "text-emerald-400 font-bold text-[10px] uppercase flex items-center justify-center gap-1 mt-2";
+        const btnStart = document.getElementById('btn-start-route');
+
+        // UI Updates
+        gpsIndicator.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span> <span class="text-emerald-400">Enviando a Central</span>`;
+        btnStart.classList.add('hidden'); // Ocultar botón una vez iniciado
+        document.getElementById('route-waiting-msg').classList.add('hidden'); // Quitar mensaje de bloqueo
 
         this.routeCoords = [];
         this.polyline.setLatLngs([]);
@@ -213,15 +222,17 @@ export class DriverView {
             const latlng = [latitude, longitude];
             
             if(this.map) {
-                this.map.panTo(latlng);
+                this.map.panTo(latlng, {animate: true});
                 this.marker.setLatLng(latlng);
                 this.routeCoords.push(latlng);
                 this.polyline.setLatLngs(this.routeCoords);
             }
 
+            // Convertir ms a km/h
             const speedKmh = Math.round((speed || 0) * 3.6);
             document.getElementById('live-speed').innerText = speedKmh;
 
+            // Transmitir a Supabase
             if(this.currentTrip && this.currentTrip.status === 'in_progress') {
                 supabase.from('trip_locations').insert({ 
                     trip_id: this.currentTrip.id, 
@@ -231,12 +242,9 @@ export class DriverView {
                 });
             }
         }, (err) => {
-            if (err.code === 1) { 
-                alert("Para registrar tu ruta debes permitir el acceso a tu ubicación en tu navegador.");
-                gpsIndicator.innerHTML = `<span class="material-symbols-outlined text-[12px]">location_off</span> Bloqueado`;
-                gpsIndicator.className = "text-red-500 font-bold text-[10px] uppercase flex items-center justify-center gap-1 mt-2";
-            }
-        }, { enableHighAccuracy: true, maximumAge: 10000, timeout: 10000 });
+            console.error("GPS Error:", err);
+            if(err.code === 1) alert("Permite el acceso a tu ubicación en tu navegador para continuar.");
+        }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 });
     }
 
     async loadProfileData() {
@@ -247,62 +255,55 @@ export class DriverView {
             document.getElementById('profile-avatar').style.backgroundImage = `url('${p.photo_url || ''}')`;
             document.getElementById('card-full-name').innerText = p.full_name;
             document.getElementById('card-photo').style.backgroundImage = `url('${p.photo_url || ''}')`;
-            document.getElementById('lic-number').innerText = p.license_number || 'A-XXXXXXXX';
-            document.getElementById('profile-manager').innerText = p.supervisor_name || 'Central Operativa (Default)';
+            document.getElementById('lic-number').innerText = p.license_number || 'No Registrada';
+            document.getElementById('profile-manager').innerText = p.supervisor_name || 'Central COV';
         }
     }
 
-    // --- CARGA DE ESTADO MEJORADA (Evita errores si hay múltiples registros fantasmas) ---
     async loadDashboardState() {
-        // En lugar de maybeSingle(), sacamos el más reciente. Así no falla si hubo un doble clic por accidente.
-        const { data: trips } = await supabase.from('trips')
-            .select(`*, vehicles(*)`)
-            .eq('driver_id', this.userId)
-            .neq('status', 'closed')
-            .order('created_at', { ascending: false })
-            .limit(1);
-
+        const { data: trips } = await supabase.from('trips').select(`*, vehicles(*)`).eq('driver_id', this.userId).neq('status', 'closed').order('created_at', { ascending: false }).limit(1);
         const trip = trips && trips.length > 0 ? trips[0] : null;
         this.currentTrip = trip;
         
         const unityCont = document.getElementById('unidad-content');
         const checkCont = document.getElementById('checklist-content');
-        const btnStart = document.getElementById('btn-start-route');
 
         if (!trip) {
             await this.renderAvailableUnits(unityCont);
             document.getElementById('profile-status').innerText = "Disponible";
             this.renderAccessCode(null);
-            btnStart.classList.add('hidden');
+            document.getElementById('route-waiting-msg').classList.remove('hidden');
         } else {
             unityCont.innerHTML = `
-                <div class="bg-primary/10 border border-primary/30 p-5 rounded-2xl text-center">
-                    <p class="text-[10px] font-bold text-primary uppercase mb-1">Unidad Asignada</p>
-                    <h2 class="text-3xl font-black text-white">${trip.vehicles.plate}</h2>
-                    <p class="text-xs text-slate-400 mt-1">${trip.vehicles.model} • ECO-${trip.vehicles.economic_number}</p>
+                <div class="bg-primary/10 border border-primary/30 p-5 rounded-2xl text-center shadow-inner">
+                    <p class="text-[10px] font-bold text-primary uppercase tracking-widest mb-2">Unidad Asignada</p>
+                    <h2 class="text-4xl font-black text-white leading-none">${trip.vehicles.plate}</h2>
+                    <p class="text-sm font-bold text-[#92adc9] mt-2">${trip.vehicles.model} • ECO-${trip.vehicles.economic_number}</p>
                 </div>
             `;
 
             this.renderMechanicChecklist(trip, checkCont);
             this.renderAccessCode(trip);
 
-            if (trip.status === 'driver_accepted') {
+            // GESTIÓN INTELIGENTE DE PESTAÑA DE RUTA
+            if (trip.status === 'in_progress') {
+                document.getElementById('profile-status').innerText = "En Ruta Operativa";
+                document.getElementById('route-waiting-msg').classList.add('hidden');
+                
+                // Si el viaje está en progreso, mostrar el botón para que el usuario despierte el GPS manualmente si se durmió
+                const btnStart = document.getElementById('btn-start-route');
                 btnStart.classList.remove('hidden');
-                btnStart.onclick = () => this.startTripExecution(trip.id);
-                document.getElementById('profile-status').innerText = "En Caseta";
-            } else if (trip.status === 'in_progress') {
-                btnStart.classList.add('hidden');
-                document.getElementById('profile-status').innerText = "En Ruta";
-                if(!this.watchPositionId) this.startTracking();
+                btnStart.onclick = () => {
+                    // Actualizamos un campo "start_time" solo por si acaso y activamos mapa
+                    supabase.from('trips').update({ start_time: new Date().toISOString() }).eq('id', trip.id);
+                    this.startTracking();
+                };
+            } else {
+                document.getElementById('profile-status').innerText = "Trámite Interno";
+                document.getElementById('route-waiting-msg').classList.remove('hidden');
+                document.getElementById('btn-start-route').classList.add('hidden');
             }
         }
-    }
-
-    async startTripExecution(tripId) {
-        if(!confirm("¿Confirmas que deseas iniciar tu ruta y encender el rastreo GPS?")) return;
-        await supabase.from('trips').update({ status: 'in_progress', start_time: new Date().toISOString() }).eq('id', tripId);
-        await this.loadDashboardState();
-        this.switchTab('ruta');
     }
 
     async renderAvailableUnits(container) {
@@ -310,45 +311,26 @@ export class DriverView {
         if(!vehs || vehs.length === 0) { container.innerHTML = '<p class="text-slate-500 text-center py-10 border border-dashed border-[#233648] rounded-xl">Sin unidades activas.</p>'; return; }
         
         container.innerHTML = vehs.map(v => `
-            <div class="bg-[#192633] p-4 rounded-xl border border-[#233648] flex justify-between items-center">
-                <div><p class="text-white font-bold text-lg leading-none">${v.plate}</p><p class="text-[10px] text-slate-400 mt-1">${v.model}</p></div>
-                <button onclick="window.conductorModule.requestUnit('${v.id}')" class="bg-primary hover:bg-blue-600 active:scale-95 text-white text-[10px] font-bold px-4 py-2 rounded-lg uppercase shadow-lg transition-all">Solicitar</button>
+            <div onclick="window.conductorModule.requestUnit('${v.id}')" class="bg-[#192633] p-4 rounded-xl border border-[#233648] flex justify-between items-center cursor-pointer hover:border-primary transition-all shadow-md">
+                <div><p class="text-white font-black text-lg leading-none">${v.plate}</p><p class="text-[10px] font-bold text-[#92adc9] uppercase tracking-wider mt-1">${v.model}</p></div>
+                <button class="bg-primary text-white text-[10px] font-black px-4 py-2 rounded-lg uppercase tracking-widest shadow-lg">Solicitar</button>
             </div>
         `).join('');
     }
 
-    // --- FUNCIÓN DE SOLICITUD BLINDADA ---
     async requestUnit(id) {
-        // Bloquear de inmediato para evitar el doble clic
-        const container = document.getElementById('unidad-content');
-        container.innerHTML = `
+        if(!confirm("Al solicitar esta unidad entrará a revisión mecánica. ¿Continuar?")) return;
+        
+        document.getElementById('unidad-content').innerHTML = `
             <div class="text-center py-10 bg-[#111a22] rounded-2xl border border-[#324d67]">
                 <div class="animate-spin text-primary mb-3"><span class="material-symbols-outlined text-4xl">autorenew</span></div>
-                <p class="text-white font-bold">Creando solicitud...</p>
-                <p class="text-xs text-slate-500 mt-1">Por favor espera.</p>
+                <p class="text-white font-bold">Generando folio...</p>
             </div>
         `;
 
-        // Doble validación: Revisar si la base de datos ya tiene un viaje activo antes de insertar
-        const { data: activeTrips } = await supabase.from('trips').select('id').eq('driver_id', this.userId).neq('status', 'closed');
+        const { error } = await supabase.from('trips').insert({ driver_id: this.userId, vehicle_id: id, status: 'requested' });
+        if (error) alert("Error: " + error.message);
         
-        if (activeTrips && activeTrips.length > 0) {
-            alert("Ya tienes un viaje en progreso. Actualizando pantalla.");
-            await this.loadDashboardState();
-            return;
-        }
-
-        const { error } = await supabase.from('trips').insert({ 
-            driver_id: this.userId, 
-            vehicle_id: id, 
-            status: 'requested' 
-        });
-
-        if (error) {
-            alert("Error del sistema: " + error.message);
-        }
-        
-        // Forzamos la actualización de la pantalla de forma estricta
         await this.loadDashboardState();
         this.switchTab('checklist');
     }
@@ -356,35 +338,34 @@ export class DriverView {
     renderMechanicChecklist(trip, container) {
         if (trip.status === 'requested') {
             container.innerHTML = `
-                <div class="text-center py-6">
-                    <div class="animate-spin text-orange-500 mb-3"><span class="material-symbols-outlined text-4xl">engineering</span></div>
-                    <p class="text-white font-bold text-lg">En Revisión de Taller</p>
-                    <p class="text-xs text-slate-400 mt-2">Pasa con el <b class="text-primary">MECÁNICO</b> para que inspeccione y libere la unidad en el sistema.</p>
+                <div class="text-center py-8">
+                    <div class="animate-bounce text-orange-500 mb-4"><span class="material-symbols-outlined text-5xl drop-shadow-md">engineering</span></div>
+                    <p class="text-white font-black text-xl uppercase tracking-tighter">Pasa al Taller</p>
+                    <p class="text-sm text-[#92adc9] mt-2 max-w-xs mx-auto">El Jefe de Taller debe liberar físicamente la unidad en el sistema antes de que puedas usarla.</p>
                 </div>
             `;
         } else {
             container.innerHTML = `
-                <div class="space-y-2 mb-6">
-                    <div class="flex justify-between items-center bg-[#111a22] p-3 rounded-lg border border-green-500/30">
-                        <span class="text-xs text-white">Líquidos y Llantas</span>
-                        <span class="text-[10px] font-black text-green-500 uppercase flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">check_circle</span> Aprobado</span>
+                <div class="space-y-3 mb-6">
+                    <div class="flex justify-between items-center bg-[#111a22] p-4 rounded-xl border border-emerald-500/30">
+                        <span class="text-sm text-white font-bold">Inspección General</span>
+                        <span class="bg-emerald-500/20 text-emerald-400 text-[10px] px-2 py-1 rounded font-black uppercase tracking-widest flex items-center gap-1"><span class="material-symbols-outlined text-[12px]">verified</span> Aprobado</span>
                     </div>
                 </div>
-                <button onclick="window.conductorModule.confirmReception('${trip.id}')" class="w-full py-4 bg-primary text-white font-black rounded-xl uppercase text-sm shadow-[0_0_15px_rgba(19,127,236,0.3)] active:scale-95 transition-all">Firmar y Recibir Unidad</button>
+                <p class="text-xs text-[#92adc9] text-center mb-4">Al firmar confirmas que recibes el vehículo en estado óptimo.</p>
+                <button onclick="window.conductorModule.confirmReception('${trip.id}')" class="w-full py-5 bg-primary text-white font-black rounded-xl uppercase text-sm shadow-[0_0_20px_rgba(19,127,236,0.3)] active:scale-95 transition-all flex items-center justify-center gap-2">
+                    <span class="material-symbols-outlined">draw</span> Firmar de Conformidad
+                </button>
             `;
         }
     }
 
     async confirmReception(id) {
-        const accessCode = Math.random().toString(36).substring(2, 7).toUpperCase();
-        
-        await supabase.from('trips').update({ 
-            status: 'driver_accepted',
-            access_code: accessCode
-        }).eq('id', id);
+        const accessCode = Math.random().toString(36).substring(2, 7).toUpperCase(); // Genera 5 letras
+        await supabase.from('trips').update({ status: 'driver_accepted', access_code: accessCode }).eq('id', id);
         
         await this.loadDashboardState();
-        this.switchTab('perfil');
+        this.switchTab('perfil'); // Lo manda al perfil para ver su código
     }
 
     renderAccessCode(trip) {
@@ -393,17 +374,20 @@ export class DriverView {
         if (trip && (trip.status === 'driver_accepted' || trip.status === 'in_progress')) {
             const code = trip.access_code || 'ERROR';
             container.innerHTML = `
-                <p class="text-[10px] text-slate-500 font-bold mb-2 uppercase tracking-tighter">CÓDIGO DE PASO (UNIDAD: <b class="text-primary">${trip.vehicles.plate}</b>)</p>
-                <div class="bg-white p-6 rounded-xl shadow-inner border border-slate-200 mx-auto w-full text-center">
-                    <span class="text-6xl font-black text-slate-800 tracking-[10px] font-mono drop-shadow-md">${code}</span>
+                <p class="text-[10px] text-slate-500 font-bold mb-2 uppercase tracking-tighter border-b border-slate-200 pb-2">Clave de Salida Autorizada</p>
+                <div class="bg-white p-6 rounded-2xl shadow-sm border-2 border-primary/20 mx-auto w-full text-center relative overflow-hidden">
+                    <span class="text-6xl font-black text-slate-900 tracking-[12px] font-mono drop-shadow-sm relative z-10">${code}</span>
+                    <div class="absolute inset-0 bg-primary/5 opacity-50 z-0"></div>
                 </div>
-                <p class="text-[9px] text-slate-400 mt-3 text-center uppercase">Proporcione este código al vigilante en caseta</p>
+                <p class="text-[9px] text-slate-500 font-bold mt-3 text-center uppercase tracking-widest bg-slate-200 p-2 rounded">
+                    Muestra este código al vigilante
+                </p>
             `;
         } else {
             container.innerHTML = `
-                <p class="text-[10px] text-slate-500 font-bold mb-2 uppercase tracking-tighter">Estado de Asignación</p>
-                <div class="bg-slate-200 p-6 rounded-xl shadow-inner border border-slate-300 mx-auto w-full text-center opacity-50">
-                    <span class="text-3xl font-black text-slate-400 tracking-[5px] font-mono">SIN PASE</span>
+                <div class="bg-slate-200 p-8 rounded-2xl shadow-inner border border-slate-300 mx-auto w-full text-center opacity-70">
+                    <span class="material-symbols-outlined text-5xl text-slate-400 mb-2">lock</span>
+                    <p class="text-xs font-black text-slate-500 uppercase tracking-widest">Pase Bloqueado</p>
                 </div>
             `;
         }
@@ -416,11 +400,11 @@ export class DriverView {
             const file = e.target.files[0];
             if(!file) return;
             this.incidentImages.push(file);
-            grid.innerHTML += `<div class="aspect-square bg-cover bg-center rounded border border-[#324d67]" style="background-image: url('${URL.createObjectURL(file)}')"></div>`;
+            grid.innerHTML += `<div class="aspect-square bg-cover bg-center rounded-xl border-2 border-red-500/50 shadow-md" style="background-image: url('${URL.createObjectURL(file)}')"></div>`;
         });
 
         document.getElementById('btn-send-incident').onclick = async () => {
-            alert("Incidente registrado. La torre de control ha sido notificada.");
+            alert("Incidente crítico registrado. La mesa de control ha sido alertada.");
             document.getElementById('modal-incident').classList.add('hidden');
             this.incidentImages = [];
             grid.innerHTML = '';
@@ -430,9 +414,18 @@ export class DriverView {
 
     switchTab(tabId) {
         document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
-        document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active', 'text-primary'));
+        document.querySelectorAll('.nav-btn').forEach(el => {
+            el.classList.remove('active', 'text-primary');
+            el.classList.add('text-slate-500');
+        });
         document.getElementById(`tab-${tabId}`).classList.remove('hidden');
         document.getElementById(`nav-${tabId}`).classList.add('active', 'text-primary');
-        if(tabId === 'ruta' && this.map) setTimeout(() => this.map.invalidateSize(), 200);
+        
+        // TRUCO INFALIBLE PARA LEAFLET: Obligar a repintar el mapa cuando se abre su pestaña
+        if(tabId === 'ruta' && this.map) {
+            setTimeout(() => {
+                this.map.invalidateSize();
+            }, 300);
+        }
     }
 }
