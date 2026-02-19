@@ -295,7 +295,7 @@ export class InventoryView {
         }).join('');
     }
 
-    // --- ALTA DE UNIDAD (MODAL COMPLETO ESTILO VERCEL DARK) ---
+    // --- ALTA DE UNIDAD ---
     openVehicleRegister() {
         const modal = document.getElementById('global-modal');
         const content = document.getElementById('global-modal-content');
@@ -491,7 +491,6 @@ export class InventoryView {
     async saveNewVehicle() {
         const initialKm = parseInt(document.getElementById('new-initial-km').value) || 0;
         
-        // Mapeo a tu tabla SQL "vehicles" real + campos extendidos
         const data = {
             economic_number: document.getElementById('new-eco').value,
             plate: document.getElementById('new-plate').value.toUpperCase(),
@@ -510,7 +509,7 @@ export class InventoryView {
             insurance_expiry: document.getElementById('new-insurance-expiry').value || null,
             insurance_status: document.getElementById('new-insurance-status').value,
             initial_km: initialKm,
-            current_km: initialKm, // Para tu DB
+            current_km: initialKm,
             cost_center: document.getElementById('new-cost-center').value,
             status: document.getElementById('new-status').value,
             image_url: document.getElementById('new-img').value || null
@@ -526,13 +525,12 @@ export class InventoryView {
         if (error) {
             alert("Error al guardar: " + error.message);
         } else {
-            // Guardar log inicial en bitácora
             await supabase.from('vehicle_logs').insert([{
                 vehicle_id: newVeh[0].id,
                 date: new Date().toISOString().split('T')[0],
                 odometer: initialKm,
                 service_name: 'ALTA DE UNIDAD',
-                parts_used: 'Registro inicial del sistema',
+                parts_used: 'Registro inicial',
                 total_cost: 0,
                 quantity: 1,
                 notes: `Vehículo registrado: ${data.brand} ${data.model} ${data.year}, Placas: ${data.plate}, ECO: ${data.economic_number}`
@@ -544,12 +542,11 @@ export class InventoryView {
         }
     }
 
-    // --- DETALLE DEL VEHÍCULO (TABS EN DARK MODE) ---
+    // --- DETALLE DEL VEHÍCULO ---
     async openVehicleDetail(id) {
         this.selectedVehicle = this.vehicles.find(v => v.id === id);
         if(!this.selectedVehicle) return;
 
-        // Cargar datos relacionales específicos para este modal
         const [logsRes, tripsRes, docsRes] = await Promise.all([
             supabase.from('vehicle_logs').select('*').eq('vehicle_id', id).order('date', {ascending: false}),
             supabase.from('vehicle_trips').select('*').eq('vehicle_id', id).order('start_date', {ascending: false}),
@@ -568,13 +565,8 @@ export class InventoryView {
             this.selectedVehicle.current_km = currentKm;
         }
         
-        // Data para QR (Gafete de Escaneo Digital)
-        const qrData = { 
-            v_id: this.selectedVehicle.id, 
-            eco: this.selectedVehicle.economic_number, 
-            plate: this.selectedVehicle.plate 
-        };
-        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(JSON.stringify(qrData))}&color=111a22`;
+        // CORRECCIÓN PRINCIPAL: El QR ahora SOLO contiene el UUID del vehículo (Texto plano)
+        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${this.selectedVehicle.id}&color=111a22`;
         
         const modal = document.getElementById('global-modal');
         const content = document.getElementById('global-modal-content');
@@ -587,9 +579,9 @@ export class InventoryView {
                     <span class="material-symbols-outlined text-[300px]">directions_car</span>
                 </div>
                 <div class="flex items-center gap-6 relative z-10">
-                    <div class="bg-white p-2 rounded-xl shadow-lg cursor-pointer transform hover:scale-105 transition-transform" onclick="window.invModule.printQR('${qrUrl}', '${this.selectedVehicle.plate}')" title="Imprimir QR Escudo">
+                    <div class="bg-white p-2 rounded-xl shadow-lg cursor-pointer transform hover:scale-105 transition-transform" onclick="window.invModule.printQR('${qrUrl}', '${this.selectedVehicle.plate}')" title="Imprimir QR Físico">
                         <img src="${qrUrl}" alt="QR Vehículo" class="w-20 h-20">
-                        <div class="text-[9px] text-center text-slate-800 font-bold mt-1 uppercase tracking-widest">Gafete Digital</div>
+                        <div class="text-[9px] text-center text-slate-800 font-bold mt-1 uppercase tracking-widest">QR Unidad</div>
                     </div>
                     <div>
                         <div class="flex items-center gap-2 mb-1">
@@ -883,7 +875,7 @@ export class InventoryView {
         return 'transparent';
     }
 
-    // --- REGISTRO DE SERVICIOS EN BITÁCORA (NUEVO) ---
+    // --- REGISTRO DE SERVICIOS EN BITÁCORA ---
     openLogRegister(vehicleId) {
         this.pendingStockDeduction = [];
         const modal = document.getElementById('global-modal');
@@ -983,7 +975,6 @@ export class InventoryView {
         const cost = parseFloat(opt.dataset.cost);
         const name = opt.dataset.name;
 
-        // Esto no es restrictivo para registrar (puede estar en negativo, pero avisamos)
         if (qty > stock) alert(`Advertencia: La cantidad requerida (${qty}) supera el stock del sistema (${stock}).`);
 
         const existingItem = this.pendingStockDeduction.find(i => i.id === itemId);
@@ -1052,7 +1043,6 @@ export class InventoryView {
         const { error } = await supabase.from('vehicle_logs').insert([logData]);
         if (error) return alert("Error guardando bitácora: " + error.message);
 
-        // Descontar inventario (Simplificado para evitar bloqueos)
         for(let item of this.pendingStockDeduction) {
             const currentItem = this.inventory.find(i => i.id === item.id);
             if(currentItem) await supabase.from('inventory_items').update({ stock: currentItem.stock - item.qty }).eq('id', item.id);
@@ -1064,7 +1054,7 @@ export class InventoryView {
 
         alert("✅ Servicio guardado correctamente. Inventario descontado.");
         await this.loadAllData();
-        this.openVehicleDetail(this.selectedVehicle.id); // Regresa a la vista del coche
+        this.openVehicleDetail(this.selectedVehicle.id); 
     }
 
     // --- REPORTES Y TRAYECTOS ---
@@ -1091,7 +1081,7 @@ export class InventoryView {
         const printWindow = window.open('', '_blank');
         printWindow.document.write(`
             <html><head><style>body{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;text-align:center;}img{width:200px;height:200px;margin-bottom:20px;}</style></head>
-            <body><h2>GAFETE DIGITAL VEHÍCULO</h2><h1>${plate}</h1><img src="${url}"><p>Escanear en caseta de seguridad.</p><script>window.onload=()=>{window.print();setTimeout(window.close,500);}</script></body></html>
+            <body><h2>GAFETE DIGITAL PERMANENTE (UNIDAD)</h2><h1>${plate}</h1><img src="${url}"><p>Pegar en el vehículo para escaneo de acceso y taller.</p><script>window.onload=()=>{window.print();setTimeout(window.close,500);}</script></body></html>
         `);
     }
 
