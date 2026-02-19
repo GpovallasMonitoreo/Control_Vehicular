@@ -54,6 +54,9 @@ export class DriverView {
             supervisor: null
         };
         
+        // Archivo de foto de recepción
+        this.receptionPhotoFile = null;
+        
         window.conductorModule = this;
     }
 
@@ -231,6 +234,14 @@ export class DriverView {
                                         <span id="lic-number" class="text-slate-800 text-xs font-mono font-bold">--</span>
                                     </div>
                                 </div>
+                            </div>
+
+                            <!-- Foto de recepción (si existe) -->
+                            <div id="reception-photo-container" class="hidden mb-4">
+                                <h4 class="text-slate-800 text-xs font-black uppercase mb-2">Foto de Recepción</h4>
+                                <img id="reception-photo-display" class="w-full rounded-xl border-2 border-primary/30 cursor-pointer" 
+                                     onclick="window.conductorModule.viewReceptionPhoto()"
+                                     src="" alt="Foto de recepción">
                             </div>
 
                             <!-- Resumen del viaje actual -->
@@ -653,8 +664,11 @@ export class DriverView {
     async endTrip() {
         if (!confirm('¿Finalizar viaje? Se registrarán todos los datos.')) return;
 
-        const entryKm = prompt('Ingresa el kilometraje de entrada:');
-        if (!entryKm) return;
+        const entryKm = document.getElementById('exit-km-input').value; // Podrías cambiar esto por un input específico
+        if (!entryKm) {
+            alert('Ingresa el kilometraje de entrada');
+            return;
+        }
 
         this.tripLogistics.entryKm = parseFloat(entryKm);
         this.tripLogistics.entryTime = new Date();
@@ -692,8 +706,8 @@ export class DriverView {
             total_distance: totalDistance,
             average_speed: this.tripLogistics.averageSpeed,
             max_speed: this.tripLogistics.maxSpeed,
-            moving_time_seconds: this.tripLogistics.movingTime,
-            idle_time_seconds: this.tripLogistics.idleTime,
+            moving_time_seconds: Math.floor(this.tripLogistics.movingTime),
+            idle_time_seconds: Math.floor(this.tripLogistics.idleTime),
             fuel_consumption: totalDistance / 8,
             start_km: this.tripLogistics.exitKm,
             end_km: this.tripLogistics.entryKm,
@@ -740,14 +754,11 @@ export class DriverView {
             }]
         });
 
-        // Enviar notificación a supervisores (simulado)
-        console.log('EMERGENCIA ACTIVADA:', emergencyCode);
-
         alert(`EMERGENCIA REGISTRADA\nCódigo: ${emergencyCode}\nMantén la calma, ayuda en camino.`);
         document.getElementById('modal-emergency').classList.add('hidden');
     }
 
-    // ==================== FUNCIONES EXISTENTES ADAPTADAS ====================
+    // ==================== FUNCIONES DE PERFIL Y CHECKLIST ====================
     async loadProfileData() {
         const { data: p } = await supabase.from('profiles').select('*').eq('id', this.userId).single();
         if(p) {
@@ -819,16 +830,15 @@ export class DriverView {
                     btnEnd.classList.remove('hidden');
                     
                     // Cargar datos existentes
-                    this.tripLogistics.startTime = trip.start_time ? new Date(trip.start_time) : null;
-                    this.tripLogistics.exitKm = trip.exit_km;
-                    
                     if (trip.start_time) {
+                        this.tripLogistics.startTime = new Date(trip.start_time);
                         document.getElementById('summary-start-time').innerText = 
                             new Date(trip.start_time).toLocaleTimeString();
                         document.getElementById('trip-summary-container').classList.remove('hidden');
                     }
 
                     if (trip.exit_km) {
+                        this.tripLogistics.exitKm = trip.exit_km;
                         document.getElementById('exit-km-input').value = trip.exit_km;
                     }
 
@@ -849,6 +859,12 @@ export class DriverView {
                 if (activePanel) activePanel.classList.add('hidden');
                 this.stopTracking();
             }
+        }
+
+        // Renderizar checklist
+        const checkCont = document.getElementById('checklist-content');
+        if (trip) {
+            this.renderMechanicChecklist(trip, checkCont);
         }
     }
 
@@ -897,6 +913,197 @@ export class DriverView {
         this.switchTab('checklist');
     }
 
+    renderMechanicChecklist(trip, container) {
+        if (trip.status === 'requested') {
+            container.innerHTML = `
+                <div class="text-center py-8">
+                    <div class="animate-bounce text-orange-500 mb-4">
+                        <span class="material-symbols-outlined text-5xl">engineering</span>
+                    </div>
+                    <p class="text-white font-black text-xl">Pasa al Taller</p>
+                    <p class="text-sm text-[#92adc9] mt-2">El Jefe de Taller debe liberar la unidad</p>
+                </div>
+            `;
+        } else {
+            container.innerHTML = `
+                <div class="space-y-4">
+                    <!-- Checklist aprobado -->
+                    <div class="bg-[#111a22] p-4 rounded-xl border border-emerald-500/30">
+                        <div class="flex justify-between items-center">
+                            <span class="text-white font-bold">Inspección General</span>
+                            <span class="bg-emerald-500/20 text-emerald-400 text-[10px] px-2 py-1 rounded-full flex items-center gap-1">
+                                <span class="material-symbols-outlined text-[12px]">verified</span> Aprobado
+                            </span>
+                        </div>
+                    </div>
+                    
+                    <!-- SECCIÓN DE FOTO CON CÁMARA -->
+                    <div class="bg-[#111a22] border border-[#324d67] p-5 rounded-xl">
+                        <h4 class="text-white font-bold text-sm mb-4 flex items-center gap-2">
+                            <span class="material-symbols-outlined text-primary">photo_camera</span>
+                            Foto de Recepción
+                        </h4>
+                        
+                        <!-- Input de cámara -->
+                        <input type="file" id="reception-photo-input" accept="image/*" capture="environment" class="hidden">
+                        
+                        <!-- Vista previa de la imagen -->
+                        <div id="reception-photo-preview" class="hidden mb-4">
+                            <img id="reception-photo-img" class="w-full rounded-xl border-2 border-primary/30" />
+                        </div>
+                        
+                        <!-- Botón para tomar foto -->
+                        <label for="reception-photo-input" 
+                               class="w-full h-14 bg-[#233648] hover:bg-primary/20 text-white rounded-xl flex items-center justify-center gap-3 cursor-pointer font-bold transition-all border-2 border-dashed border-[#324d67] hover:border-primary">
+                            <span class="material-symbols-outlined text-2xl">add_a_photo</span>
+                            <span>TOMAR FOTO DE RECEPCIÓN</span>
+                        </label>
+                        
+                        <!-- Checkbox de aceptación -->
+                        <label class="flex items-start gap-3 cursor-pointer mt-6 p-3 bg-[#1c2127] rounded-xl">
+                            <div class="relative flex items-center">
+                                <input type="checkbox" id="accept-conditions-chk" class="peer appearance-none w-6 h-6 border-2 border-[#324d67] rounded-lg bg-[#111a22] checked:bg-primary checked:border-primary">
+                                <span class="material-symbols-outlined absolute text-white text-sm opacity-0 peer-checked:opacity-100 left-1 top-1">check</span>
+                            </div>
+                            <span class="text-sm text-[#92adc9] peer-checked:text-white">
+                                Acepto recibir la unidad ECO-${trip.vehicles.economic_number} en buen estado
+                            </span>
+                        </label>
+                    </div>
+
+                    <!-- Botón de confirmación -->
+                    <button id="btn-confirm-reception" 
+                            onclick="window.conductorModule.confirmReception('${trip.id}')" 
+                            class="w-full py-5 bg-primary text-white font-black rounded-xl uppercase text-lg shadow-[0_0_30px_rgba(19,127,236,0.3)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+                            disabled>
+                        <span class="material-symbols-outlined">assignment_turned_in</span>
+                        FIRMAR CONFORMIDAD
+                    </button>
+                </div>
+            `;
+
+            // Lógica para manejar la foto
+            const photoInput = document.getElementById('reception-photo-input');
+            const photoPreview = document.getElementById('reception-photo-preview');
+            const photoImg = document.getElementById('reception-photo-img');
+            const acceptChk = document.getElementById('accept-conditions-chk');
+            const btnConfirm = document.getElementById('btn-confirm-reception');
+            
+            // Resetear variable
+            this.receptionPhotoFile = null;
+            
+            // Validar formulario
+            const validateForm = () => {
+                btnConfirm.disabled = !(this.receptionPhotoFile && acceptChk.checked);
+            };
+
+            // Cuando se selecciona una foto
+            photoInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if(!file) return;
+                
+                // Validar que sea imagen
+                if (!file.type.startsWith('image/')) {
+                    alert('Por favor selecciona una imagen válida');
+                    return;
+                }
+                
+                // Validar tamaño (máximo 5MB)
+                if (file.size > 5 * 1024 * 1024) {
+                    alert('La imagen no debe superar los 5MB');
+                    return;
+                }
+                
+                this.receptionPhotoFile = file;
+                
+                // Mostrar preview
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    photoImg.src = e.target.result;
+                    photoPreview.classList.remove('hidden');
+                };
+                reader.readAsDataURL(file);
+                
+                validateForm();
+            });
+
+            acceptChk.addEventListener('change', validateForm);
+        }
+    }
+
+    async confirmReception(id) {
+        if (!this.receptionPhotoFile) {
+            alert("Debes tomar una foto de la unidad");
+            return;
+        }
+
+        const btn = document.getElementById('btn-confirm-reception');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = `<span class="material-symbols-outlined animate-spin">progress_activity</span> SUBIENDO...`;
+        btn.disabled = true;
+
+        try {
+            // 1. SUBIR LA IMAGEN A SUPABASE STORAGE
+            const fileExt = this.receptionPhotoFile.name.split('.').pop();
+            const fileName = `${this.userId}/${id}/reception_${Date.now()}.${fileExt}`;
+            
+            const { data: uploadData, error: uploadError } = await supabase.storage
+                .from('trip-photos')
+                .upload(fileName, this.receptionPhotoFile);
+
+            if (uploadError) throw uploadError;
+
+            // 2. GENERAR CÓDIGO DE ACCESO
+            const accessCode = Math.random().toString(36).substring(2, 7).toUpperCase();
+
+            // 3. ACTUALIZAR LA BASE DE DATOS
+            const { error: updateError } = await supabase
+                .from('trips')
+                .update({ 
+                    status: 'driver_accepted', 
+                    access_code: accessCode,
+                    reception_photo_path: fileName,
+                    checklist_exit: {
+                        photo_taken_at: new Date().toISOString(),
+                        accepted_at: new Date().toISOString(),
+                        vehicle_condition: 'good'
+                    }
+                })
+                .eq('id', id);
+
+            if (updateError) throw updateError;
+
+            // 4. GUARDAR UNA COPIA LOCAL POR SI ACASO
+            localStorage.setItem(`trip_${id}_photo`, fileName);
+
+            btn.innerHTML = `<span class="material-symbols-outlined">check_circle</span> ¡LISTO!`;
+            
+            setTimeout(() => {
+                this.loadDashboardState();
+                this.switchTab('perfil');
+            }, 1000);
+
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error al procesar: ' + error.message);
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }
+    }
+
+    // Método para ver la foto después
+    async viewReceptionPhoto() {
+        if (!this.currentTrip?.reception_photo_path) return;
+        
+        const { data } = supabase.storage
+            .from('trip-photos')
+            .getPublicUrl(this.currentTrip.reception_photo_path);
+        
+        if (data?.publicUrl) {
+            window.open(data.publicUrl, '_blank');
+        }
+    }
+
     renderAccessCode(trip) {
         const container = document.getElementById('access-code-container');
         
@@ -930,10 +1137,26 @@ export class DriverView {
         document.getElementById(`tab-${tabId}`).classList.remove('hidden');
         document.getElementById(`nav-${tabId}`).classList.add('active', 'text-primary');
 
+        // Mostrar foto de recepción si existe en perfil
+        if (tabId === 'perfil' && this.currentTrip?.reception_photo_path) {
+            this.displayReceptionPhoto();
+        }
+
         if (tabId === 'ruta' && this.currentTrip?.status === 'in_progress') {
             setTimeout(() => this.startTracking(), 500);
-        } else if (tabId !== 'ruta') {
-            // No detenemos el GPS, solo pausamos UI si no es necesario
+        }
+    }
+
+    async displayReceptionPhoto() {
+        if (!this.currentTrip?.reception_photo_path) return;
+        
+        const { data } = supabase.storage
+            .from('trip-photos')
+            .getPublicUrl(this.currentTrip.reception_photo_path);
+        
+        if (data?.publicUrl) {
+            document.getElementById('reception-photo-display').src = data.publicUrl;
+            document.getElementById('reception-photo-container').classList.remove('hidden');
         }
     }
 }
