@@ -13,8 +13,9 @@ import { IncidentsDashboard } from './views/admin/IncidentsDashboard.js';
 import { ReportsView } from './views/admin/ReportsView.js';
 import { FleetView } from './views/admin/FleetView.js'; 
 
-// ✅ AQUÍ IMPORTAMOS LA NUEVA VISTA DE STOCK
+// VISTAS NUEVAS AGREGADAS
 import { InventoryStockView } from './views/admin/InventoryStockView.js'; 
+import { TrackingView } from './views/admin/TrackingView.js'; // ✅ IMPORTACIÓN DEL MAPA GPS
 
 // Vistas Operativas
 import { ScannerView } from './views/guard/ScannerView.js';
@@ -42,8 +43,8 @@ export class Router {
             '#incidents-admin': IncidentsDashboard,
             '#reports': ReportsView,           
             
-            // ✅ AQUÍ AGREGAMOS LA RUTA EXACTA PARA EL INVENTARIO
             '#stock': InventoryStockView,      
+            '#tracking': TrackingView, // ✅ RUTA DEL MAPA GPS AÑADIDA AQUÍ
             
             // Operativos
             '#scanner': ScannerView,
