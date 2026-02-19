@@ -11,7 +11,10 @@ import { MaintenanceView } from './views/admin/MaintenanceView.js';
 import { InventoryView } from './views/admin/InventoryView.js';
 import { IncidentsDashboard } from './views/admin/IncidentsDashboard.js';
 import { ReportsView } from './views/admin/ReportsView.js';
-import { FleetView } from './views/admin/FleetView.js'; // ✅ Nueva Vista agregada
+import { FleetView } from './views/admin/FleetView.js'; 
+
+// ✅ AQUÍ IMPORTAMOS LA NUEVA VISTA DE STOCK
+import { InventoryStockView } from './views/admin/InventoryStockView.js'; 
 
 // Vistas Operativas
 import { ScannerView } from './views/guard/ScannerView.js';
@@ -26,18 +29,21 @@ export class Router {
 
         // Mapeo de rutas
         this.routes = {
-            '': LoginView,            // Ruta raíz
+            '': LoginView,            
             '#login': LoginView,
             
             // Admin
             '#dashboard': DashboardView,
             '#assignments': AssignmentsView,
-            '#inventory': InventoryView,
-            '#fleet': FleetView,       // ✅ Nueva Ruta para control de unidades y multas
+            '#inventory': InventoryView,       
+            '#fleet': FleetView,               
             '#fuel': FuelView,
             '#maintenance': MaintenanceView,
             '#incidents-admin': IncidentsDashboard,
-            '#reports': ReportsView,   // KPIs de conductores / SLAs
+            '#reports': ReportsView,           
+            
+            // ✅ AQUÍ AGREGAMOS LA RUTA EXACTA PARA EL INVENTARIO
+            '#stock': InventoryStockView,      
             
             // Operativos
             '#scanner': ScannerView,
@@ -71,7 +77,8 @@ export class Router {
 
         console.log("Navegando a:", hash);
         
-        const ViewClass = this.routes[hash] || LoginView;
+        // Si 'hash' no existe en this.routes, te manda a LoginView
+        const ViewClass = this.routes[hash] || LoginView; 
         
         // Renderizado
         const view = new ViewClass();
@@ -79,7 +86,7 @@ export class Router {
         // El layout decide si muestra sidebar o no basado en el rol
         this.appElement.innerHTML = this.layout.render(view.render());
         
-        // Ejecutar lógica post-render (listeners, cargas de datos)
+        // Ejecutar lógica post-render
         if (view.onMount) {
             view.onMount();
         }
