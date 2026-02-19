@@ -22,7 +22,7 @@ export class ScannerView {
                     </div>
                 </div>
                 <button onclick="window.location.reload()" class="px-4 py-2 rounded-lg bg-[#1c2127] border border-[#324d67] text-[#92adc9] text-xs font-bold hover:text-white transition-all flex items-center gap-2">
-                    <span class="material-symbols-outlined text-sm">refresh</span> Reiniciar Escáner
+                    <span class="material-symbols-outlined text-sm">refresh</span> Reiniciar
                 </button>
             </div>
 
@@ -33,13 +33,13 @@ export class ScannerView {
                         <div id="reader" class="w-full flex-1 bg-black min-h-[300px]"></div>
                         <div class="absolute bottom-0 inset-x-0 bg-emerald-900/90 backdrop-blur-sm p-3 text-center z-10">
                             <p class="text-white text-xs font-bold flex items-center justify-center gap-2 uppercase tracking-tighter">
-                                <span class="w-2 h-2 rounded-full bg-white animate-ping"></span> Escaneo en Vivo Activo
+                                <span class="w-2 h-2 rounded-full bg-white animate-ping"></span> Escaneo Físico Activo
                             </p>
                         </div>
                      </div>
                      
                      <div class="flex gap-2">
-                        <input id="scan-input" type="text" class="flex-1 bg-[#111a22] border border-[#324d67] text-white font-black rounded-xl p-4 placeholder-slate-600 focus:border-primary outline-none text-center tracking-widest text-2xl font-mono uppercase" placeholder="ID O CÓDIGO">
+                        <input id="scan-input" type="text" maxlength="6" class="flex-1 bg-[#111a22] border border-[#324d67] text-white font-black rounded-xl p-4 placeholder-slate-600 focus:border-primary outline-none text-center tracking-[8px] text-2xl font-mono uppercase" placeholder="CÓDIGO">
                         <button id="btn-validate" class="bg-primary hover:bg-blue-600 text-white font-bold px-6 rounded-xl transition-all shadow-lg">
                             <span class="material-symbols-outlined">search</span>
                         </button>
@@ -48,10 +48,10 @@ export class ScannerView {
 
                 <div id="result-area" class="bg-[#1c2127] rounded-3xl p-8 border border-[#324d67] flex flex-col items-center justify-center text-center shadow-2xl h-full min-h-[350px] relative overflow-hidden">
                     <div class="size-28 rounded-full bg-[#111a22] border-4 border-[#233648] flex items-center justify-center mb-6 shadow-inner">
-                        <span class="material-symbols-outlined text-7xl text-slate-700">qr_code_scanner</span>
+                        <span class="material-symbols-outlined text-7xl text-slate-700">pin</span>
                     </div>
-                    <h3 class="text-2xl font-black text-white mb-2 uppercase tracking-tighter">Esperando Validación</h3>
-                    <p class="text-[#92adc9] text-sm max-w-xs mx-auto">Coloque el QR del conductor frente a la cámara para autorizar el movimiento.</p>
+                    <h3 class="text-2xl font-black text-white mb-2 uppercase tracking-tighter">Esperando Código</h3>
+                    <p class="text-[#92adc9] text-sm max-w-xs mx-auto">Ingrese el código de 5 letras del conductor o el código numérico de emergencia.</p>
                 </div>
 
             </div>
@@ -81,48 +81,25 @@ export class ScannerView {
 
     async handleScan(code) {
         const area = document.getElementById('result-area');
-        const cleanCode = code.trim();
+        const cleanCode = code.trim().toUpperCase();
 
         area.innerHTML = `
             <div class="flex flex-col items-center animate-pulse">
                 <div class="size-20 border-4 border-primary border-t-transparent rounded-full animate-spin mb-6"></div>
-                <p class="text-primary font-black uppercase text-sm tracking-[4px]">Verificando en BD...</p>
+                <p class="text-primary font-black uppercase text-sm tracking-[4px]">Verificando Acceso...</p>
             </div>`;
 
         try {
-            let trip = null;
+            // Buscamos directamente si existe en código normal (5 letras) o en emergencia (6 números)
+            const { data: trip, error } = await supabase
+                .from('trips')
+                .select('*, profiles:driver_id(*), vehicles:vehicle_id(*)')
+                .or(`access_code.eq.${cleanCode},emergency_code.eq.${cleanCode}`)
+                .neq('status', 'closed')
+                .maybeSingle();
 
-            // CASO 1: Es un JSON (QR Dinámico de Driver)
-            if (cleanCode.startsWith('{')) {
-                try {
-                    const parsed = JSON.parse(cleanCode);
-                    const tripId = parsed.t_id || parsed.trip_id;
-                    if (tripId) {
-                        const { data } = await supabase.from('trips').select('*, profiles:driver_id(*), vehicles:vehicle_id(*)').eq('id', tripId).neq('status', 'closed').maybeSingle();
-                        trip = data;
-                    }
-                } catch(e) { console.warn("No es un JSON válido"); }
-            } 
-            // CASO 2: Es un código de emergencia de 6 dígitos (Taller)
-            else if (/^\d{6}$/.test(cleanCode)) {
-                const { data } = await supabase.from('trips').select('*, profiles:driver_id(*), vehicles:vehicle_id(*)').eq('emergency_code', cleanCode).neq('status', 'closed').maybeSingle();
-                trip = data;
-            } 
-            // CASO 3: Es un UUID (Ingreso manual o Gafete físico)
-            else {
-                // Intentar buscar como ID de viaje
-                let { data } = await supabase.from('trips').select('*, profiles:driver_id(*), vehicles:vehicle_id(*)').eq('id', cleanCode).neq('status', 'closed').maybeSingle();
-                trip = data;
-                
-                // Si no, intentar buscar por ID de conductor
-                if (!trip) {
-                    const { data: byDriver } = await supabase.from('trips').select('*, profiles:driver_id(*), vehicles:vehicle_id(*)').eq('driver_id', cleanCode).neq('status', 'closed').maybeSingle();
-                    trip = byDriver;
-                }
-            }
-
-            // Si después de todas las búsquedas no hay viaje:
-            if (!trip) throw new Error("CÓDIGO NO RECONOCIDO O SIN VIAJE ACTIVO");
+            if (error) throw error;
+            if (!trip) throw new Error("CÓDIGO INVÁLIDO, EXPIRADO O SIN VIAJE ACTIVO");
 
             this.renderDriverProfile(trip);
 
@@ -130,6 +107,7 @@ export class ScannerView {
             this.renderError(e.message);
         } finally {
             this.isProcessing = false;
+            document.getElementById('scan-input').value = ""; // Limpiar input
         }
     }
 
@@ -203,8 +181,8 @@ export class ScannerView {
             .from('trips')
             .update({ 
                 status: isExit ? 'in_progress' : 'arrived', 
-                [isExit ? 'exit_gate_time' : 'entry_gate_time']: new Date().toISOString(),
-                emergency_code: null 
+                [isExit ? 'exit_gate_time' : 'entry_gate_time']: new Date().toISOString()
+                // Ya NO borramos el emergency_code aquí para que le sirva de regreso si lo necesita
             })
             .eq('id', trip.id);
 
