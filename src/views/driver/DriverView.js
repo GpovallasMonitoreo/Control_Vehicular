@@ -38,7 +38,7 @@ export class DriverView {
                         <button onclick="document.getElementById('modal-incident').classList.remove('hidden')" class="h-10 w-10 bg-red-900/20 border border-red-500/30 text-red-500 rounded-full flex items-center justify-center transition-colors hover:bg-red-500 hover:text-white">
                             <span class="material-symbols-outlined text-sm">notifications_active</span>
                         </button>
-                        <button onclick="window.logoutDriver()" class="h-10 w-10 bg-[#233648] border border-[#324d67] rounded-full text-white flex items-center justify-center">
+                        <button onclick="window.logoutDriver()" class="h-10 w-10 bg-[#233648] border border-[#324d67] rounded-full text-white flex items-center justify-center hover:text-red-400">
                             <span class="material-symbols-outlined text-sm">logout</span>
                         </button>
                     </div>
@@ -75,8 +75,10 @@ export class DriverView {
                                 <span id="live-speed" class="text-2xl font-black text-white">0</span> <small class="text-white/50 text-[10px]">km/h</small>
                             </div>
                             <div class="bg-[#192633] p-3 rounded-xl border border-[#233648] text-center">
-                                <p class="text-[10px] text-[#92adc9] font-bold uppercase mb-1">Distancia</p>
-                                <span id="live-distance" class="text-2xl font-black text-white">0.0</span> <small class="text-white/50 text-[10px]">km</small>
+                                <p class="text-[10px] text-[#92adc9] font-bold uppercase mb-1">GPS Central</p>
+                                <span class="text-emerald-400 font-bold text-xs uppercase flex items-center justify-center gap-1 mt-2">
+                                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Transmitiendo
+                                </span>
                             </div>
                         </div>
                     </section>
@@ -92,10 +94,10 @@ export class DriverView {
                             </div>
 
                             <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100 mb-4 w-full">
-                                <div id="qr-container" class="bg-white p-2 rounded-xl shadow-inner border border-slate-200 mx-auto w-fit">
-                                    <img id="card-qr" class="w-40 h-40 opacity-20" src="" alt="QR Acceso">
+                                <p id="qr-status-msg" class="text-[10px] text-slate-500 font-bold mb-2 uppercase tracking-tighter">Sin unidad vinculada</p>
+                                <div id="qr-container" class="bg-white rounded-xl shadow-inner border border-slate-200 mx-auto w-full">
+                                    <img id="card-qr" class="w-40 h-40 opacity-20 mx-auto" src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=empty" alt="QR Acceso">
                                 </div>
-                                <p id="qr-status-msg" class="text-[10px] text-slate-500 font-bold mt-3 uppercase tracking-tighter">Sin unidad vinculada</p>
                             </div>
 
                             <div class="w-full text-left bg-slate-50 p-4 rounded-2xl border border-slate-100 mb-4">
@@ -194,6 +196,9 @@ export class DriverView {
         this.routeCoords = [];
         this.polyline.setLatLngs([]);
 
+        // Limpiar intervalo anterior si existe
+        if (this.watchPositionId) navigator.geolocation.clearWatch(this.watchPositionId);
+
         this.watchPositionId = navigator.geolocation.watchPosition((pos) => {
             const { latitude, longitude, speed } = pos.coords;
             const latlng = [latitude, longitude];
@@ -206,8 +211,14 @@ export class DriverView {
             const speedKmh = Math.round((speed || 0) * 3.6);
             document.getElementById('live-speed').innerText = speedKmh;
 
+            // Inserta en la BD de Supabase para que la torre de control lo vea
             if(this.currentTrip) {
-                supabase.from('trip_locations').insert({ trip_id: this.currentTrip.id, lat: latitude, lng: longitude, speed: speedKmh });
+                supabase.from('trip_locations').insert({ 
+                    trip_id: this.currentTrip.id, 
+                    lat: latitude, 
+                    lng: longitude, 
+                    speed: speedKmh 
+                });
             }
         }, (err) => console.error(err), { enableHighAccuracy: true });
     }
@@ -262,7 +273,7 @@ export class DriverView {
     }
 
     async startTripExecution(tripId) {
-        if(!confirm("¿Iniciar ruta y rastreo de GPS?")) return;
+        if(!confirm("¿Iniciar ruta y rastreo de GPS a Central?")) return;
         const { error } = await supabase.from('trips').update({ status: 'in_progress', start_time: new Date() }).eq('id', tripId);
         if(!error) {
             this.loadDashboardState();
@@ -311,22 +322,29 @@ export class DriverView {
     }
 
     async confirmReception(id) {
-        await supabase.from('trips').update({ status: 'driver_accepted' }).eq('id', id);
+        // Generar un código alfanumérico de 5 caracteres al momento de aceptar
+        const accessCode = Math.random().toString(36).substring(2, 7).toUpperCase();
+        
+        await supabase.from('trips').update({ 
+            status: 'driver_accepted',
+            access_code: accessCode
+        }).eq('id', id);
+        
         this.loadDashboardState();
         this.switchTab('perfil');
     }
 
     generateQR(trip) {
-        const qrImg = document.getElementById('card-qr');
+        const container = document.getElementById('qr-container');
         const statusMsg = document.getElementById('qr-status-msg');
+        
         if (trip && (trip.status === 'driver_accepted' || trip.status === 'in_progress')) {
-            const data = JSON.stringify({ t_id: trip.id, v_id: trip.vehicle_id, plate: trip.vehicles.plate, d_id: this.userId, auth: 'OK' });
-            qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(data)}&color=0d141c`;
-            qrImg.classList.remove('opacity-20');
-            statusMsg.innerHTML = `PASE AUTORIZADO: <b class="text-primary">${trip.vehicles.plate}</b>`;
+            // Mostrar el CÓDIGO de 5 letras en GRANDE
+            container.innerHTML = `<div class="text-6xl font-black text-slate-800 tracking-[12px] py-6 text-center">${trip.access_code || 'ERROR'}</div>`;
+            statusMsg.innerHTML = `CÓDIGO DE ACCESO (UNIDAD: <b class="text-primary">${trip.vehicles.plate}</b>)`;
         } else {
-            qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=empty`;
-            qrImg.classList.add('opacity-20');
+            // Mostrar imagen de "vacío" o inactivo
+            container.innerHTML = `<img id="card-qr" class="w-40 h-40 opacity-20 mx-auto" src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=empty" alt="QR Acceso">`;
             statusMsg.innerText = "Sin unidad vinculada";
         }
     }
