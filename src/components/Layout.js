@@ -1,6 +1,6 @@
 export class Layout {
     constructor() {
-        // Leemos el rol del usuario (admin, guard, driver, guest)
+        // Leemos el rol del usuario (admin, guard, driver, mechanic, guest)
         this.role = localStorage.getItem('userRole') || 'guest';
     }
 
@@ -15,6 +15,7 @@ export class Layout {
         if (this.role === 'admin' || this.role === 'mechanic') {
             menuItems = `
                 <div class="text-xs font-bold text-[#92adc9] uppercase tracking-wider mb-2 px-2">Principal</div>
+                
                 <a href="#dashboard" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[#92adc9] hover:text-white hover:bg-[#324d67]/30 transition-all mb-1">
                     <span class="material-symbols-outlined text-[22px]">dashboard</span> <span class="font-medium text-sm">Panel de Control</span>
                 </a>
@@ -29,19 +30,31 @@ export class Layout {
                 <a href="#assignments" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[#92adc9] hover:text-white hover:bg-[#324d67]/30 transition-all mb-1">
                     <span class="material-symbols-outlined text-[22px]">assignment_ind</span> <span class="font-medium text-sm">Asignaciones</span>
                 </a>
+
+                <a href="#fuel" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[#92adc9] hover:text-white hover:bg-[#324d67]/30 transition-all mb-1">
+                    <span class="material-symbols-outlined text-[22px]">local_gas_station</span> <span class="font-medium text-sm">Combustible</span>
+                </a>
+
+                <a href="#incidents-admin" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[#92adc9] hover:text-white hover:bg-[#324d67]/30 transition-all mb-1">
+                    <span class="material-symbols-outlined text-[22px]">warning</span> <span class="font-medium text-sm">Incidentes</span>
+                </a>
                 
                 <div class="text-xs font-bold text-[#92adc9] uppercase tracking-wider mt-6 mb-2 px-2">Gestión de Activos</div>
+                
                 <a href="#inventory" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[#92adc9] hover:text-white hover:bg-[#324d67]/30 transition-all mb-1">
-                    <span class="material-symbols-outlined text-[22px]">directions_car</span> <span class="font-medium text-sm">Unidades (Maestro)</span>
+                    <span class="material-symbols-outlined text-[22px]">directions_car</span> <span class="font-medium text-sm">Maestro de Unidades</span>
                 </a>
+                
                 <a href="#stock" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[#92adc9] hover:text-white hover:bg-[#324d67]/30 transition-all mb-1">
                     <span class="material-symbols-outlined text-[22px]">inventory_2</span> <span class="font-medium text-sm">Stock y Recetas</span>
                 </a>
+                
                 <a href="#maintenance" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[#92adc9] hover:text-white hover:bg-[#324d67]/30 transition-all">
-                    <span class="material-symbols-outlined text-[22px]">build_circle</span> <span class="font-medium text-sm">Mantenimiento</span>
+                    <span class="material-symbols-outlined text-[22px]">build_circle</span> <span class="font-medium text-sm">Taller Central</span>
                 </a>
                 
                 <div class="text-xs font-bold text-[#92adc9] uppercase tracking-wider mt-6 mb-2 px-2">Analítica y SLA</div>
+                
                 <a href="#reports" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[#92adc9] hover:text-white hover:bg-[#324d67]/30 transition-all">
                     <span class="material-symbols-outlined text-[22px]">analytics</span> <span class="font-medium text-sm">Reportes BI</span>
                 </a>
