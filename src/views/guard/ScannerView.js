@@ -87,10 +87,10 @@ export class ScannerView {
             </div>`;
 
         try {
-            // Consulta relacional limpia sin caracteres de escape conflictivos
+            // SOLUCIÓN: Cambiamos a driver_id(*) y vehicle_id(*) para evitar errores si faltan columnas
             const { data: trip, error } = await supabase
                 .from('trips')
-                .select('*, profiles:driver_id(full_name, photo_url, employee_id), vehicles:vehicle_id(economic_number, plate, model)')
+                .select('*, profiles:driver_id(*), vehicles:vehicle_id(*)')
                 .or(`id.eq.${cleanCode},emergency_code.eq.${cleanCode}`)
                 .neq('status', 'closed')
                 .maybeSingle();
@@ -112,6 +112,10 @@ export class ScannerView {
         const statusColor = isEntry ? 'text-blue-400' : 'text-emerald-400';
         const borderColor = isEntry ? 'border-blue-500' : 'border-emerald-500';
 
+        // Validamos si la columna existe antes de imprimirla, si no, mostramos un fallback
+        const photoUrl = trip.profiles?.photo_url || '';
+        const employeeId = trip.profiles?.employee_id || '---';
+
         document.getElementById('result-area').innerHTML = `
             <div class="w-full h-full flex flex-col animate-fade-in">
                 <div class="flex items-center justify-between mb-8">
@@ -125,11 +129,11 @@ export class ScannerView {
                 <div class="bg-[#111a22] border-2 ${borderColor} rounded-3xl p-6 shadow-2xl relative overflow-hidden">
                     <div class="flex items-center gap-6 relative z-10">
                         <div class="size-24 rounded-2xl bg-slate-700 bg-cover bg-center border-2 border-white/20 shadow-lg" 
-                             style="background-image: url('${trip.profiles?.photo_url || ''}')"></div>
+                             style="background-image: url('${photoUrl}')"></div>
                         <div class="text-left flex-1">
                             <p class="text-[#92adc9] text-[10px] font-black uppercase tracking-widest">Operador</p>
                             <h3 class="text-white text-xl font-bold leading-tight">${trip.profiles?.full_name || 'Desconocido'}</h3>
-                            <p class="text-primary font-mono text-sm mt-1">ID: ${trip.profiles?.employee_id || '---'}</p>
+                            <p class="text-primary font-mono text-sm mt-1">ID: ${employeeId}</p>
                         </div>
                     </div>
                     <div class="grid grid-cols-2 gap-4 mt-6 pt-6 border-t border-white/10">
