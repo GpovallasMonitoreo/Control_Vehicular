@@ -18,6 +18,14 @@ export class Layout {
                 <a href="#dashboard" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[#92adc9] hover:text-white hover:bg-[#324d67]/30 transition-all mb-1">
                     <span class="material-symbols-outlined text-[22px]">dashboard</span> <span class="font-medium text-sm">Panel de Control</span>
                 </a>
+                
+                <a href="#tracking" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[#92adc9] hover:text-white hover:bg-[#324d67]/30 transition-all mb-1 group relative overflow-hidden">
+                    <div class="absolute inset-0 bg-gradient-to-r from-emerald-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                    <span class="material-symbols-outlined text-[22px] group-hover:text-emerald-400 transition-colors">satellite_alt</span> 
+                    <span class="font-medium text-sm group-hover:text-white relative z-10">Torre de Control GPS</span>
+                    <span class="ml-auto w-2 h-2 rounded-full bg-emerald-500 animate-pulse relative z-10"></span>
+                </a>
+
                 <a href="#assignments" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[#92adc9] hover:text-white hover:bg-[#324d67]/30 transition-all mb-1">
                     <span class="material-symbols-outlined text-[22px]">assignment_ind</span> <span class="font-medium text-sm">Asignaciones</span>
                 </a>
