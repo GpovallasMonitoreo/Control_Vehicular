@@ -39,7 +39,7 @@ export class ScannerView {
                      </div>
                      
                      <div class="flex gap-2">
-                        <input id="scan-input" type="text" class="flex-1 bg-[#111a22] border border-[#324d67] text-white font-black rounded-xl p-4 placeholder-slate-600 focus:border-primary outline-none text-center tracking-widest text-2xl font-mono uppercase" placeholder="ID MANUAL">
+                        <input id="scan-input" type="text" class="flex-1 bg-[#111a22] border border-[#324d67] text-white font-black rounded-xl p-4 placeholder-slate-600 focus:border-primary outline-none text-center tracking-widest text-2xl font-mono uppercase" placeholder="ID O CÓDIGO">
                         <button id="btn-validate" class="bg-primary hover:bg-blue-600 text-white font-bold px-6 rounded-xl transition-all shadow-lg">
                             <span class="material-symbols-outlined">search</span>
                         </button>
@@ -72,7 +72,10 @@ export class ScannerView {
 
         document.getElementById('btn-validate').onclick = () => {
             const val = document.getElementById('scan-input').value;
-            if(val) this.handleScan(val);
+            if(val) {
+                this.isProcessing = true;
+                this.handleScan(val);
+            }
         };
     }
 
@@ -83,20 +86,43 @@ export class ScannerView {
         area.innerHTML = `
             <div class="flex flex-col items-center animate-pulse">
                 <div class="size-20 border-4 border-primary border-t-transparent rounded-full animate-spin mb-6"></div>
-                <p class="text-primary font-black uppercase text-sm tracking-[4px]">Verificando...</p>
+                <p class="text-primary font-black uppercase text-sm tracking-[4px]">Verificando en BD...</p>
             </div>`;
 
         try {
-            // SOLUCIÓN: Cambiamos a driver_id(*) y vehicle_id(*) para evitar errores si faltan columnas
-            const { data: trip, error } = await supabase
-                .from('trips')
-                .select('*, profiles:driver_id(*), vehicles:vehicle_id(*)')
-                .or(`id.eq.${cleanCode},emergency_code.eq.${cleanCode}`)
-                .neq('status', 'closed')
-                .maybeSingle();
+            let trip = null;
 
-            if (error) throw error;
-            if (!trip) throw new Error("ID NO RECONOCIDO O SIN VIAJE ACTIVO");
+            // CASO 1: Es un JSON (QR Dinámico de Driver)
+            if (cleanCode.startsWith('{')) {
+                try {
+                    const parsed = JSON.parse(cleanCode);
+                    const tripId = parsed.t_id || parsed.trip_id;
+                    if (tripId) {
+                        const { data } = await supabase.from('trips').select('*, profiles:driver_id(*), vehicles:vehicle_id(*)').eq('id', tripId).neq('status', 'closed').maybeSingle();
+                        trip = data;
+                    }
+                } catch(e) { console.warn("No es un JSON válido"); }
+            } 
+            // CASO 2: Es un código de emergencia de 6 dígitos (Taller)
+            else if (/^\d{6}$/.test(cleanCode)) {
+                const { data } = await supabase.from('trips').select('*, profiles:driver_id(*), vehicles:vehicle_id(*)').eq('emergency_code', cleanCode).neq('status', 'closed').maybeSingle();
+                trip = data;
+            } 
+            // CASO 3: Es un UUID (Ingreso manual o Gafete físico)
+            else {
+                // Intentar buscar como ID de viaje
+                let { data } = await supabase.from('trips').select('*, profiles:driver_id(*), vehicles:vehicle_id(*)').eq('id', cleanCode).neq('status', 'closed').maybeSingle();
+                trip = data;
+                
+                // Si no, intentar buscar por ID de conductor
+                if (!trip) {
+                    const { data: byDriver } = await supabase.from('trips').select('*, profiles:driver_id(*), vehicles:vehicle_id(*)').eq('driver_id', cleanCode).neq('status', 'closed').maybeSingle();
+                    trip = byDriver;
+                }
+            }
+
+            // Si después de todas las búsquedas no hay viaje:
+            if (!trip) throw new Error("CÓDIGO NO RECONOCIDO O SIN VIAJE ACTIVO");
 
             this.renderDriverProfile(trip);
 
@@ -112,7 +138,6 @@ export class ScannerView {
         const statusColor = isEntry ? 'text-blue-400' : 'text-emerald-400';
         const borderColor = isEntry ? 'border-blue-500' : 'border-emerald-500';
 
-        // Validamos si la columna existe antes de imprimirla, si no, mostramos un fallback
         const photoUrl = trip.profiles?.photo_url || '';
         const employeeId = trip.profiles?.employee_id || '---';
 
@@ -170,7 +195,6 @@ export class ScannerView {
                 <button onclick="window.location.reload()" class="w-full py-4 rounded-2xl font-black text-lg bg-[#233648] text-white border border-[#324d67]">REINTENTAR</button>
             </div>
         `;
-        if(navigator.vibrate) navigator.vibrate([200, 100, 200]);
     }
 
     async executeGateRegistration(trip) {
@@ -201,6 +225,5 @@ export class ScannerView {
                 <button onclick="window.location.reload()" class="mt-10 bg-[#233648] text-white px-8 py-3 rounded-xl font-bold uppercase text-xs">Siguiente</button>
             </div>
         `;
-        if(navigator.vibrate) navigator.vibrate([100, 50, 100]);
     }
 }
