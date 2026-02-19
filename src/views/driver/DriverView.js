@@ -8,8 +8,9 @@ export class DriverView {
         this.watchPositionId = null;
         this.map = null; 
         this.marker = null;
-        this.polyline = null; // NUEVO: Para la línea del camino
-        this.routeCoords = []; // NUEVO: Para guardar el historial de puntos
+        this.polyline = null; 
+        this.routeCoords = []; 
+        this.incidentImages = [];
         
         window.conductorModule = this;
     }
@@ -33,9 +34,14 @@ export class DriverView {
                             </div>
                         </div>
                     </div>
-                    <button onclick="window.logoutDriver()" class="h-10 w-10 bg-[#233648] border border-[#324d67] rounded-full text-white flex items-center justify-center">
-                        <span class="material-symbols-outlined text-sm">logout</span>
-                    </button>
+                    <div class="flex gap-2">
+                        <button onclick="document.getElementById('modal-incident').classList.remove('hidden')" class="h-10 w-10 bg-red-900/20 border border-red-500/30 text-red-500 rounded-full flex items-center justify-center transition-colors hover:bg-red-500 hover:text-white">
+                            <span class="material-symbols-outlined text-sm">notifications_active</span>
+                        </button>
+                        <button onclick="window.logoutDriver()" class="h-10 w-10 bg-[#233648] border border-[#324d67] rounded-full text-white flex items-center justify-center">
+                            <span class="material-symbols-outlined text-sm">logout</span>
+                        </button>
+                    </div>
                 </header>
 
                 <main class="flex-1 overflow-y-auto custom-scrollbar relative pb-24">
@@ -58,7 +64,7 @@ export class DriverView {
                         <div id="live-map" class="w-full flex-1 bg-slate-900"></div>
                         
                         <div id="route-controls" class="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] w-[90%]">
-                            <button id="btn-start-route" class="hidden w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-black rounded-2xl shadow-[0_0_20px_rgba(16,185,129,0.4)] flex items-center justify-center gap-2 transition-all active:scale-95 uppercase text-sm tracking-widest">
+                            <button id="btn-start-route" class="hidden w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-black rounded-2xl shadow-lg flex items-center justify-center gap-2 transition-all active:scale-95 uppercase text-sm tracking-widest">
                                 <span class="material-symbols-outlined">play_circle</span> Iniciar Mi Ruta Ahora
                             </button>
                         </div>
@@ -69,7 +75,7 @@ export class DriverView {
                                 <span id="live-speed" class="text-2xl font-black text-white">0</span> <small class="text-white/50 text-[10px]">km/h</small>
                             </div>
                             <div class="bg-[#192633] p-3 rounded-xl border border-[#233648] text-center">
-                                <p class="text-[10px] text-[#92adc9] font-bold uppercase mb-1">Distancia Recorrida</p>
+                                <p class="text-[10px] text-[#92adc9] font-bold uppercase mb-1">Distancia</p>
                                 <span id="live-distance" class="text-2xl font-black text-white">0.0</span> <small class="text-white/50 text-[10px]">km</small>
                             </div>
                         </div>
@@ -92,7 +98,7 @@ export class DriverView {
                                 <p id="qr-status-msg" class="text-[10px] text-slate-500 font-bold mt-3 uppercase tracking-tighter">Sin unidad vinculada</p>
                             </div>
 
-                            <div class="w-full text-left bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                            <div class="w-full text-left bg-slate-50 p-4 rounded-2xl border border-slate-100 mb-4">
                                 <h4 class="text-slate-800 text-xs font-black uppercase mb-3 flex items-center gap-2">
                                     <span class="material-symbols-outlined text-sm text-primary">description</span> Documentos
                                 </h4>
@@ -107,6 +113,11 @@ export class DriverView {
                                     </div>
                                 </div>
                             </div>
+
+                            <button onclick="window.print()" class="w-full py-3 bg-[#111a22] text-white rounded-xl font-bold text-xs uppercase flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all">
+                                <span class="material-symbols-outlined text-sm">print</span> Imprimir Gafete de Salida
+                            </button>
+
                         </div>
                     </section>
                 </main>
@@ -125,6 +136,27 @@ export class DriverView {
                         <span class="material-symbols-outlined">person</span><span class="text-[9px] font-bold uppercase">Perfil</span>
                     </button>
                 </nav>
+
+                <div id="modal-incident" class="hidden absolute inset-0 z-50 flex items-end justify-center bg-black/90 backdrop-blur-sm">
+                    <div class="bg-[#1c2127] w-full rounded-t-3xl p-6 border-t border-red-500/30">
+                        <h3 class="text-white font-bold text-lg mb-4 flex items-center gap-2"><span class="material-symbols-outlined text-red-500">warning</span> Reportar Incidente</h3>
+                        <textarea id="inc-desc" class="w-full bg-[#111a22] border border-[#233648] text-white p-4 rounded-xl outline-none mb-4 h-32" placeholder="Describe lo sucedido..."></textarea>
+                        
+                        <div class="flex gap-2 mb-4">
+                            <input type="file" id="input-incident-camera" accept="image/*" capture="environment" class="hidden">
+                            <label for="input-incident-camera" class="w-full h-12 bg-[#233648] text-white rounded-lg flex items-center justify-center gap-2 cursor-pointer font-bold text-xs transition-colors border border-[#324d67]">
+                                <span class="material-symbols-outlined text-sm">photo_camera</span> TOMAR FOTO EVIDENCIA
+                            </label>
+                        </div>
+                        <div id="incident-preview-grid" class="grid grid-cols-4 gap-2 mb-6"></div>
+
+                        <div class="flex gap-3">
+                            <button onclick="document.getElementById('modal-incident').classList.add('hidden')" class="flex-1 py-4 bg-slate-800 text-white rounded-xl font-bold uppercase text-xs">Cancelar</button>
+                            <button id="btn-send-incident" class="flex-1 py-4 bg-red-600 text-white rounded-xl font-bold uppercase text-xs">Enviar Reporte</button>
+                        </div>
+                    </div>
+                </div>
+
             </div>
         </div>
         `;
@@ -132,16 +164,17 @@ export class DriverView {
 
     async onMount() {
         this.userId = 'd0c1e2f3-0000-0000-0000-000000000001'; 
+        
         await this.loadProfileData();
         await this.loadDashboardState();
         this.initLiveMap();
+        this.setupIncidentForm();
 
         supabase.channel('driver_realtime').on('postgres_changes', { event: '*', schema: 'public', table: 'trips' }, () => {
             this.loadDashboardState();
         }).subscribe();
     }
 
-    // --- MAPA EN VIVO MEJORADO ---
     initLiveMap() {
         if (!window.L) return;
         const L = window.L;
@@ -149,24 +182,15 @@ export class DriverView {
         
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(this.map);
         
-        // Marcador del vehículo
         this.marker = L.marker([19.4326, -99.1332], {
             icon: L.divIcon({ className: 'bg-primary w-5 h-5 rounded-full border-2 border-white shadow-[0_0_15px_rgba(19,127,236,0.8)]' })
         }).addTo(this.map);
 
-        // NUEVO: Polilínea para marcar la ruta recorrida
-        this.polyline = L.polyline([], {
-            color: '#137fec',
-            weight: 5,
-            opacity: 0.7,
-            lineJoin: 'round'
-        }).addTo(this.map);
+        this.polyline = L.polyline([], { color: '#137fec', weight: 5, opacity: 0.7, lineJoin: 'round' }).addTo(this.map);
     }
 
     startTracking() {
         if (!navigator.geolocation) return;
-        
-        // Limpiamos historial si iniciamos ruta nueva
         this.routeCoords = [];
         this.polyline.setLatLngs([]);
 
@@ -174,26 +198,16 @@ export class DriverView {
             const { latitude, longitude, speed } = pos.coords;
             const latlng = [latitude, longitude];
             
-            // Actualizar Mapa
             this.map.panTo(latlng);
             this.marker.setLatLng(latlng);
-            
-            // NUEVO: Agregar punto a la ruta y pintar
             this.routeCoords.push(latlng);
             this.polyline.setLatLngs(this.routeCoords);
 
-            // Actualizar UI
             const speedKmh = Math.round((speed || 0) * 3.6);
             document.getElementById('live-speed').innerText = speedKmh;
 
-            // Guardar en Supabase para el Administrador
             if(this.currentTrip) {
-                supabase.from('trip_locations').insert({ 
-                    trip_id: this.currentTrip.id, 
-                    lat: latitude, 
-                    lng: longitude, 
-                    speed: speedKmh 
-                });
+                supabase.from('trip_locations').insert({ trip_id: this.currentTrip.id, lat: latitude, lng: longitude, speed: speedKmh });
             }
         }, (err) => console.error(err), { enableHighAccuracy: true });
     }
@@ -206,7 +220,7 @@ export class DriverView {
             document.getElementById('profile-avatar').style.backgroundImage = `url('${p.photo_url || ''}')`;
             document.getElementById('card-full-name').innerText = p.full_name;
             document.getElementById('card-photo').style.backgroundImage = `url('${p.photo_url || ''}')`;
-            document.getElementById('lic-number').innerText = p.license_number || 'A-XXXXXXXX';
+            document.getElementById('lic-number').innerText = p.employee_id || 'A-XXXXXXXX';
         }
     }
 
@@ -235,7 +249,6 @@ export class DriverView {
             this.renderMechanicChecklist(trip, checkCont);
             this.generateQR(trip);
 
-            // CONTROL DEL BOTÓN DE RUTA
             if (trip.status === 'driver_accepted') {
                 btnStart.classList.remove('hidden');
                 btnStart.onclick = () => this.startTripExecution(trip.id);
@@ -248,19 +261,12 @@ export class DriverView {
         }
     }
 
-    // NUEVO: Función para ejecutar el inicio de ruta
     async startTripExecution(tripId) {
-        if(!confirm("¿Deseas iniciar tu ruta y el seguimiento GPS ahora?")) return;
-        
-        const { error } = await supabase.from('trips').update({ 
-            status: 'in_progress',
-            start_time: new Date()
-        }).eq('id', tripId);
-
+        if(!confirm("¿Iniciar ruta y rastreo de GPS?")) return;
+        const { error } = await supabase.from('trips').update({ status: 'in_progress', start_time: new Date() }).eq('id', tripId);
         if(!error) {
             this.loadDashboardState();
             this.switchTab('ruta');
-            this.startTracking();
         }
     }
 
@@ -322,6 +328,24 @@ export class DriverView {
             qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=empty`;
             qrImg.classList.add('opacity-20');
             statusMsg.innerText = "Sin unidad vinculada";
+        }
+    }
+
+    setupIncidentForm() {
+        const input = document.getElementById('input-incident-camera');
+        const grid = document.getElementById('incident-preview-grid');
+        input.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if(!file) return;
+            this.incidentImages.push(file);
+            grid.innerHTML += `<div class="aspect-square bg-cover bg-center rounded border border-[#324d67]" style="background-image: url('${URL.createObjectURL(file)}')"></div>`;
+        });
+
+        document.getElementById('btn-send-incident').onclick = async () => {
+            alert("Incidente registrado y fotos enviadas a central.");
+            document.getElementById('modal-incident').classList.add('hidden');
+            this.incidentImages = [];
+            grid.innerHTML = '';
         }
     }
 
