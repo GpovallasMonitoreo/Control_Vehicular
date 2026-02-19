@@ -38,9 +38,9 @@ export class ScannerView {
                      </div>
                      
                      <div class="flex gap-2">
-                        <input id="scan-input" type="text" maxlength="8" class="flex-1 bg-[#111a22] border border-[#324d67] text-white font-black rounded-xl p-4 placeholder-slate-600 focus:border-primary outline-none text-center tracking-[8px] text-2xl font-mono uppercase" placeholder="CÓDIGO">
+                        <input id="scan-input" type="text" class="flex-1 bg-[#111a22] border border-[#324d67] text-white font-black rounded-xl p-4 placeholder-slate-600 focus:border-primary outline-none text-center tracking-widest text-2xl font-mono uppercase" placeholder="CÓDIGO">
                         <button id="btn-validate" class="bg-primary hover:bg-blue-600 text-white font-bold px-6 rounded-xl transition-all shadow-lg shadow-primary/20">
-                            <span class="material-symbols-outlined">verified_user</span>
+                            <span class="material-symbols-outlined">search</span>
                         </button>
                      </div>
                 </div>
@@ -49,8 +49,8 @@ export class ScannerView {
                     <div class="size-24 rounded-full bg-[#111a22] border-2 border-[#324d67] flex items-center justify-center mb-6">
                         <span class="material-symbols-outlined text-6xl text-slate-700">qr_code_2</span>
                     </div>
-                    <h3 class="text-2xl font-black text-white mb-2">Esperando Escaneo</h3>
-                    <p class="text-[#92adc9] text-sm max-w-xs mx-auto">Coloque el QR o ingrese el código de 6 dígitos generado por el taller.</p>
+                    <h3 class="text-2xl font-black text-white mb-2">Esperando Validación</h3>
+                    <p class="text-[#92adc9] text-sm max-w-xs mx-auto">Escanee el QR del conductor o ingrese el código de emergencia.</p>
                 </div>
 
             </div>
@@ -62,19 +62,11 @@ export class ScannerView {
         this.html5QrCode = new Html5Qrcode("reader");
         const config = { fps: 15, qrbox: { width: 250, height: 250 } };
         
-        // Iniciar cámara con manejo de error mejorado
         this.html5QrCode.start({ facingMode: "environment" }, config, 
             (decoded) => this.handleScan(decoded),
-            (err) => { /* Silenciar spam de logs de escaneo fallido */ }
+            (err) => { /* Errores de búsqueda de QR silenciados */ }
         ).catch(err => {
             console.error("Error cámara:", err);
-            document.getElementById('result-area').innerHTML = `
-                <div class="bg-red-500/10 border border-red-500/30 p-6 rounded-2xl text-center">
-                    <span class="material-symbols-outlined text-red-500 text-5xl mb-4">videocam_off</span>
-                    <h3 class="text-white font-bold">Cámara Bloqueada</h3>
-                    <p class="text-[#92adc9] text-sm mt-2">Permite el acceso a la cámara en los ajustes de tu navegador para usar el escáner.</p>
-                </div>
-            `;
         });
 
         document.getElementById('btn-validate').onclick = () => {
@@ -86,15 +78,45 @@ export class ScannerView {
     async handleScan(code) {
         if(!code) return;
         const area = document.getElementById('result-area');
-        area.innerHTML = `<div class="flex flex-col items-center animate-pulse"><div class="size-12 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4"></div><p class="text-primary font-bold uppercase text-xs tracking-widest">Validando con la nube...</p></div>`;
+        area.innerHTML = `<div class="flex flex-col items-center animate-pulse"><div class="size-12 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4"></div><p class="text-primary font-bold uppercase text-xs tracking-widest">Validando...</p></div>`;
 
         try {
             let trip = null;
             const cleanCode = code.trim();
 
-            // --- LÓGICA 1: CÓDIGO NUMÉRICO (EMERGENCIA) ---
+            // --- ESCENARIO 1: ES UN QR DINÁMICO (JSON) ---
+            if (cleanCode.startsWith('{')) {
+                try {
+                    const parsed = JSON.parse(cleanCode);
+                    const tripId = parsed.t_id || parsed.trip_id;
+
+                    if (tripId) {
+                        // Buscamos el viaje directamente por su ID
+                        const { data, error } = await supabase
+                            .from('trips')
+                            .select('*, vehicles(*), profiles(*)')
+                            .eq('id', tripId)
+                            .single();
+
+                        if (error || !data) throw new Error("VIAJE NO ENCONTRADO O EXPIRADO");
+                        trip = data;
+                        
+                        this.renderResult('green', 'GAFETE VALIDADO', 
+                            `UNIDAD: ${trip.vehicles.economic_number}<br>Chofer: ${trip.profiles.full_name}<br>Placas: ${trip.vehicles.plate}`, 
+                            { 
+                                text: trip.status === 'driver_accepted' ? 'REGISTRAR SALIDA' : 'REGISTRAR ENTRADA', 
+                                action: () => this.executeAction(trip) 
+                            }
+                        );
+                        return;
+                    }
+                } catch (e) {
+                    console.error("Error parseando JSON:", e);
+                }
+            }
+
+            // --- ESCENARIO 2: ES UN CÓDIGO DE EMERGENCIA (6 DÍGITOS) ---
             if (/^\d{6}$/.test(cleanCode)) {
-                console.log("🔍 Buscando código de emergencia:", cleanCode);
                 const { data, error } = await supabase
                     .from('trips')
                     .select('*, vehicles(*), profiles(*)')
@@ -102,43 +124,35 @@ export class ScannerView {
                     .neq('status', 'closed')
                     .maybeSingle();
 
-                if (error) throw error;
-                if (!data) throw new Error("CÓDIGO NO ENCONTRADO O YA UTILIZADO");
-
-                // Validar expiración
-                if (data.emergency_expiry && new Date() > new Date(data.emergency_expiry)) {
-                    throw new Error("EL CÓDIGO HA EXPIRADO (Válido solo por 1 hora)");
-                }
+                if (!data) throw new Error("CÓDIGO INVÁLIDO O EXPIRADO");
+                
                 trip = data;
-                this.renderResult('orange', 'ACCESO POR CÓDIGO', `UNIDAD: ${trip.vehicles.economic_number}<br>Chofer: ${trip.profiles.full_name}<br><span class="text-xs text-orange-400">Pase remoto validado.</span>`, 
-                    { text: trip.status === 'driver_accepted' ? 'AUTORIZAR SALIDA' : 'AUTORIZAR ENTRADA', action: () => this.executeAction(trip) });
+                this.renderResult('orange', 'ACCESO REMOTO', 
+                    `UNIDAD: ${trip.vehicles.economic_number}<br>AUTORIZACIÓN POR TALLER<br>Chofer: ${trip.profiles.full_name}`, 
+                    { 
+                        text: (trip.status === 'driver_accepted' || trip.status === 'mechanic_approved') ? 'AUTORIZAR SALIDA' : 'AUTORIZAR ENTRADA', 
+                        action: () => this.executeAction(trip) 
+                    }
+                );
                 return;
             }
 
-            // --- LÓGICA 2: QR DINÁMICO (JSON: Conductor + Carro) ---
-            try {
-                const parsed = JSON.parse(cleanCode);
-                if (parsed.trip_id || parsed.v_id) {
-                    const idToSearch = parsed.trip_id || parsed.v_id;
-                    const field = parsed.trip_id ? 'id' : 'vehicle_id';
-                    
-                    const { data, error } = await supabase.from('trips').select('*, vehicles(*), profiles(*)').eq(field, idToSearch).neq('status', 'closed').maybeSingle();
-                    if (data) {
-                        trip = data;
-                        this.renderResult('green', 'GAFETE DIGITAL', `UNIDAD: ${trip.vehicles.economic_number}<br>Chofer: ${trip.profiles.full_name}`, 
-                            { text: trip.status === 'in_progress' ? 'REGISTRAR ENTRADA' : 'REGISTRAR SALIDA', action: () => this.executeAction(trip) });
-                        return;
-                    }
-                }
-            } catch (e) { /* No es JSON, seguimos a UUID */ }
-
-            // --- LÓGICA 3: QR ESTÁNDAR (ID DEL CONDUCTOR) ---
+            // --- ESCENARIO 3: ES EL ID DEL CONDUCTOR (UUID) ---
             const { data: driver } = await supabase.from('profiles').select('*').eq('id', cleanCode).maybeSingle();
             if (driver) {
-                const { data: tripData } = await supabase.from('trips').select('*, vehicles(*), profiles(*)').eq('driver_id', driver.id).neq('status', 'closed').maybeSingle();
-                if (!tripData) throw new Error(`El conductor ${driver.full_name} no tiene un viaje activo en sistema.`);
+                const { data: tripData } = await supabase
+                    .from('trips')
+                    .select('*, vehicles(*), profiles(*)')
+                    .eq('driver_id', driver.id)
+                    .neq('status', 'closed')
+                    .maybeSingle();
+
+                if (!tripData) throw new Error("EL CONDUCTOR NO TIENE VIAJES ACTIVOS");
                 
-                this.processStandardFlow(tripData);
+                const isEntry = tripData.status === 'in_progress';
+                this.renderResult(isEntry ? 'blue' : 'green', isEntry ? 'RETORNO' : 'AUTORIZADO', 
+                    `UNIDAD: ${tripData.vehicles.economic_number}<br>Chofer: ${driver.full_name}`, 
+                    { text: isEntry ? 'REGISTRAR ENTRADA' : 'REGISTRAR SALIDA', action: () => this.executeAction(tripData) });
                 return;
             }
 
@@ -146,18 +160,6 @@ export class ScannerView {
 
         } catch (e) {
             this.renderResult('error', 'ACCESO DENEGADO', e.message);
-            if(navigator.vibrate) navigator.vibrate(500);
-        }
-    }
-
-    processStandardFlow(trip) {
-        if (trip.status === 'requested' || trip.status === 'mechanic_approved') {
-            this.renderResult('yellow', 'PENDIENTE', `La unidad ${trip.vehicles.economic_number} aún no ha sido liberada por el mecánico o el chofer.`);
-        } else {
-            const isEntry = trip.status === 'in_progress';
-            this.renderResult(isEntry ? 'blue' : 'green', isEntry ? 'RETORNO' : 'AUTORIZADO', 
-                `UNIDAD: ${trip.vehicles.economic_number}<br>Chofer: ${trip.profiles.full_name}`, 
-                { text: isEntry ? 'REGISTRAR ENTRADA' : 'REGISTRAR SALIDA', action: () => this.executeAction(trip) });
         }
     }
 
@@ -173,16 +175,16 @@ export class ScannerView {
 
         document.getElementById('result-area').innerHTML = `
             <div class="w-full animate-fade-in-up">
-                <div class="w-full p-8 rounded-3xl border-4 ${theme} mb-6 shadow-2xl relative overflow-hidden">
+                <div class="w-full p-8 rounded-3xl border-4 ${theme} mb-6 shadow-2xl">
                     <h2 class="text-4xl font-black uppercase mb-3 leading-tight">${title}</h2>
                     <p class="text-white text-base font-bold leading-relaxed">${desc}</p>
                 </div>
                 ${btnObj ? `
-                    <button id="btn-execute" class="w-full py-5 rounded-2xl font-black text-xl bg-white text-black shadow-xl hover:bg-primary hover:text-white transition-all active:scale-95 uppercase tracking-widest">
+                    <button id="btn-execute" class="w-full py-5 rounded-2xl font-black text-xl bg-white text-black shadow-xl hover:bg-emerald-500 hover:text-white transition-all active:scale-95 uppercase tracking-widest">
                         ${btnObj.text}
                     </button>
                     <button onclick="window.location.reload()" class="mt-4 text-[#92adc9] text-xs font-bold uppercase hover:text-white transition-colors">Cancelar</button>
-                ` : `<button onclick="window.location.reload()" class="w-full py-4 rounded-2xl font-black text-lg bg-[#233648] text-white border border-[#324d67]">VOLVER A INTENTAR</button>`}
+                ` : `<button onclick="window.location.reload()" class="w-full py-4 rounded-2xl font-black text-lg bg-[#233648] text-white">VOLVER A INTENTAR</button>`}
             </div>
         `;
         if(btnObj) document.getElementById('btn-execute').onclick = btnObj.action;
@@ -199,11 +201,11 @@ export class ScannerView {
         const { error } = await supabase.from('trips').update({ 
             status: newStatus, 
             [timeField]: new Date(),
-            emergency_code: null // Se quema el código al usarlo
+            emergency_code: null 
         }).eq('id', trip.id);
 
         if (error) {
-            alert("Error BD: " + error.message);
+            alert("Error: " + error.message);
             btn.disabled = false;
         } else {
             this.showSuccess(isExit ? "SALIDA EXITOSA" : "ENTRADA EXITOSA");
@@ -217,10 +219,8 @@ export class ScannerView {
                     <span class="material-symbols-outlined text-7xl animate-bounce">check_circle</span>
                 </div>
                 <h2 class="text-3xl font-black text-white uppercase">${msg}</h2>
-                <p class="text-emerald-400 font-bold mt-2 tracking-widest animate-pulse">BARRERA LIBERADA</p>
                 <button onclick="window.location.reload()" class="mt-10 bg-[#233648] text-white px-8 py-3 rounded-xl font-bold uppercase text-sm">Siguiente</button>
             </div>
         `;
-        if(navigator.vibrate) navigator.vibrate([100, 50, 100]);
     }
 }
