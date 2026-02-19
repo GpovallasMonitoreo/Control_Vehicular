@@ -12,6 +12,8 @@ export class DriverView {
         this.routeCoords = []; 
         this.incidentImages = [];
         this.receptionPhoto = null; // Guardará la foto de conformidad
+        this.gpsRetryCount = 0;
+        this.maxGpsRetries = 3;
         
         window.conductorModule = this;
     }
@@ -95,9 +97,12 @@ export class DriverView {
                             </div>
                             <div class="bg-[#192633] p-3 rounded-xl border border-[#233648] text-center">
                                 <p class="text-[10px] text-[#92adc9] font-bold uppercase mb-1">GPS Monitor</p>
-                                <span id="gps-status-indicator" class="text-slate-500 font-bold text-[10px] uppercase flex items-center justify-center gap-1 mt-2">
-                                    <span class="material-symbols-outlined text-[12px]">pause_circle</span> Pausado
-                                </span>
+                                <div id="gps-status-indicator" class="text-slate-500 font-bold text-[10px] uppercase flex flex-col items-center justify-center gap-1 mt-2">
+                                    <div class="flex items-center gap-1">
+                                        <span class="material-symbols-outlined text-[12px]">pause_circle</span> 
+                                        <span>Pausado</span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </section>
@@ -172,6 +177,7 @@ export class DriverView {
         await this.loadDashboardState();
         this.initLiveMap();
         this.setupIncidentForm();
+        this.setupGPSEventListeners();
 
         supabase.channel('driver_realtime')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'trips', filter: `driver_id=eq.${this.userId}` }, () => {
@@ -180,18 +186,231 @@ export class DriverView {
             }).subscribe();
     }
 
+    setupGPSEventListeners() {
+        // Listener para cuando la página vuelve a estar visible
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden && this.activeTab === 'ruta' && this.currentTrip) {
+                if (this.currentTrip.status === 'in_progress' || this.currentTrip.status === 'driver_accepted') {
+                    this.startTracking();
+                }
+            }
+        });
+
+        // Listener para cuando el dispositivo se mueve (acelerómetro)
+        window.addEventListener('devicemotion', () => {
+            // Solo usado para "despertar" el GPS si está dormido
+            if (this.watchPositionId === null && this.activeTab === 'ruta' && this.currentTrip) {
+                if (this.currentTrip.status === 'in_progress' || this.currentTrip.status === 'driver_accepted') {
+                    this.startTracking();
+                }
+            }
+        });
+    }
+
     initLiveMap() {
         if (!window.L) return;
         const L = window.L;
         
-        this.map = L.map('live-map', { zoomControl: false }).setView([19.4326, -99.1332], 16);
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(this.map);
+        this.map = L.map('live-map', { 
+            zoomControl: false,
+            fadeAnimation: true,
+            zoomAnimation: true,
+            markerZoomAnimation: true
+        }).setView([19.4326, -99.1332], 16);
+        
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        }).addTo(this.map);
+        
+        // Icono personalizado para el marcador
+        const customIcon = L.divIcon({
+            className: 'custom-div-icon',
+            html: '<div class="bg-primary w-5 h-5 rounded-full border-2 border-white shadow-[0_0_15px_rgba(19,127,236,0.8)] animate-pulse"></div>',
+            iconSize: [20, 20],
+            iconAnchor: [10, 10]
+        });
         
         this.marker = L.marker([19.4326, -99.1332], {
-            icon: L.divIcon({ className: 'bg-primary w-5 h-5 rounded-full border-2 border-white shadow-[0_0_15px_rgba(19,127,236,0.8)]' })
+            icon: customIcon,
+            zIndexOffset: 1000
         }).addTo(this.map);
 
-        this.polyline = L.polyline([], { color: '#137fec', weight: 5, opacity: 0.8, lineJoin: 'round' }).addTo(this.map);
+        this.polyline = L.polyline([], { 
+            color: '#137fec', 
+            weight: 5, 
+            opacity: 0.8, 
+            lineJoin: 'round' 
+        }).addTo(this.map);
+        
+        // Asegurar que el mapa se renderice correctamente
+        setTimeout(() => {
+            if (this.map) this.map.invalidateSize();
+        }, 500);
+    }
+
+    handlePositionUpdate(pos) {
+        const { latitude, longitude, speed, accuracy, altitude } = pos.coords;
+        const latlng = [latitude, longitude];
+        
+        if(this.map) {
+            // Centramos el mapa en la posición actual con animación suave
+            this.map.flyTo(latlng, 16, {
+                animate: true,
+                duration: 0.5
+            });
+            
+            this.marker.setLatLng(latlng);
+            
+            // Actualizar polyline
+            this.routeCoords.push(latlng);
+            // Mantener solo los últimos 100 puntos para rendimiento
+            if (this.routeCoords.length > 100) {
+                this.routeCoords.shift();
+            }
+            this.polyline.setLatLngs(this.routeCoords);
+        }
+
+        const speedKmh = Math.round((speed || 0) * 3.6);
+        document.getElementById('live-speed').innerText = speedKmh;
+
+        // Actualizar indicador de precisión GPS
+        const gpsIndicator = document.getElementById('gps-status-indicator');
+        const accuracyText = accuracy < 20 ? 'Alta' : (accuracy < 50 ? 'Media' : 'Baja');
+        const colorClass = accuracy < 20 ? 'text-emerald-400' : (accuracy < 50 ? 'text-yellow-400' : 'text-orange-400');
+        
+        gpsIndicator.innerHTML = `
+            <div class="flex items-center gap-1">
+                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                <span class="${colorClass}">${speedKmh} km/h | ${accuracyText}</span>
+            </div>
+            <span class="text-[8px] text-slate-400">${new Date().toLocaleTimeString()}</span>
+        `;
+
+        // Enviar a Supabase si el viaje está activo
+        if(this.currentTrip && this.currentTrip.status === 'in_progress') {
+            supabase.from('trip_locations').insert({ 
+                trip_id: this.currentTrip.id, 
+                lat: latitude, 
+                lng: longitude, 
+                speed: speedKmh,
+                accuracy: accuracy,
+                altitude: altitude || 0,
+                timestamp: new Date().toISOString()
+            }).then(({ error }) => {
+                if (error) console.error('Error guardando ubicación:', error);
+            });
+        }
+        
+        // Resetear contador de reintentos cuando hay éxito
+        this.gpsRetryCount = 0;
+    }
+
+    handleGPSError(err) {
+        console.error("GPS Error:", err);
+        const gpsIndicator = document.getElementById('gps-status-indicator');
+        
+        let errorMessage = '';
+        let errorColor = 'text-red-400';
+        
+        switch(err.code) {
+            case 1: // PERMISSION_DENIED
+                errorMessage = 'Permiso denegado';
+                this.showGPSPermissionDialog();
+                break;
+            case 2: // POSITION_UNAVAILABLE
+                errorMessage = 'Señal no disponible';
+                this.retryGPS();
+                break;
+            case 3: // TIMEOUT
+                errorMessage = 'Tiempo de espera agotado';
+                this.retryGPS();
+                break;
+            default:
+                errorMessage = 'Error desconocido';
+                this.retryGPS();
+        }
+        
+        gpsIndicator.innerHTML = `
+            <div class="flex flex-col items-center gap-2">
+                <div class="flex items-center gap-1">
+                    <span class="material-symbols-outlined text-sm ${errorColor}">location_off</span>
+                    <span class="${errorColor}">${errorMessage}</span>
+                </div>
+                <button onclick="window.conductorModule.startTracking()" 
+                    class="text-[10px] bg-primary/20 text-primary px-3 py-1 rounded-full border border-primary/30 hover:bg-primary/30 transition-colors">
+                    Reintentar GPS
+                </button>
+            </div>
+        `;
+    }
+
+    showGPSPermissionDialog() {
+        // Verificar si ya mostramos el diálogo
+        if (document.getElementById('gps-permission-dialog')) return;
+        
+        const dialog = document.createElement('div');
+        dialog.id = 'gps-permission-dialog';
+        dialog.className = 'fixed inset-0 z-[9999] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4';
+        dialog.innerHTML = `
+            <div class="bg-[#1c2127] rounded-2xl p-6 max-w-sm border border-primary/30">
+                <span class="material-symbols-outlined text-5xl text-primary mb-4 block">location_on</span>
+                <h3 class="text-white font-bold text-lg mb-2">Permiso de Ubicación</h3>
+                <p class="text-[#92adc9] text-sm mb-6">
+                    Para rastrear tu ruta en tiempo real, necesitamos acceso a tu ubicación. 
+                    Por favor, permite el acceso cuando el navegador lo solicite.
+                </p>
+                <div class="space-y-3">
+                    <button onclick="window.conductorModule.requestGPSPermission()" 
+                        class="w-full py-4 bg-primary text-white font-black rounded-xl uppercase text-sm">
+                        Solicitar Permiso
+                    </button>
+                    <button onclick="document.getElementById('gps-permission-dialog').remove()" 
+                        class="w-full py-3 text-[#92adc9] hover:text-white transition-colors text-xs uppercase">
+                        Cancelar
+                    </button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(dialog);
+    }
+
+    requestGPSPermission() {
+        document.getElementById('gps-permission-dialog')?.remove();
+        
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                this.handlePositionUpdate(pos);
+                this.startTracking(); // Iniciar watch después de obtener permiso
+            },
+            (err) => {
+                alert('No se pudo obtener permiso de ubicación. Verifica la configuración de tu navegador.');
+            },
+            { enableHighAccuracy: true, timeout: 10000 }
+        );
+    }
+
+    retryGPS() {
+        if (this.gpsRetryCount >= this.maxGpsRetries) {
+            this.gpsRetryCount = 0;
+            return;
+        }
+        
+        this.gpsRetryCount++;
+        
+        // Limpiar watch anterior si existe
+        if (this.watchPositionId) {
+            navigator.geolocation.clearWatch(this.watchPositionId);
+            this.watchPositionId = null;
+        }
+        
+        // Reintentar después de 3 segundos
+        setTimeout(() => {
+            if (this.activeTab === 'ruta' && this.currentTrip) {
+                if (this.currentTrip.status === 'in_progress' || this.currentTrip.status === 'driver_accepted') {
+                    this.startTracking();
+                }
+            }
+        }, 3000);
     }
 
     startTracking() {
@@ -200,50 +419,83 @@ export class DriverView {
             return;
         }
 
+        // Limpiar watch anterior si existe
+        if (this.watchPositionId) {
+            navigator.geolocation.clearWatch(this.watchPositionId);
+            this.watchPositionId = null;
+        }
+
         const gpsIndicator = document.getElementById('gps-status-indicator');
         const btnStart = document.getElementById('btn-start-route');
+        const waitingMsg = document.getElementById('route-waiting-msg');
 
-        gpsIndicator.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span> <span class="text-emerald-400">Enviando a Central</span>`;
-        if (btnStart) btnStart.classList.add('hidden'); 
-        document.getElementById('route-waiting-msg').classList.add('hidden');
+        // Verificar si el viaje está en estado correcto
+        if (this.currentTrip && 
+            (this.currentTrip.status === 'in_progress' || this.currentTrip.status === 'driver_accepted')) {
+            if (waitingMsg) waitingMsg.classList.add('hidden');
+        }
 
-        this.routeCoords = [];
-        this.polyline.setLatLngs([]);
+        // Mostrar estado de solicitud
+        gpsIndicator.innerHTML = `
+            <div class="flex flex-col items-center gap-1">
+                <div class="flex items-center gap-1">
+                    <span class="w-2 h-2 rounded-full bg-yellow-400 animate-ping"></span>
+                    <span class="text-yellow-400">Iniciando GPS...</span>
+                </div>
+                <span class="text-[8px] text-slate-400">Buscando señal...</span>
+            </div>
+        `;
 
-        if (this.watchPositionId) navigator.geolocation.clearWatch(this.watchPositionId);
-
-        // Forzar repintado del mapa para asegurar que se vea bien
+        // Forzar repintado del mapa
         setTimeout(() => {
             if (this.map) this.map.invalidateSize();
         }, 500);
 
-        this.watchPositionId = navigator.geolocation.watchPosition((pos) => {
-            const { latitude, longitude, speed } = pos.coords;
-            const latlng = [latitude, longitude];
+        // Primero obtener una posición única para permisos
+        navigator.geolocation.getCurrentPosition(
+            // Success - permisos concedidos
+            (pos) => {
+                this.handlePositionUpdate(pos);
+                
+                // Iniciar watch para seguimiento continuo
+                this.watchPositionId = navigator.geolocation.watchPosition(
+                    (position) => this.handlePositionUpdate(position),
+                    (error) => this.handleGPSError(error),
+                    { 
+                        enableHighAccuracy: true, 
+                        maximumAge: 2000,        // Aceptar posiciones de hasta 2 segundos
+                        timeout: 15000,           // Timeout más largo para móviles
+                        distanceFilter: 5          // Actualizar cada 5 metros
+                    }
+                );
+                
+                if (btnStart) btnStart.classList.add('hidden');
+            },
+            // Error - manejar permisos
+            (err) => {
+                this.handleGPSError(err);
+            },
+            { 
+                enableHighAccuracy: true, 
+                timeout: 10000,
+                maximumAge: 0
+            }
+        );
+    }
+
+    stopTracking() {
+        if (this.watchPositionId) {
+            navigator.geolocation.clearWatch(this.watchPositionId);
+            this.watchPositionId = null;
             
-            if(this.map) {
-                // Centramos el mapa en la posición actual
-                this.map.setView(latlng, 16, {animate: true});
-                this.marker.setLatLng(latlng);
-                this.routeCoords.push(latlng);
-                this.polyline.setLatLngs(this.routeCoords);
-            }
-
-            const speedKmh = Math.round((speed || 0) * 3.6);
-            document.getElementById('live-speed').innerText = speedKmh;
-
-            if(this.currentTrip && this.currentTrip.status === 'in_progress') {
-                supabase.from('trip_locations').insert({ 
-                    trip_id: this.currentTrip.id, 
-                    lat: latitude, 
-                    lng: longitude, 
-                    speed: speedKmh 
-                });
-            }
-        }, (err) => {
-            console.error("GPS Error:", err);
-            if(err.code === 1) alert("Permite el acceso a tu ubicación en tu navegador para continuar.");
-        }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 });
+            const gpsIndicator = document.getElementById('gps-status-indicator');
+            gpsIndicator.innerHTML = `
+                <div class="flex items-center gap-1">
+                    <span class="material-symbols-outlined text-[12px]">pause_circle</span> 
+                    <span>Detenido</span>
+                </div>
+            `;
+        }
     }
 
     async loadProfileData() {
@@ -266,12 +518,15 @@ export class DriverView {
         
         const unityCont = document.getElementById('unidad-content');
         const checkCont = document.getElementById('checklist-content');
+        const waitingMsg = document.getElementById('route-waiting-msg');
+        const btnStart = document.getElementById('btn-start-route');
 
         if (!trip) {
             await this.renderAvailableUnits(unityCont);
             document.getElementById('profile-status').innerText = "Disponible";
             this.renderAccessCode(null);
-            document.getElementById('route-waiting-msg').classList.remove('hidden');
+            if (waitingMsg) waitingMsg.classList.remove('hidden');
+            this.stopTracking(); // Detener GPS si no hay viaje
         } else {
             unityCont.innerHTML = `
                 <div class="bg-primary/10 border border-primary/30 p-5 rounded-2xl text-center shadow-inner">
@@ -284,23 +539,35 @@ export class DriverView {
             this.renderMechanicChecklist(trip, checkCont);
             this.renderAccessCode(trip);
 
-            // GESTIÓN DE RUTA: Mostrar botón si el guardia ya dio salida
-            if (trip.status === 'in_progress') {
-                document.getElementById('profile-status').innerText = "En Ruta Operativa";
-                document.getElementById('route-waiting-msg').classList.add('hidden');
+            // GESTIÓN MEJORADA DE RUTA
+            if (trip.status === 'in_progress' || trip.status === 'driver_accepted') {
+                document.getElementById('profile-status').innerText = 
+                    trip.status === 'in_progress' ? "En Ruta Operativa" : "Esperando Autorización";
                 
-                const btnStart = document.getElementById('btn-start-route');
-                if(btnStart) {
+                // Ocultar mensaje de espera si no está en requested
+                if (trip.status !== 'requested' && waitingMsg) {
+                    waitingMsg.classList.add('hidden');
+                }
+                
+                // Configurar botón de inicio manual
+                if (btnStart) {
                     btnStart.classList.remove('hidden');
                     btnStart.onclick = () => {
-                        this.startTracking(); // Inicia el mapa y el envío de GPS
+                        this.startTracking();
                     };
+                }
+                
+                // INICIAR GPS AUTOMÁTICAMENTE si estamos en la pestaña de ruta
+                if (this.activeTab === 'ruta') {
+                    setTimeout(() => {
+                        this.startTracking();
+                    }, 1000);
                 }
             } else {
                 document.getElementById('profile-status').innerText = "Trámite Interno";
-                document.getElementById('route-waiting-msg').classList.remove('hidden');
-                const btnStart = document.getElementById('btn-start-route');
-                if(btnStart) btnStart.classList.add('hidden');
+                if (waitingMsg) waitingMsg.classList.remove('hidden');
+                if (btnStart) btnStart.classList.add('hidden');
+                this.stopTracking(); // Detener GPS si no corresponde
             }
         }
     }
@@ -473,6 +740,8 @@ export class DriverView {
     }
 
     switchTab(tabId) {
+        this.activeTab = tabId; // Guardar pestaña activa
+        
         document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
         document.querySelectorAll('.nav-btn').forEach(el => {
             el.classList.remove('active', 'text-primary');
@@ -482,10 +751,26 @@ export class DriverView {
         document.getElementById(`nav-${tabId}`).classList.add('active', 'text-primary');
         
         // TRUCO INFALIBLE PARA LEAFLET
-        if(tabId === 'ruta' && this.map) {
+        if(tabId === 'ruta') {
             setTimeout(() => {
-                this.map.invalidateSize();
+                if (this.map) {
+                    this.map.invalidateSize();
+                    
+                    // Iniciar tracking si estamos en un viaje activo
+                    if (this.currentTrip && 
+                        (this.currentTrip.status === 'in_progress' || this.currentTrip.status === 'driver_accepted')) {
+                        setTimeout(() => {
+                            this.startTracking();
+                        }, 1000);
+                    }
+                }
             }, 300);
+        } else {
+            // Si salimos de la pestaña ruta, podemos pausar el GPS para ahorrar batería
+            if (tabId !== 'ruta' && this.currentTrip?.status !== 'in_progress') {
+                // Solo pausar si no estamos en viaje activo
+                this.stopTracking();
+            }
         }
     }
 }
