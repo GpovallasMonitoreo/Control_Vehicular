@@ -7,8 +7,15 @@ export class MaintenanceView {
         this.services = [];
         this.inventory = [];
         this.tempRecipeItems = [];
-        this.capturedImages = []; // NUEVO: Array para múltiples fotos
+        this.capturedImages = []; 
+        this.schedules = []; // NUEVO: Para guardar la agenda
         this.html5QrcodeScanner = null;
+        
+        // Control del calendario
+        const today = new Date();
+        this.currentMonth = today.getMonth();
+        this.currentYear = today.getFullYear();
+
         window.taller = this;
     }
 
@@ -112,7 +119,7 @@ export class MaintenanceView {
 
                 <div id="tab-content-new-service" class="hidden animate-fade-in h-full overflow-y-auto custom-scrollbar pb-6 pr-2">
                     
-                    <button onclick="window.taller.switchTab('dashboard')" class="mb-6 flex items-center gap-2 text-[#92adc9] hover:text-white transition-colors bg-[#1c2127] border border-[#324d67] w-fit px-4 py-2 rounded-lg font-bold text-sm">
+                    <button onclick="window.taller.switchTab('dashboard')" class="mb-6 flex items-center gap-2 text-[#92adc9] hover:text-white transition-colors bg-[#1c2127] border border-[#324d67] w-fit px-4 py-2 rounded-lg font-bold text-sm shadow-md hover:shadow-primary/20">
                         <span class="material-symbols-outlined text-[18px]">arrow_back</span> Regresar al Tablero
                     </button>
 
@@ -180,9 +187,9 @@ export class MaintenanceView {
                                                 </label>
                                             </div>
                                         </div>
-                                        <div id="images-container" class="grid grid-cols-2 gap-2 overflow-y-auto max-h-[200px] custom-scrollbar p-1">
-                                            <div class="col-span-2 text-center text-[#92adc9] text-[10px] py-8 border-2 border-dashed border-[#324d67] rounded-lg">
-                                                Sin fotos capturadas.
+                                        <div id="images-container" class="grid grid-cols-2 gap-2 overflow-y-auto max-h-[250px] custom-scrollbar p-1">
+                                            <div class="col-span-2 text-center text-[#92adc9] text-[10px] py-10 border-2 border-dashed border-[#324d67] rounded-lg">
+                                                Sin fotos capturadas. Usa el botón de arriba.
                                             </div>
                                         </div>
                                     </div>
@@ -242,33 +249,32 @@ export class MaintenanceView {
                                     </button>
                                 </div>
                             </div>
-
                         </div>
                     </div>
                 </div>
 
                 <div id="tab-content-calendar" class="hidden animate-fade-in h-full flex flex-col p-6 overflow-hidden">
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 h-full">
+                    <div class="bg-[#1c2127] border border-[#324d67] rounded-xl flex flex-col shadow-lg h-full overflow-hidden">
                         
-                        <div class="bg-[#1c2127] border border-[#324d67] rounded-xl flex flex-col shadow-lg overflow-hidden h-full">
-                            <div class="p-4 border-b border-[#324d67] bg-[#151b23] flex items-center gap-2">
-                                <span class="material-symbols-outlined text-blue-500">engineering</span>
-                                <h3 class="font-bold text-white uppercase tracking-wider text-sm">Vehículos en Taller</h3>
+                        <div class="p-4 border-b border-[#324d67] bg-[#151b23] flex justify-between items-center shrink-0">
+                            <div class="flex items-center gap-4">
+                                <span class="material-symbols-outlined text-orange-500 text-2xl">calendar_month</span>
+                                <h3 id="calendar-month-title" class="font-black text-xl text-white uppercase tracking-wider">Mes Año</h3>
                             </div>
-                            <div class="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar" id="calendar-in-shop">
-                                <p class="text-center text-slate-500 py-10 text-sm">Cargando...</p>
+                            <div class="flex gap-2">
+                                <button onclick="window.taller.changeMonth(-1)" class="bg-[#233648] hover:bg-primary text-white w-10 h-10 rounded-lg flex items-center justify-center transition-colors shadow"><span class="material-symbols-outlined">chevron_left</span></button>
+                                <button onclick="window.taller.changeMonth(1)" class="bg-[#233648] hover:bg-primary text-white w-10 h-10 rounded-lg flex items-center justify-center transition-colors shadow"><span class="material-symbols-outlined">chevron_right</span></button>
                             </div>
+                        </div>
+                        
+                        <div class="flex-1 flex flex-col p-4 overflow-y-auto custom-scrollbar bg-[#0d141c]">
+                            <div class="grid grid-cols-7 gap-2 mb-2 text-center text-[10px] font-black text-[#92adc9] uppercase tracking-widest shrink-0">
+                                <div>Dom</div><div>Lun</div><div>Mar</div><div>Mié</div><div>Jue</div><div>Vie</div><div>Sáb</div>
+                            </div>
+                            <div id="calendar-grid" class="grid grid-cols-7 gap-2 flex-1 auto-rows-fr">
+                                </div>
                         </div>
 
-                        <div class="bg-[#1c2127] border border-[#324d67] rounded-xl flex flex-col shadow-lg overflow-hidden h-full">
-                            <div class="p-4 border-b border-[#324d67] bg-[#151b23] flex items-center gap-2">
-                                <span class="material-symbols-outlined text-orange-500">calendar_month</span>
-                                <h3 class="font-bold text-white uppercase tracking-wider text-sm">Próximos a Mantenimiento</h3>
-                            </div>
-                            <div class="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar" id="calendar-upcoming">
-                                <p class="text-center text-slate-500 py-10 text-sm">Cargando...</p>
-                            </div>
-                        </div>
                     </div>
                 </div>
 
@@ -282,7 +288,7 @@ export class MaintenanceView {
                         </div>
                         <div class="flex-1 overflow-auto custom-scrollbar bg-[#0d141c]">
                             <table class="w-full text-left text-xs whitespace-nowrap">
-                                <thead class="bg-[#111a22] text-[#92adc9] uppercase font-black sticky top-0 border-b border-[#324d67] shadow-sm">
+                                <thead class="bg-[#111a22] text-[#92adc9] uppercase font-black sticky top-0 border-b border-[#324d67] shadow-sm z-10">
                                     <tr>
                                         <th class="p-3">ID Log</th>
                                         <th class="p-3">Fecha</th>
@@ -306,6 +312,42 @@ export class MaintenanceView {
                     </div>
                 </div>
 
+            </div>
+
+            <div id="modal-schedule-calendar" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
+                <div class="bg-[#1c2127] border border-[#324d67] w-full max-w-md rounded-2xl shadow-2xl animate-fade-in-up">
+                    <div class="p-6 border-b border-[#324d67] flex justify-between items-center bg-[#151b23] rounded-t-2xl">
+                        <div>
+                            <h3 class="text-lg font-black text-white flex items-center gap-2"><span class="material-symbols-outlined text-primary">event_available</span> Agendar Servicio</h3>
+                            <p id="schedule-modal-date" class="text-xs text-[#92adc9] font-mono mt-1">--</p>
+                        </div>
+                        <button onclick="document.getElementById('modal-schedule-calendar').classList.add('hidden')" class="text-slate-400 hover:text-white"><span class="material-symbols-outlined">close</span></button>
+                    </div>
+                    <div class="p-6 space-y-4">
+                        <input type="hidden" id="sched-date-hidden">
+                        
+                        <div>
+                            <label class="block text-[10px] font-bold text-[#92adc9] uppercase mb-1">Vehículo a Ingresar</label>
+                            <select id="sched-vehicle" class="w-full bg-[#111a22] border border-[#324d67] text-white rounded-lg p-3 outline-none focus:border-primary"></select>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-[10px] font-bold text-[#92adc9] uppercase mb-1">¿Qué se le hará?</label>
+                            <input type="text" id="sched-service" class="w-full bg-[#111a22] border border-[#324d67] text-white rounded-lg p-3 outline-none focus:border-primary" placeholder="Ej: Afinación, Revisión de frenos...">
+                        </div>
+                        
+                        <div>
+                            <label class="block text-[10px] font-bold text-[#92adc9] uppercase mb-1">Notas Adicionales</label>
+                            <textarea id="sched-notes" class="w-full bg-[#111a22] border border-[#324d67] text-white rounded-lg p-3 outline-none focus:border-primary h-20 text-sm" placeholder="Detalles de la cita..."></textarea>
+                        </div>
+
+                        <div class="pt-4 border-t border-[#324d67]">
+                            <button onclick="window.taller.saveScheduledService()" class="w-full py-3 bg-primary hover:bg-blue-600 text-white font-bold rounded-xl shadow-[0_0_15px_rgba(19,127,236,0.3)] transition-all text-sm uppercase tracking-wider flex items-center justify-center gap-2">
+                                <span class="material-symbols-outlined">notifications_active</span> Guardar y Notificar
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <div id="modal-emergency-qr" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
@@ -334,6 +376,8 @@ export class MaintenanceView {
                 </div>
             </div>
 
+            <div id="toast-container" class="fixed top-5 right-5 z-[9999] flex flex-col gap-2"></div>
+
         </div>
         `;
     }
@@ -344,22 +388,26 @@ export class MaintenanceView {
     }
 
     async loadInitialData() {
-        const [vehRes, invRes, recRes, logRes] = await Promise.all([
+        // Añadimos maintenance_logs a la consulta para la Agenda (Calendario)
+        const [vehRes, invRes, recRes, logRes, schedRes] = await Promise.all([
             supabase.from('vehicles').select('*').eq('status', 'active'),
             supabase.from('inventory_items').select('*'),
             supabase.from('service_templates').select('*, service_template_items(quantity, inventory_items(id, name, cost, unit, stock))'),
-            supabase.from('vehicle_logs').select('*, vehicles(economic_number, plate)').order('date', {ascending: false})
+            supabase.from('vehicle_logs').select('*, vehicles(economic_number, plate)').order('date', {ascending: false}),
+            supabase.from('maintenance_logs').select('*, vehicles(economic_number, plate)').eq('status', 'scheduled')
         ]);
 
         this.vehicles = vehRes.data || [];
         this.inventory = invRes.data || [];
         this.services = recRes.data || [];
         this.logs = logRes.data || [];
+        this.schedules = schedRes.data || [];
 
         // Llenar selects
         const vehOptions = '<option value="">Selecciona unidad...</option>' + this.vehicles.map(v => `<option value="${v.id}">${v.plate} (ECO-${v.economic_number})</option>`).join('');
         document.getElementById('shop-vehicle-select').innerHTML = vehOptions;
         document.getElementById('emer-vehicle').innerHTML = vehOptions;
+        document.getElementById('sched-vehicle').innerHTML = vehOptions; // Para modal del calendario
 
         const recOptions = '<option value="">Seleccionar receta...</option>' + this.services.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
         document.getElementById('shop-recipe-select').innerHTML = recOptions;
@@ -371,32 +419,32 @@ export class MaintenanceView {
 
     // --- TABS Y NAVEGACIÓN ---
     switchTab(tab) {
-        // Ocultar todos
         ['dashboard', 'new-service', 'calendar', 'database'].forEach(t => {
             document.getElementById(`tab-content-${t}`).classList.replace('block', 'hidden');
             document.getElementById(`tab-btn-${t}`).className = "px-6 py-3 text-[#92adc9] hover:text-white border-b-2 border-transparent font-medium text-sm transition-colors whitespace-nowrap flex items-center gap-2";
         });
 
-        // Mostrar seleccionado
         document.getElementById(`tab-content-${tab}`).classList.replace('hidden', 'block');
         document.getElementById(`tab-btn-${tab}`).className = "px-6 py-3 text-primary border-b-2 border-primary font-bold text-sm transition-colors whitespace-nowrap flex items-center gap-2 bg-[#1c2127]";
 
         if(tab === 'new-service' && !this.html5QrcodeScanner) {
             this.setupScanner();
         }
+        if(tab === 'calendar') {
+            this.renderCalendar();
+        }
     }
 
-    // --- RENDER VISTAS ---
+    // --- TABLERO ---
     renderDashboard() {
         document.getElementById('stat-in-shop').innerText = this.vehicles.filter(v => v.status === 'maintenance').length;
         document.getElementById('stat-completed').innerText = this.logs.filter(l => new Date(l.date).getMonth() === new Date().getMonth()).length;
         
-        // Simulación Alertas de Km (Si está a menos de 500km de su next_service_km)
         const alertsKm = this.vehicles.filter(v => v.next_service_km && (v.next_service_km - v.current_km) < 1000).length;
         document.getElementById('stat-km-alerts').innerText = alertsKm;
 
         const tbody = document.getElementById('maintenance-list');
-        const recentLogs = this.logs.slice(0, 10); // Solo los últimos 10
+        const recentLogs = this.logs.slice(0, 10); 
         if(!recentLogs.length) {
             tbody.innerHTML = '<tr><td colspan="5" class="text-center py-10 text-slate-500">Sin registros recientes.</td></tr>';
             return;
@@ -413,51 +461,131 @@ export class MaintenanceView {
         `).join('');
     }
 
-    renderCalendar() {
-        const inShopContainer = document.getElementById('calendar-in-shop');
-        const upcomingContainer = document.getElementById('calendar-upcoming');
+    // --- SISTEMA DE CALENDARIO Y AGENDA ---
+    changeMonth(offset) {
+        this.currentMonth += offset;
+        if (this.currentMonth > 11) { this.currentMonth = 0; this.currentYear++; }
+        else if (this.currentMonth < 0) { this.currentMonth = 11; this.currentYear--; }
+        this.renderCalendar();
+    }
 
-        // Vehículos actualmente en mantenimiento
-        const inShop = this.vehicles.filter(v => v.status === 'maintenance');
-        if(inShop.length === 0) {
-            inShopContainer.innerHTML = `<div class="text-center py-8 text-slate-500"><span class="material-symbols-outlined text-4xl mb-2 opacity-30">check_circle</span><p class="text-xs">No hay vehículos en taller actualmente.</p></div>`;
-        } else {
-            inShopContainer.innerHTML = inShop.map(v => `
-                <div class="bg-[#111a22] border border-blue-500/30 p-3 rounded-lg flex justify-between items-center border-l-4 border-l-blue-500">
-                    <div>
-                        <p class="text-white font-bold text-sm">ECO-${v.economic_number} • ${v.plate}</p>
-                        <p class="text-xs text-[#92adc9] mt-0.5">${v.brand} ${v.model}</p>
-                    </div>
-                    <span class="bg-blue-500/20 text-blue-400 text-[10px] font-bold px-2 py-1 rounded uppercase">Reparando</span>
-                </div>
-            `).join('');
+    renderCalendar() {
+        const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+        document.getElementById('calendar-month-title').innerText = `${monthNames[this.currentMonth]} ${this.currentYear}`;
+
+        const firstDay = new Date(this.currentYear, this.currentMonth, 1).getDay();
+        const daysInMonth = new Date(this.currentYear, this.currentMonth + 1, 0).getDate();
+        
+        const grid = document.getElementById('calendar-grid');
+        grid.innerHTML = '';
+
+        // Celdas vacías al inicio
+        for (let i = 0; i < firstDay; i++) {
+            grid.innerHTML += `<div class="bg-[#111a22] rounded-lg border border-[#324d67]/30 opacity-50"></div>`;
         }
 
-        // Vehículos próximos a servicio por KM
-        const upcoming = this.vehicles.filter(v => v.next_service_km && (v.next_service_km - v.current_km) < 1500).sort((a,b) => (a.next_service_km - a.current_km) - (b.next_service_km - b.current_km));
-        
-        if(upcoming.length === 0) {
-            upcomingContainer.innerHTML = `<div class="text-center py-8 text-slate-500"><span class="material-symbols-outlined text-4xl mb-2 opacity-30">thumb_up</span><p class="text-xs">Flota al día. No hay servicios próximos urgentes.</p></div>`;
-        } else {
-            upcomingContainer.innerHTML = upcoming.map(v => {
-                const diff = v.next_service_km - v.current_km;
-                const isUrgent = diff < 300;
-                return `
-                <div class="bg-[#111a22] border ${isUrgent ? 'border-red-500/30 border-l-4 border-l-red-500' : 'border-orange-500/30 border-l-4 border-l-orange-500'} p-3 rounded-lg flex justify-between items-center">
-                    <div>
-                        <p class="text-white font-bold text-sm">ECO-${v.economic_number} • ${v.plate}</p>
-                        <p class="text-xs text-[#92adc9] mt-0.5">Km actual: ${v.current_km}</p>
-                    </div>
-                    <div class="text-right">
-                        <span class="${isUrgent ? 'text-red-400' : 'text-orange-400'} text-xs font-bold block">Faltan ${diff} km</span>
-                        <span class="text-[9px] text-slate-500 uppercase">Límite: ${v.next_service_km}</span>
+        const today = new Date();
+        const isCurrentMonthAndYear = today.getMonth() === this.currentMonth && today.getFullYear() === this.currentYear;
+
+        // Días del mes
+        for (let day = 1; day <= daysInMonth; day++) {
+            // Formato de fecha para comparar YYYY-MM-DD
+            const dateStr = `${this.currentYear}-${String(this.currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            
+            // Buscar agendas para este día
+            const daySchedules = this.schedules.filter(s => s.scheduled_date === dateStr);
+            
+            let badgesHTML = daySchedules.map(s => `
+                <div class="bg-primary/20 border border-primary/50 text-primary text-[9px] font-bold px-1 py-0.5 rounded truncate mt-1">
+                    ECO-${s.vehicles?.economic_number}
+                </div>
+            `).join('');
+
+            const isToday = isCurrentMonthAndYear && today.getDate() === day;
+            const bgClass = isToday ? 'bg-[#1c2127] border-primary shadow-[0_0_10px_rgba(19,127,236,0.3)]' : 'bg-[#111a22] border-[#324d67] hover:border-primary/50';
+            const textClass = isToday ? 'text-primary' : 'text-white';
+
+            grid.innerHTML += `
+                <div onclick="window.taller.openScheduleModal('${dateStr}')" class="rounded-lg border ${bgClass} p-2 cursor-pointer transition-colors min-h-[80px] flex flex-col">
+                    <span class="font-black text-sm ${textClass}">${day}</span>
+                    <div class="flex-1 overflow-y-auto custom-scrollbar pr-1 mt-1">
+                        ${badgesHTML}
                     </div>
                 </div>
-                `;
-            }).join('');
+            `;
         }
     }
 
+    openScheduleModal(dateStr) {
+        document.getElementById('sched-date-hidden').value = dateStr;
+        // Convertir YYYY-MM-DD a formato legible
+        const [y, m, d] = dateStr.split('-');
+        const dateObj = new Date(y, m-1, d);
+        document.getElementById('schedule-modal-date').innerText = dateObj.toLocaleDateString('es-MX', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        
+        document.getElementById('sched-vehicle').value = '';
+        document.getElementById('sched-service').value = '';
+        document.getElementById('sched-notes').value = '';
+        
+        document.getElementById('modal-schedule-calendar').classList.remove('hidden');
+    }
+
+    async saveScheduledService() {
+        const dateStr = document.getElementById('sched-date-hidden').value;
+        const vId = document.getElementById('sched-vehicle').value;
+        const service = document.getElementById('sched-service').value;
+        const notes = document.getElementById('sched-notes').value;
+
+        if(!vId || !service) return alert("Selecciona un vehículo e indica qué servicio se le hará.");
+
+        const payload = {
+            vehicle_id: vId,
+            service_type: service,
+            scheduled_date: dateStr,
+            status: 'scheduled',
+            notes: notes
+        };
+
+        const { error } = await supabase.from('maintenance_logs').insert([payload]);
+
+        if(error) {
+            alert("Error al agendar: " + error.message);
+        } else {
+            document.getElementById('modal-schedule-calendar').classList.add('hidden');
+            this.showToastNotification("Servicio Agendado", `La unidad ha sido programada para el ${dateStr}.`, "success");
+            await this.loadInitialData(); // Recarga para actualizar el calendario
+        }
+    }
+
+    // --- NOTIFICACIONES TOAST (Maneja las alertas flotantes solicitadas) ---
+    showToastNotification(title, message, type = 'success') {
+        const container = document.getElementById('toast-container');
+        const toast = document.createElement('div');
+        
+        const icon = type === 'success' ? 'check_circle' : 'info';
+        const colorClass = type === 'success' ? 'border-green-500 bg-green-900/20 text-green-400' : 'border-primary bg-primary/20 text-primary';
+
+        toast.className = `border ${colorClass} p-4 rounded-xl shadow-2xl flex items-start gap-3 w-80 animate-fade-in-up backdrop-blur-md`;
+        toast.innerHTML = `
+            <span class="material-symbols-outlined text-2xl">${icon}</span>
+            <div>
+                <h4 class="font-bold text-white text-sm">${title}</h4>
+                <p class="text-xs mt-1 text-slate-300">${message}</p>
+            </div>
+        `;
+
+        container.appendChild(toast);
+        
+        // Quitar después de 4 segundos
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateY(-10px)';
+            toast.style.transition = 'all 0.3s ease';
+            setTimeout(() => toast.remove(), 300);
+        }, 4000);
+    }
+
+    // --- BASE DE DATOS (EXCEL) ---
     renderDatabaseTable() {
         const tbody = document.getElementById('database-table');
         if(!this.logs.length) {
@@ -481,6 +609,30 @@ export class MaintenanceView {
                 <td class="p-3 text-[10px] truncate max-w-[200px]" title="${l.notes}">${l.notes || ''}</td>
             </tr>
         `).join('');
+    }
+
+    exportToCSV() {
+        if (!this.logs || this.logs.length === 0) return alert("No hay datos para exportar");
+
+        const headers = ["ID", "Fecha", "ECO", "Placas", "Servicio", "Kilometraje", "Mecanico", "Refacciones", "Costo Refacciones", "Costo Mano Obra", "Total", "Notas"];
+        const rows = this.logs.map(l => [
+            l.id, l.date, l.vehicles?.economic_number, l.vehicles?.plate, l.service_name, l.odometer, l.mechanic,
+            (l.parts_used || '').replace(/,/g, ' -').replace(/\n/g, ' '), 
+            l.parts_cost || 0, l.labor_cost || 0, l.total_cost || 0,
+            (l.notes || '').replace(/,/g, ' -').replace(/\n/g, ' ')
+        ]);
+
+        let csvContent = headers.join(",") + "\n";
+        rows.forEach(r => csvContent += r.join(",") + "\n");
+
+        const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `BaseDatos_Mantenimiento_${new Date().toISOString().split('T')[0]}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     }
 
     // --- ESCÁNER Y RECEPCIÓN ---
@@ -522,33 +674,30 @@ export class MaintenanceView {
         card.classList.remove('hidden');
         area.classList.remove('opacity-50', 'pointer-events-none');
         
-        // Limpiar formulario y fotos
+        // Limpiar formulario
         this.clearRecipe();
         document.getElementById('chk-body').checked = false;
         document.getElementById('chk-lights').checked = false;
         document.getElementById('chk-fluids').checked = false;
-        document.getElementById('shop-notes').value = '';
-        
-        // Limpiar checks de llantas
         ['fl', 'fr', 'rl', 'rr'].forEach(pos => document.getElementById(`tire-${pos}`).checked = false);
+        document.getElementById('shop-notes').value = '';
 
         this.capturedImages = [];
         this.renderCapturedImages();
     }
 
-    // --- MULTIPLES FOTOS ---
     captureImage(input) {
         if(input.files && input.files[0]) {
             this.capturedImages.push(input.files[0]);
             this.renderCapturedImages();
-            input.value = ''; // Limpiar input para permitir capturar la misma si se borró
+            input.value = ''; 
         }
     }
 
     renderCapturedImages() {
         const container = document.getElementById('images-container');
         if(this.capturedImages.length === 0) {
-            container.innerHTML = '<div class="col-span-2 text-center text-[#92adc9] text-[10px] py-8 border-2 border-dashed border-[#324d67] rounded-lg">Sin fotos capturadas. Usa el botón de arriba.</div>';
+            container.innerHTML = '<div class="col-span-2 text-center text-[#92adc9] text-[10px] py-10 border-2 border-dashed border-[#324d67] rounded-lg">Sin fotos capturadas. Usa el botón de arriba.</div>';
             return;
         }
 
@@ -623,13 +772,11 @@ export class MaintenanceView {
                 `;
             }).join('');
         }
-
         document.getElementById('shop-total-cost').innerText = `$${(partsTotal + laborCost).toLocaleString(undefined, {minimumFractionDigits:2})}`;
     }
 
     updateTotalCost() { this.renderRecipeList(); }
 
-    // --- GUARDAR SERVICIO FINAL ---
     async saveShopService() {
         const vId = document.getElementById('shop-vehicle-select').value;
         const km = parseInt(document.getElementById('shop-current-km').value);
@@ -643,7 +790,7 @@ export class MaintenanceView {
         btn.innerHTML = '<span class="material-symbols-outlined animate-spin">refresh</span> Procesando, por favor espera...';
 
         try {
-            // 1. Subir Imágenes si hay
+            // 1. Subir Imágenes
             const uploadedUrls = [];
             if(this.capturedImages.length > 0) {
                 for (let file of this.capturedImages) {
@@ -669,7 +816,6 @@ export class MaintenanceView {
             
             const userNotes = document.getElementById('shop-notes').value;
             const photosString = uploadedUrls.length ? `[${uploadedUrls.length} fotos adjuntas]` : '';
-            
             const finalNotes = `${tireString} Checklist: ${chk} | Notas: ${userNotes} ${photosString}`;
 
             // 3. Costos
@@ -701,16 +847,16 @@ export class MaintenanceView {
                 }
             }
 
-            // 6. Actualizar Kilometraje (y devolver estado a activo)
+            // 6. Actualizar Kilometraje
             await supabase.from('vehicles').update({ current_km: km, status: 'active' }).eq('id', vId);
 
-            alert("✅ Servicio registrado. Historial e Inventario actualizados.");
-            this.capturedImages = []; // Reset fotos
-            await this.loadInitialData(); // Recargar todo
+            this.showToastNotification("Servicio Terminado", "Registro en bitácora e inventario completados exitosamente.");
+            this.capturedImages = []; 
+            await this.loadInitialData(); 
             this.switchTab('dashboard'); 
 
         } catch (e) {
-            alert("Ocurrió un error guardando el servicio: " + e.message);
+            alert("Error: " + e.message);
         } finally {
             btn.disabled = false;
             btn.innerHTML = '<span class="material-symbols-outlined">save</span> Registrar Trabajo y Finalizar';
@@ -728,41 +874,10 @@ export class MaintenanceView {
         if(!vId) return alert("Seleccione un vehículo primero.");
         const veh = this.vehicles.find(v => v.id === vId);
         
-        const qrData = {
-            v_id: vId,
-            eco: veh.economic_number,
-            plate: veh.plate,
-            type: "emergency_pass",
-            expires: Date.now() + (60 * 60 * 1000)
-        };
-
+        const qrData = { v_id: vId, eco: veh.economic_number, plate: veh.plate, type: "emergency_pass", expires: Date.now() + (60 * 60 * 1000) };
         const url = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(JSON.stringify(qrData))}&color=ea580c`;
+        
         document.getElementById('emer-qr-img').src = url;
         document.getElementById('emer-qr-container').classList.remove('hidden');
-    }
-
-    // --- EXPORTAR DB EXCEL ---
-    exportToCSV() {
-        if (!this.logs || this.logs.length === 0) return alert("No hay datos para exportar");
-
-        const headers = ["ID", "Fecha", "ECO", "Placas", "Servicio", "Kilometraje", "Mecanico", "Refacciones", "Costo Refacciones", "Costo Mano Obra", "Total", "Notas"];
-        const rows = this.logs.map(l => [
-            l.id, l.date, l.vehicles?.economic_number, l.vehicles?.plate, l.service_name, l.odometer, l.mechanic,
-            (l.parts_used || '').replace(/,/g, ' -').replace(/\n/g, ' '), // Clean commas for CSV
-            l.parts_cost || 0, l.labor_cost || 0, l.total_cost || 0,
-            (l.notes || '').replace(/,/g, ' -').replace(/\n/g, ' ')
-        ]);
-
-        let csvContent = headers.join(",") + "\n";
-        rows.forEach(r => csvContent += r.join(",") + "\n");
-
-        const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.setAttribute("href", url);
-        link.setAttribute("download", `BaseDatos_Mantenimiento_${new Date().toISOString().split('T')[0]}.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
     }
 }
