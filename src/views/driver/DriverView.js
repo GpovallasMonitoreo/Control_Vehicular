@@ -11,6 +11,7 @@ export class DriverView {
         this.polyline = null; 
         this.routeCoords = []; 
         this.incidentImages = [];
+        this.receptionPhoto = null; // Guardará la foto de conformidad
         
         window.conductorModule = this;
     }
@@ -179,12 +180,10 @@ export class DriverView {
             }).subscribe();
     }
 
-    // --- MAPA CORREGIDO Y GPS PERSISTENTE ---
     initLiveMap() {
         if (!window.L) return;
         const L = window.L;
         
-        // Coordenadas base (Naucalpan)
         this.map = L.map('live-map', { zoomControl: false }).setView([19.4326, -99.1332], 16);
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(this.map);
         
@@ -193,9 +192,6 @@ export class DriverView {
         }).addTo(this.map);
 
         this.polyline = L.polyline([], { color: '#137fec', weight: 5, opacity: 0.8, lineJoin: 'round' }).addTo(this.map);
-        
-        // Forzamos renderizado por si la pestaña estaba oculta
-        setTimeout(() => { this.map.invalidateSize(); }, 500);
     }
 
     startTracking() {
@@ -207,32 +203,35 @@ export class DriverView {
         const gpsIndicator = document.getElementById('gps-status-indicator');
         const btnStart = document.getElementById('btn-start-route');
 
-        // UI Updates
         gpsIndicator.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span> <span class="text-emerald-400">Enviando a Central</span>`;
-        btnStart.classList.add('hidden'); // Ocultar botón una vez iniciado
-        document.getElementById('route-waiting-msg').classList.add('hidden'); // Quitar mensaje de bloqueo
+        if (btnStart) btnStart.classList.add('hidden'); 
+        document.getElementById('route-waiting-msg').classList.add('hidden');
 
         this.routeCoords = [];
         this.polyline.setLatLngs([]);
 
         if (this.watchPositionId) navigator.geolocation.clearWatch(this.watchPositionId);
 
+        // Forzar repintado del mapa para asegurar que se vea bien
+        setTimeout(() => {
+            if (this.map) this.map.invalidateSize();
+        }, 500);
+
         this.watchPositionId = navigator.geolocation.watchPosition((pos) => {
             const { latitude, longitude, speed } = pos.coords;
             const latlng = [latitude, longitude];
             
             if(this.map) {
-                this.map.panTo(latlng, {animate: true});
+                // Centramos el mapa en la posición actual
+                this.map.setView(latlng, 16, {animate: true});
                 this.marker.setLatLng(latlng);
                 this.routeCoords.push(latlng);
                 this.polyline.setLatLngs(this.routeCoords);
             }
 
-            // Convertir ms a km/h
             const speedKmh = Math.round((speed || 0) * 3.6);
             document.getElementById('live-speed').innerText = speedKmh;
 
-            // Transmitir a Supabase
             if(this.currentTrip && this.currentTrip.status === 'in_progress') {
                 supabase.from('trip_locations').insert({ 
                     trip_id: this.currentTrip.id, 
@@ -285,23 +284,23 @@ export class DriverView {
             this.renderMechanicChecklist(trip, checkCont);
             this.renderAccessCode(trip);
 
-            // GESTIÓN INTELIGENTE DE PESTAÑA DE RUTA
+            // GESTIÓN DE RUTA: Mostrar botón si el guardia ya dio salida
             if (trip.status === 'in_progress') {
                 document.getElementById('profile-status').innerText = "En Ruta Operativa";
                 document.getElementById('route-waiting-msg').classList.add('hidden');
                 
-                // Si el viaje está en progreso, mostrar el botón para que el usuario despierte el GPS manualmente si se durmió
                 const btnStart = document.getElementById('btn-start-route');
-                btnStart.classList.remove('hidden');
-                btnStart.onclick = () => {
-                    // Actualizamos un campo "start_time" solo por si acaso y activamos mapa
-                    supabase.from('trips').update({ start_time: new Date().toISOString() }).eq('id', trip.id);
-                    this.startTracking();
-                };
+                if(btnStart) {
+                    btnStart.classList.remove('hidden');
+                    btnStart.onclick = () => {
+                        this.startTracking(); // Inicia el mapa y el envío de GPS
+                    };
+                }
             } else {
                 document.getElementById('profile-status').innerText = "Trámite Interno";
                 document.getElementById('route-waiting-msg').classList.remove('hidden');
-                document.getElementById('btn-start-route').classList.add('hidden');
+                const btnStart = document.getElementById('btn-start-route');
+                if(btnStart) btnStart.classList.add('hidden');
             }
         }
     }
@@ -345,6 +344,7 @@ export class DriverView {
                 </div>
             `;
         } else {
+            // Se añadió la sección para la foto de conformidad y el checkbox
             container.innerHTML = `
                 <div class="space-y-3 mb-6">
                     <div class="flex justify-between items-center bg-[#111a22] p-4 rounded-xl border border-emerald-500/30">
@@ -352,20 +352,80 @@ export class DriverView {
                         <span class="bg-emerald-500/20 text-emerald-400 text-[10px] px-2 py-1 rounded font-black uppercase tracking-widest flex items-center gap-1"><span class="material-symbols-outlined text-[12px]">verified</span> Aprobado</span>
                     </div>
                 </div>
-                <p class="text-xs text-[#92adc9] text-center mb-4">Al firmar confirmas que recibes el vehículo en estado óptimo.</p>
-                <button onclick="window.conductorModule.confirmReception('${trip.id}')" class="w-full py-5 bg-primary text-white font-black rounded-xl uppercase text-sm shadow-[0_0_20px_rgba(19,127,236,0.3)] active:scale-95 transition-all flex items-center justify-center gap-2">
+                
+                <div class="bg-[#111a22] border border-[#324d67] p-4 rounded-xl mb-4">
+                    <h4 class="text-white font-bold text-sm mb-3">Evidencia de Recepción</h4>
+                    <div class="flex gap-2 items-center mb-3">
+                        <input type="file" id="reception-photo-input" accept="image/*" capture="environment" class="hidden">
+                        <label for="reception-photo-input" class="flex-1 h-10 bg-[#233648] text-white rounded-lg flex items-center justify-center gap-2 cursor-pointer font-bold text-xs transition-colors border border-[#324d67] hover:bg-primary">
+                            <span class="material-symbols-outlined text-sm">photo_camera</span> Tomar Foto
+                        </label>
+                    </div>
+                    <div id="reception-photo-preview" class="hidden aspect-video bg-cover bg-center rounded-lg border border-[#324d67] mb-3"></div>
+                    
+                    <label class="flex items-start gap-3 cursor-pointer mt-2 group">
+                        <div class="relative flex items-center">
+                            <input type="checkbox" id="accept-conditions-chk" class="peer appearance-none w-5 h-5 border-2 border-[#324d67] rounded bg-[#1c2127] checked:bg-primary checked:border-primary transition-all">
+                            <span class="material-symbols-outlined absolute text-white text-sm opacity-0 peer-checked:opacity-100 pointer-events-none left-0.5 top-0.5">check</span>
+                        </div>
+                        <span class="text-xs text-[#92adc9] group-hover:text-white transition-colors">Acepto de conformidad la recepción del vehículo ECO-${trip.vehicles.economic_number} y asumo la responsabilidad durante mi turno.</span>
+                    </label>
+                </div>
+
+                <button id="btn-confirm-reception" onclick="window.conductorModule.confirmReception('${trip.id}')" class="w-full py-5 bg-primary text-white font-black rounded-xl uppercase text-sm shadow-[0_0_20px_rgba(19,127,236,0.3)] active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
                     <span class="material-symbols-outlined">draw</span> Firmar de Conformidad
                 </button>
             `;
+
+            // Lógica para mostrar la vista previa de la foto
+            const photoInput = document.getElementById('reception-photo-input');
+            const photoPreview = document.getElementById('reception-photo-preview');
+            const acceptChk = document.getElementById('accept-conditions-chk');
+            const btnConfirm = document.getElementById('btn-confirm-reception');
+            
+            // Validar que se tomen foto y checkbox
+            const validateForm = () => {
+                if(this.receptionPhoto && acceptChk.checked) {
+                    btnConfirm.disabled = false;
+                } else {
+                    btnConfirm.disabled = true;
+                }
+            };
+
+            // Iniciar bloqueado
+            validateForm();
+
+            photoInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if(file) {
+                    this.receptionPhoto = file;
+                    photoPreview.style.backgroundImage = `url('${URL.createObjectURL(file)}')`;
+                    photoPreview.classList.remove('hidden');
+                    validateForm();
+                }
+            });
+
+            acceptChk.addEventListener('change', validateForm);
         }
     }
 
     async confirmReception(id) {
-        const accessCode = Math.random().toString(36).substring(2, 7).toUpperCase(); // Genera 5 letras
+        if (!this.receptionPhoto) {
+            alert("Debes tomar una foto de evidencia para recibir la unidad.");
+            return;
+        }
+
+        // Aquí podrías subir `this.receptionPhoto` a un storage de Supabase (omitido para mantener la simplicidad)
+        const accessCode = Math.random().toString(36).substring(2, 7).toUpperCase(); 
+        
+        const btn = document.getElementById('btn-confirm-reception');
+        btn.innerText = "Firmando...";
+        btn.disabled = true;
+
         await supabase.from('trips').update({ status: 'driver_accepted', access_code: accessCode }).eq('id', id);
         
         await this.loadDashboardState();
-        this.switchTab('perfil'); // Lo manda al perfil para ver su código
+        this.switchTab('perfil'); 
     }
 
     renderAccessCode(trip) {
@@ -421,7 +481,7 @@ export class DriverView {
         document.getElementById(`tab-${tabId}`).classList.remove('hidden');
         document.getElementById(`nav-${tabId}`).classList.add('active', 'text-primary');
         
-        // TRUCO INFALIBLE PARA LEAFLET: Obligar a repintar el mapa cuando se abre su pestaña
+        // TRUCO INFALIBLE PARA LEAFLET
         if(tabId === 'ruta' && this.map) {
             setTimeout(() => {
                 this.map.invalidateSize();
