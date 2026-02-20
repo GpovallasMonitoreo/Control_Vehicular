@@ -85,7 +85,7 @@ export class DriverView {
                         <button onclick="document.getElementById('modal-emergency').classList.remove('hidden')" class="h-10 w-10 bg-red-900/20 border border-red-500/30 text-red-500 rounded-full flex items-center justify-center transition-colors hover:bg-red-500 hover:text-white">
                             <span class="material-symbols-outlined text-sm">emergency</span>
                         </button>
-                        <button onclick="window.logoutDriver()" class="h-10 w-10 bg-[#233648] border border-[#324d67] rounded-full text-white flex items-center justify-center hover:text-red-400">
+                        <button onclick="window.conductorModule.logout()" class="h-10 w-10 bg-[#233648] border border-[#324d67] rounded-full text-white flex items-center justify-center hover:text-red-400">
                             <span class="material-symbols-outlined text-sm">logout</span>
                         </button>
                     </div>
@@ -158,8 +158,8 @@ export class DriverView {
                                     </div>
                                 </div>
 
-                                <!-- Botones de acción -->
-                                <div class="space-y-2">
+                                <!-- Botones de acción (solo visibles en modo manual) -->
+                                <div class="space-y-2 hidden">
                                     <button id="btn-start-route" class="w-full py-5 bg-emerald-600 hover:bg-emerald-500 text-white font-black rounded-xl uppercase text-sm shadow-lg">
                                         <span class="material-symbols-outlined inline-block mr-2">play_arrow</span>
                                         INICIAR VIAJE
@@ -323,17 +323,88 @@ export class DriverView {
         await this.loadDashboardState();
         this.setupEventListeners();
 
-        // Suscripción en tiempo real a cambios en el viaje (sin autenticación)
+        // Suscripción en tiempo real a cambios en el viaje (para detectar escaneos del guardia)
         supabase.channel('driver_realtime')
             .on('postgres_changes', { 
-                event: '*', 
+                event: 'UPDATE', 
                 schema: 'public', 
                 table: 'trips', 
                 filter: `driver_id=eq.${this.userId}` 
-            }, () => {
-                this.loadDashboardState();
-                if(navigator.vibrate) navigator.vibrate([100]);
-            }).subscribe();
+            }, (payload) => {
+                console.log('🔄 Cambio detectado en viaje:', payload);
+                this.handleTripUpdate(payload.new);
+            })
+            .on('postgres_changes', { 
+                event: 'INSERT', 
+                schema: 'public', 
+                table: 'trips', 
+                filter: `driver_id=eq.${this.userId}` 
+            }, (payload) => {
+                console.log('🔄 Nuevo viaje asignado:', payload);
+                this.handleTripUpdate(payload.new);
+            })
+            .subscribe();
+    }
+
+    // Manejador de actualizaciones del viaje (escaneos del guardia)
+    async handleTripUpdate(updatedTrip) {
+        const previousStatus = this.currentTrip?.status;
+        this.currentTrip = updatedTrip;
+        
+        // CASO 1: Guardia escaneó código de SALIDA (status cambia a 'in_progress')
+        if (updatedTrip.status === 'in_progress' && previousStatus !== 'in_progress') {
+            console.log('🚀 Viaje iniciado por guardia - comenzando tracking');
+            
+            // Mostrar notificación
+            if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+            
+            // Actualizar UI
+            document.getElementById('profile-status').innerText = "EN RUTA";
+            document.getElementById('route-waiting-msg').classList.add('hidden');
+            document.getElementById('active-trip-panel').classList.remove('hidden');
+            
+            // Establecer kilometraje de salida si está disponible
+            if (updatedTrip.exit_km) {
+                this.tripLogistics.exitKm = updatedTrip.exit_km;
+                document.getElementById('exit-km-input').value = updatedTrip.exit_km;
+            }
+            
+            // Iniciar GPS automáticamente
+            setTimeout(() => this.startTracking(), 1000);
+        }
+        
+        // CASO 2: Guardia escaneó código de REGRESO (status cambia a 'completed')
+        else if (updatedTrip.status === 'completed' && previousStatus !== 'completed') {
+            console.log('🏁 Viaje finalizado por guardia');
+            
+            // Mostrar notificación
+            if (navigator.vibrate) navigator.vibrate([300]);
+            
+            // Actualizar UI
+            document.getElementById('profile-status').innerText = "Viaje Completado";
+            document.getElementById('active-trip-panel').classList.add('hidden');
+            document.getElementById('route-waiting-msg').classList.remove('hidden');
+            
+            // Establecer kilometraje de entrada si está disponible
+            if (updatedTrip.entry_km) {
+                this.tripLogistics.entryKm = updatedTrip.entry_km;
+                document.getElementById('exit-km-input').value = updatedTrip.entry_km;
+            }
+            
+            // Detener GPS
+            this.stopTracking();
+            
+            // Mostrar resumen
+            alert(`✅ Viaje completado\nDistancia: ${updatedTrip.return_details?.total_distance || 0} km`);
+            
+            // Recargar estado
+            this.loadDashboardState();
+        }
+        
+        // CASO 3: Otros cambios (actualizar UI)
+        else {
+            this.loadDashboardState();
+        }
     }
 
     setupEventListeners() {
@@ -350,6 +421,51 @@ export class DriverView {
                 this.saveTripNotes();
             }
         }, 30000);
+    }
+
+    // ==================== MÉTODO DE LOGOUT ====================
+    async logout() {
+        // Confirmar con el usuario
+        if (!confirm('¿Estás seguro que deseas cerrar sesión?')) {
+            return;
+        }
+
+        try {
+            // Mostrar indicador de carga
+            const logoutBtn = document.querySelector('[onclick*="logout"]');
+            if (logoutBtn) {
+                logoutBtn.innerHTML = '<span class="material-symbols-outlined text-sm animate-spin">progress_activity</span>';
+                logoutBtn.disabled = true;
+            }
+
+            // 1. Detener GPS si está activo
+            this.stopTracking();
+
+            // 2. Si hay un viaje en progreso, preguntar si quiere finalizarlo
+            if (this.currentTrip && this.currentTrip.status === 'in_progress') {
+                const shouldEndTrip = confirm('Tienes un viaje en progreso. ¿Quieres finalizarlo antes de salir?');
+                if (shouldEndTrip) {
+                    await this.endTrip();
+                }
+            }
+
+            // 3. Cerrar sesión en Supabase (si aplica)
+            try {
+                await supabase.auth.signOut();
+            } catch (e) {
+                console.log('No hay sesión de Supabase activa');
+            }
+
+        } catch (error) {
+            console.error('Error durante logout:', error);
+        } finally {
+            // 4. Limpiar localStorage
+            localStorage.clear();
+            
+            // 5. Redirigir al login
+            window.location.hash = '#login';
+            window.location.reload();
+        }
     }
 
     // ==================== SISTEMA GPS ====================
@@ -400,18 +516,13 @@ export class DriverView {
     }
 
     handleFirstPosition(pos) {
-        // Registrar hora de salida si es la primera posición
-        if (!this.tripLogistics.startTime) {
+        // Registrar hora de salida si es la primera posición y el viaje está en progreso
+        if (!this.tripLogistics.startTime && this.currentTrip?.status === 'in_progress') {
             this.tripLogistics.startTime = new Date();
-            this.tripLogistics.exitTime = new Date();
-            this.tripLogistics.exitGateTime = new Date();
             
             // Actualizar en la base de datos
             this.updateTripInDatabase({
-                start_time: this.tripLogistics.startTime.toISOString(),
-                exit_time: this.tripLogistics.exitTime.toISOString(),
-                exit_gate_time: this.tripLogistics.exitGateTime.toISOString(),
-                status: 'in_progress'
+                start_time: this.tripLogistics.startTime.toISOString()
             });
         }
 
@@ -497,17 +608,19 @@ export class DriverView {
         this.tripLogistics.lastUpdateTime = now;
         this.tripLogistics.lastSpeed = speedKmh;
 
-        // ENVIAR A SUPABASE - TODOS LOS DATOS
-        this.sendLocationToDatabase({
-            lat: latitude,
-            lng: longitude,
-            speed: speedKmh,
-            accuracy: accuracy,
-            total_distance: this.tripLogistics.totalDistance,
-            moving_time: this.tripLogistics.movingTime,
-            idle_time: this.tripLogistics.idleTime,
-            timestamp: now.toISOString()
-        });
+        // ENVIAR A SUPABASE - SOLO SI EL VIAJE ESTÁ EN PROGRESO
+        if (this.currentTrip?.status === 'in_progress') {
+            this.sendLocationToDatabase({
+                lat: latitude,
+                lng: longitude,
+                speed: speedKmh,
+                accuracy: accuracy,
+                total_distance: this.tripLogistics.totalDistance,
+                moving_time: this.tripLogistics.movingTime,
+                idle_time: this.tripLogistics.idleTime,
+                timestamp: now.toISOString()
+            });
+        }
     }
 
     calculateDistance(lat1, lon1, lat2, lon2) {
@@ -611,42 +724,9 @@ export class DriverView {
 
     // ==================== FUNCIONES DEL VIAJE ====================
     async startTrip() {
-        const exitKm = document.getElementById('exit-km-input').value;
-        
-        if (!exitKm) {
-            alert('Ingresa el kilometraje de salida');
-            return;
-        }
-
-        this.tripLogistics.exitKm = parseFloat(exitKm);
-        this.tripLogistics.startTime = new Date();
-        this.tripLogistics.exitTime = new Date();
-        this.tripLogistics.exitGateTime = new Date();
-
-        // Actualizar UI
-        document.getElementById('btn-start-route').classList.add('hidden');
-        document.getElementById('btn-pause-route').classList.remove('hidden');
-        document.getElementById('btn-end-route').classList.remove('hidden');
-        document.getElementById('route-waiting-msg').classList.add('hidden');
-        document.getElementById('active-trip-panel').classList.remove('hidden');
-        document.getElementById('trip-summary-container').classList.remove('hidden');
-        document.getElementById('summary-start-time').innerText = this.tripLogistics.startTime.toLocaleTimeString();
-
-        // Actualizar base de datos
-        await this.updateTripInDatabase({
-            status: 'in_progress',
-            start_time: this.tripLogistics.startTime.toISOString(),
-            exit_time: this.tripLogistics.exitTime.toISOString(),
-            exit_gate_time: this.tripLogistics.exitGateTime.toISOString(),
-            exit_km: this.tripLogistics.exitKm,
-            request_details: {
-                start_location: 'Base',
-                start_time: this.tripLogistics.startTime.toISOString()
-            }
-        });
-
-        // Iniciar GPS
-        this.startTracking();
+        // Este método ahora es solo para modo manual
+        // El inicio automático se maneja por escaneo del guardia
+        alert('El viaje se iniciará automáticamente cuando el guardia escanee tu código');
     }
 
     pauseTrip() {
@@ -661,24 +741,22 @@ export class DriverView {
     }
 
     async endTrip() {
-        if (!confirm('¿Finalizar viaje? Se registrarán todos los datos.')) return;
-
+        if (!this.currentTrip) return;
+        
+        // Este método se llama automáticamente cuando el guardia escanea el código de regreso
+        // También se usa para finalizar manualmente si es necesario
+        
         const entryKm = document.getElementById('exit-km-input').value;
-        if (!entryKm) {
-            alert('Ingresa el kilometraje de entrada');
-            return;
-        }
-
-        this.tripLogistics.entryKm = parseFloat(entryKm);
+        
+        this.tripLogistics.entryKm = parseFloat(entryKm) || this.tripLogistics.totalDistance;
         this.tripLogistics.entryTime = new Date();
         this.tripLogistics.entryGateTime = new Date();
 
         // Calcular distancia total
-        const totalDistance = this.tripLogistics.entryKm - this.tripLogistics.exitKm;
+        const totalDistance = this.tripLogistics.entryKm || this.tripLogistics.totalDistance;
         
         // Preparar datos completos para la base de datos
         const tripData = {
-            status: 'completed',
             entry_time: this.tripLogistics.entryTime.toISOString(),
             entry_gate_time: this.tripLogistics.entryGateTime.toISOString(),
             entry_km: this.tripLogistics.entryKm,
@@ -710,7 +788,7 @@ export class DriverView {
             fuel_consumption: totalDistance / 8,
             start_km: this.tripLogistics.exitKm,
             end_km: this.tripLogistics.entryKm,
-            start_time: this.tripLogistics.startTime.toISOString(),
+            start_time: this.tripLogistics.startTime?.toISOString(),
             end_time: this.tripLogistics.entryTime.toISOString()
         });
 
@@ -826,43 +904,36 @@ export class DriverView {
 
             this.renderAccessCode(trip);
 
-            if (trip.status === 'in_progress' || trip.status === 'driver_accepted') {
-                document.getElementById('profile-status').innerText = 
-                    trip.status === 'in_progress' ? "EN RUTA" : "Esperando autorización";
+            if (trip.status === 'in_progress') {
+                document.getElementById('profile-status').innerText = "EN RUTA";
                 
                 if (waitingMsg) waitingMsg.classList.add('hidden');
                 if (activePanel) activePanel.classList.remove('hidden');
 
-                // Configurar botones
-                if (trip.status === 'in_progress') {
-                    btnStart.classList.add('hidden');
-                    btnPause.classList.remove('hidden');
-                    btnEnd.classList.remove('hidden');
-                    
-                    // Cargar datos existentes
-                    if (trip.start_time) {
-                        this.tripLogistics.startTime = new Date(trip.start_time);
-                        document.getElementById('summary-start-time').innerText = 
-                            new Date(trip.start_time).toLocaleTimeString();
-                        document.getElementById('trip-summary-container').classList.remove('hidden');
-                    }
-
-                    if (trip.exit_km) {
-                        this.tripLogistics.exitKm = trip.exit_km;
-                        document.getElementById('exit-km-input').value = trip.exit_km;
-                    }
-
-                    // Iniciar GPS automáticamente
-                    if (this.activeTab === 'ruta') {
-                        setTimeout(() => this.startTracking(), 1000);
-                    }
-                } else {
-                    btnStart.classList.remove('hidden');
-                    btnPause.classList.add('hidden');
-                    btnEnd.classList.add('hidden');
-                    
-                    btnStart.onclick = () => this.startTrip();
+                // Cargar datos existentes
+                if (trip.start_time) {
+                    this.tripLogistics.startTime = new Date(trip.start_time);
+                    document.getElementById('summary-start-time').innerText = 
+                        new Date(trip.start_time).toLocaleTimeString();
+                    document.getElementById('trip-summary-container').classList.remove('hidden');
                 }
+
+                if (trip.exit_km) {
+                    this.tripLogistics.exitKm = trip.exit_km;
+                    document.getElementById('exit-km-input').value = trip.exit_km;
+                }
+
+                // Iniciar GPS automáticamente si estamos en la pestaña de ruta
+                if (this.activeTab === 'ruta') {
+                    setTimeout(() => this.startTracking(), 1000);
+                }
+                
+            } else if (trip.status === 'driver_accepted') {
+                document.getElementById('profile-status').innerText = "Esperando autorización";
+                
+                if (waitingMsg) waitingMsg.classList.remove('hidden');
+                if (activePanel) activePanel.classList.add('hidden');
+                this.stopTracking();
             } else {
                 document.getElementById('profile-status').innerText = "Trámite Interno";
                 if (waitingMsg) waitingMsg.classList.remove('hidden');
@@ -1193,3 +1264,15 @@ export class DriverView {
         }
     }
 }
+
+// ==================== FUNCIÓN GLOBAL DE RESPALDO PARA LOGOUT ====================
+window.logoutDriver = function() {
+    if (window.conductorModule && typeof window.conductorModule.logout === 'function') {
+        window.conductorModule.logout();
+    } else {
+        // Fallback: limpiar localStorage y redirigir
+        localStorage.clear();
+        window.location.hash = '#login';
+        window.location.reload();
+    }
+};
