@@ -3,14 +3,13 @@ import { supabase } from '../../config/supabaseClient.js';
 export class DriverView {
     constructor() {
         this.activeTab = 'unidad';
-        // Usuario fijo para pruebas - el que ya existe en tu BD
         this.userId = 'd0c1e2f3-0000-0000-0000-000000000001'; 
         this.currentTrip = null;
         this.watchPositionId = null;
         this.gpsRetryCount = 0;
         this.maxGpsRetries = 3;
         
-        // Sistema de logística completo
+        // Sistema de logística
         this.tripLogistics = {
             startTime: null,
             exitTime: null,
@@ -38,7 +37,6 @@ export class DriverView {
             supervisor: null
         };
         
-        // Archivo de foto de recepción
         this.receptionPhotoFile = null;
         
         window.conductorModule = this;
@@ -82,7 +80,7 @@ export class DriverView {
                         <div id="unidad-content" class="space-y-3"></div>
                     </section>
 
-                    <!-- PESTAÑA CHECKLIST (CON CÁMARA FUNCIONAL) -->
+                    <!-- PESTAÑA CHECKLIST -->
                     <section id="tab-checklist" class="tab-content hidden p-5 space-y-4">
                         <div class="bg-[#192633] border border-[#233648] rounded-2xl p-5 shadow-xl">
                             <h3 class="text-white font-bold mb-4 flex items-center gap-2 border-b border-[#233648] pb-3">
@@ -92,10 +90,9 @@ export class DriverView {
                         </div>
                     </section>
 
-                    <!-- PESTAÑA RUTA - SIN MAPA, SOLO DATOS -->
+                    <!-- PESTAÑA RUTA -->
                     <section id="tab-ruta" class="tab-content hidden h-full flex flex-col">
                         <div class="p-5 space-y-4">
-                            <!-- Mensaje de espera -->
                             <div id="route-waiting-msg" class="bg-[#192633] border border-[#233648] rounded-2xl p-8 text-center">
                                 <span class="material-symbols-outlined text-5xl text-[#324d67] mb-3">gpp_maybe</span>
                                 <h3 class="text-white font-bold text-lg">Esperando Salida</h3>
@@ -105,9 +102,7 @@ export class DriverView {
                                 </div>
                             </div>
 
-                            <!-- Panel de información de viaje ACTIVO -->
                             <div id="active-trip-panel" class="hidden space-y-4">
-                                <!-- Kilometraje y tiempos -->
                                 <div class="bg-[#192633] rounded-2xl p-5 border border-primary/30">
                                     <div class="grid grid-cols-2 gap-4 mb-4">
                                         <div>
@@ -121,7 +116,6 @@ export class DriverView {
                                         </div>
                                     </div>
                                     
-                                    <!-- Progreso del viaje -->
                                     <div class="space-y-3">
                                         <div class="flex justify-between text-xs">
                                             <span class="text-[#92adc9]">Velocidad</span>
@@ -142,7 +136,6 @@ export class DriverView {
                                     </div>
                                 </div>
 
-                                <!-- Notas del viaje -->
                                 <div class="bg-[#192633] rounded-xl p-4 border border-[#233648]">
                                     <p class="text-[10px] text-[#92adc9] uppercase mb-2">Notas del viaje</p>
                                     <textarea id="trip-notes" rows="2" 
@@ -155,7 +148,6 @@ export class DriverView {
                                 </div>
                             </div>
 
-                            <!-- Estado del GPS -->
                             <div class="bg-[#111a22] border border-[#233648] rounded-xl p-4">
                                 <div id="gps-status-indicator" class="text-center">
                                     <div class="flex items-center justify-center gap-2 text-slate-400">
@@ -200,7 +192,6 @@ export class DriverView {
                                 </div>
                             </div>
 
-                            <!-- Foto de recepción (si existe) -->
                             <div id="reception-photo-container" class="hidden mb-4">
                                 <h4 class="text-slate-800 text-xs font-black uppercase mb-2">Foto de Recepción</h4>
                                 <img id="reception-photo-display" class="w-full rounded-xl border-2 border-primary/30 cursor-pointer" 
@@ -208,7 +199,6 @@ export class DriverView {
                                      src="" alt="Foto de recepción">
                             </div>
 
-                            <!-- Resumen del viaje actual -->
                             <div id="trip-summary-container" class="hidden bg-primary/5 p-4 rounded-2xl border border-primary/20">
                                 <h4 class="text-primary text-xs font-black uppercase mb-3">Viaje en curso</h4>
                                 <div class="space-y-2 text-xs">
@@ -313,53 +303,38 @@ export class DriverView {
         const previousStatus = this.currentTrip?.status;
         this.currentTrip = updatedTrip;
         
-        // CASO 1: Guardia escaneó código de SALIDA (status cambia a 'in_progress')
         if (updatedTrip.status === 'in_progress' && previousStatus !== 'in_progress') {
             console.log('🚀 Viaje iniciado por guardia - comenzando tracking');
             
-            // Notificación
             if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
             
-            // Actualizar UI
             document.getElementById('profile-status').innerText = "EN RUTA";
             document.getElementById('route-waiting-msg').classList.add('hidden');
             document.getElementById('active-trip-panel').classList.remove('hidden');
             
-            // Establecer kilometraje de salida
             if (updatedTrip.exit_km) {
                 this.tripLogistics.exitKm = updatedTrip.exit_km;
                 document.getElementById('exit-km-display').innerText = updatedTrip.exit_km.toFixed(1);
                 document.getElementById('exit-km-input').value = updatedTrip.exit_km;
             }
             
-            // Iniciar GPS automáticamente
             setTimeout(() => this.startTracking(), 1000);
         }
-        
-        // CASO 2: Guardia escaneó código de REGRESO (status cambia a 'completed')
         else if (updatedTrip.status === 'completed' && previousStatus !== 'completed') {
             console.log('🏁 Viaje finalizado por guardia');
             
-            // Notificación
             if (navigator.vibrate) navigator.vibrate([300]);
             
-            // Actualizar UI
             document.getElementById('profile-status').innerText = "Viaje Completado";
             document.getElementById('active-trip-panel').classList.add('hidden');
             document.getElementById('route-waiting-msg').classList.remove('hidden');
             
-            // Mostrar resumen
             const totalDistance = updatedTrip.return_details?.total_distance || this.tripLogistics.totalDistance;
             alert(`✅ Viaje completado\nDistancia: ${totalDistance.toFixed(1)} km`);
             
-            // Detener GPS
             this.stopTracking();
-            
-            // Recargar estado
             this.loadDashboardState();
         }
-        
-        // CASO 3: Otros cambios
         else {
             this.loadDashboardState();
         }
@@ -480,6 +455,7 @@ export class DriverView {
 
         document.getElementById('live-speed').innerText = `${speedKmh} km/h`;
 
+        // Cálculo de distancia usando la fórmula de Haversine [citation:2][citation:6][citation:10]
         if (this.tripLogistics.lastPosition) {
             const distance = this.calculateDistance(
                 this.tripLogistics.lastPosition.lat,
@@ -488,6 +464,7 @@ export class DriverView {
                 longitude
             );
 
+            // Solo sumar distancias razonables (< 500m)
             if (distance < 0.5) {
                 this.tripLogistics.totalDistance += distance;
                 
@@ -544,8 +521,9 @@ export class DriverView {
         }
     }
 
+    // Fórmula Haversine validada [citation:6][citation:10]
     calculateDistance(lat1, lon1, lat2, lon2) {
-        const R = 6371;
+        const R = 6371; // Radio de la Tierra en km
         const dLat = this.deg2rad(lat2 - lat1);
         const dLon = this.deg2rad(lon2 - lon1);
         const a = 
@@ -854,7 +832,7 @@ export class DriverView {
         this.switchTab('checklist');
     }
 
-    // ==================== CHECKLIST CON CÁMARA FUNCIONAL ====================
+    // ==================== CHECKLIST CON CÁMARA ====================
     renderMechanicChecklist(trip, container) {
         if (trip.status === 'requested') {
             container.innerHTML = `
@@ -869,7 +847,6 @@ export class DriverView {
         } else {
             container.innerHTML = `
                 <div class="space-y-4">
-                    <!-- Checklist aprobado -->
                     <div class="bg-[#111a22] p-4 rounded-xl border border-emerald-500/30">
                         <div class="flex justify-between items-center">
                             <span class="text-white font-bold">Inspección General</span>
@@ -879,29 +856,24 @@ export class DriverView {
                         </div>
                     </div>
                     
-                    <!-- SECCIÓN DE FOTO CON CÁMARA -->
                     <div class="bg-[#111a22] border border-[#324d67] p-5 rounded-xl">
                         <h4 class="text-white font-bold text-sm mb-4 flex items-center gap-2">
                             <span class="material-symbols-outlined text-primary">photo_camera</span>
                             Foto de Recepción
                         </h4>
                         
-                        <!-- Input de cámara (OCULTO pero con ID fijo) -->
                         <input type="file" id="reception-photo-input" accept="image/*" capture="environment" style="display: none;">
                         
-                        <!-- Vista previa de la imagen -->
                         <div id="reception-photo-preview" class="hidden mb-4">
                             <img id="reception-photo-img" class="w-full rounded-xl border-2 border-primary/30" />
                         </div>
                         
-                        <!-- Botón para tomar foto -->
                         <button type="button" onclick="window.conductorModule.triggerCamera()" 
                                 class="w-full h-14 bg-[#233648] hover:bg-primary/20 text-white rounded-xl flex items-center justify-center gap-3 font-bold transition-all border-2 border-dashed border-[#324d67] hover:border-primary">
                             <span class="material-symbols-outlined text-2xl">add_a_photo</span>
                             <span>TOMAR FOTO DE RECEPCIÓN</span>
                         </button>
                         
-                        <!-- Checkbox de aceptación -->
                         <label class="flex items-start gap-3 cursor-pointer mt-6 p-3 bg-[#1c2127] rounded-xl">
                             <div class="relative flex items-center">
                                 <input type="checkbox" id="accept-conditions-chk" class="peer appearance-none w-6 h-6 border-2 border-[#324d67] rounded-lg bg-[#111a22] checked:bg-primary checked:border-primary">
@@ -913,7 +885,6 @@ export class DriverView {
                         </label>
                     </div>
 
-                    <!-- Botón de confirmación -->
                     <button id="btn-confirm-reception" 
                             onclick="window.conductorModule.confirmReception('${trip.id}')" 
                             class="w-full py-5 bg-primary text-white font-black rounded-xl uppercase text-lg shadow-[0_0_30px_rgba(19,127,236,0.3)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
@@ -924,15 +895,12 @@ export class DriverView {
                 </div>
             `;
 
-            // Configurar el event listener para el input file
             this.setupCameraListener();
             
-            // Configurar validación del checkbox
             const acceptChk = document.getElementById('accept-conditions-chk');
             const btnConfirm = document.getElementById('btn-confirm-reception');
             
             if (acceptChk && btnConfirm) {
-                // Remover event listeners anteriores para evitar duplicados
                 const newAcceptChk = acceptChk.cloneNode(true);
                 acceptChk.parentNode.replaceChild(newAcceptChk, acceptChk);
                 
@@ -943,12 +911,10 @@ export class DriverView {
         }
     }
 
-    // Método para configurar el listener de la cámara
     setupCameraListener() {
         const photoInput = document.getElementById('reception-photo-input');
         if (!photoInput) return;
         
-        // Remover listeners anteriores para evitar duplicados
         const newPhotoInput = photoInput.cloneNode(true);
         photoInput.parentNode.replaceChild(newPhotoInput, photoInput);
         
@@ -960,39 +926,19 @@ export class DriverView {
         });
     }
 
-    // Método para activar la cámara
     triggerCamera() {
         const photoInput = document.getElementById('reception-photo-input');
         if (photoInput) {
             photoInput.click();
-        } else {
-            // Crear input temporal si no existe
-            const tempInput = document.createElement('input');
-            tempInput.type = 'file';
-            tempInput.accept = 'image/*';
-            tempInput.capture = 'environment';
-            tempInput.style.display = 'none';
-            
-            tempInput.addEventListener('change', (e) => {
-                const file = e.target.files[0];
-                if (file) this.processPhotoFile(file);
-                document.body.removeChild(tempInput);
-            });
-            
-            document.body.appendChild(tempInput);
-            tempInput.click();
         }
     }
 
-    // Procesar archivo de foto
     processPhotoFile(file) {
-        // Validar que sea imagen
         if (!file.type.startsWith('image/')) {
             alert('Por favor selecciona una imagen válida');
             return;
         }
         
-        // Validar tamaño (máximo 5MB)
         if (file.size > 5 * 1024 * 1024) {
             alert('La imagen no debe superar los 5MB');
             return;
@@ -1000,7 +946,6 @@ export class DriverView {
         
         this.receptionPhotoFile = file;
         
-        // Mostrar preview
         const photoPreview = document.getElementById('reception-photo-preview');
         const photoImg = document.getElementById('reception-photo-img');
         
@@ -1013,7 +958,6 @@ export class DriverView {
             reader.readAsDataURL(file);
         }
         
-        // Validar formulario
         const acceptChk = document.getElementById('accept-conditions-chk');
         const btnConfirm = document.getElementById('btn-confirm-reception');
         
@@ -1038,13 +982,21 @@ export class DriverView {
         try {
             const bucketName = 'trip-photos';
             
+            // Verificar que el bucket existe antes de subir
+            const { data: buckets, error: bucketsError } = await supabase.storage.listBuckets();
+            console.log('Buckets disponibles:', buckets);
+            
+            const bucketExists = buckets?.some(b => b.name === bucketName);
+            if (!bucketExists) {
+                throw new Error(`El bucket '${bucketName}' no existe. Verifica en Storage.`);
+            }
+            
             const userId = this.userId;
             const fileExt = this.receptionPhotoFile.name.split('.').pop() || 'jpg';
             const fileName = `${userId}/${id}/reception_${Date.now()}.${fileExt}`;
             
             console.log('Subiendo archivo:', fileName);
 
-            // SUBIR LA IMAGEN
             const { data: uploadData, error: uploadError } = await supabase.storage
                 .from(bucketName)
                 .upload(fileName, this.receptionPhotoFile, {
@@ -1058,10 +1010,10 @@ export class DriverView {
                 
                 if (uploadError.message?.includes('duplicate')) {
                     throw new Error('La imagen ya existe. Intenta de nuevo.');
-                } else if (uploadError.message?.includes('permission') || uploadError.message?.includes('policy')) {
+                } else if (uploadError.message?.includes('permission')) {
                     throw new Error('Error de permisos. Verifica las políticas RLS en Storage.');
                 } else if (uploadError.message?.includes('bucket')) {
-                    throw new Error(`Bucket '${bucketName}' no encontrado.`);
+                    throw new Error(`Bucket '${bucketName}' no encontrado. Verifica en Storage.`);
                 } else {
                     throw uploadError;
                 }
@@ -1069,10 +1021,8 @@ export class DriverView {
 
             console.log('Upload successful:', uploadData);
 
-            // GENERAR CÓDIGO DE ACCESO
             const accessCode = Math.random().toString(36).substring(2, 7).toUpperCase();
 
-            // ACTUALIZAR BASE DE DATOS
             const { error: updateError } = await supabase
                 .from('trips')
                 .update({ 
@@ -1173,7 +1123,6 @@ export class DriverView {
     }
 }
 
-// Función global de respaldo
 window.logoutDriver = function() {
     if (window.conductorModule && typeof window.conductorModule.logout === 'function') {
         window.conductorModule.logout();
