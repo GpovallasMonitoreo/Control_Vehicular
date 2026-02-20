@@ -3,8 +3,14 @@ import { supabase } from '../../config/supabaseClient.js';
 export class AdminDashboardView {
     constructor() {
         this.users = [];
-        this.currentPage = 1;
-        this.pageSize = 10;
+        this.stats = {
+            total: 0,
+            admins: 0,
+            drivers: 0,
+            guards: 0,
+            talleres: 0
+        };
+        window.adminView = this;
     }
 
     render() {
@@ -70,20 +76,15 @@ export class AdminDashboardView {
                                     <th class="px-4 py-3 text-left text-[#92adc9] text-xs font-bold uppercase">Email</th>
                                     <th class="px-4 py-3 text-left text-[#92adc9] text-xs font-bold uppercase">Rol</th>
                                     <th class="px-4 py-3 text-left text-[#92adc9] text-xs font-bold uppercase">ID Empleado</th>
-                                    <th class="px-4 py-3 text-left text-[#92adc9] text-xs font-bold uppercase">Puntos</th>
                                     <th class="px-4 py-3 text-left text-[#92adc9] text-xs font-bold uppercase">Acciones</th>
                                 </tr>
                             </thead>
                             <tbody id="users-table-body" class="divide-y divide-[#233648]">
                                 <tr>
-                                    <td colspan="6" class="px-4 py-8 text-center text-[#92adc9]">Cargando usuarios...</td>
+                                    <td colspan="5" class="px-4 py-8 text-center text-[#92adc9]">Cargando usuarios...</td>
                                 </tr>
                             </tbody>
                         </table>
-                    </div>
-
-                    <!-- Paginación -->
-                    <div id="pagination" class="flex justify-center gap-2 mt-4">
                     </div>
                 </div>
 
@@ -137,22 +138,6 @@ export class AdminDashboardView {
                                 </div>
                             </div>
 
-                            <div class="bg-[#111a22] p-4 rounded-xl border border-[#233648]">
-                                <h3 class="text-white font-bold mb-3">Opciones adicionales</h3>
-                                <div class="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label class="block text-xs text-[#92adc9] mb-1">Puntos iniciales</label>
-                                        <input type="number" id="new-points" value="0" 
-                                               class="w-full bg-[#0d141c] border border-[#233648] rounded-lg p-2 text-white">
-                                    </div>
-                                    <div>
-                                        <label class="block text-xs text-[#92adc9] mb-1">Trust Score</label>
-                                        <input type="number" id="new-trust" value="100" 
-                                               class="w-full bg-[#0d141c] border border-[#233648] rounded-lg p-2 text-white">
-                                    </div>
-                                </div>
-                            </div>
-
                             <div class="flex gap-3 pt-4">
                                 <button type="button" onclick="window.adminView.createUser()" 
                                         class="flex-1 py-4 bg-primary text-white font-bold rounded-xl hover:bg-blue-600 transition-colors">
@@ -171,11 +156,16 @@ export class AdminDashboardView {
 
                 <!-- Panel de Reportes -->
                 <div id="reports-panel" class="tab-panel hidden">
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
                         <div class="bg-[#1c2127] rounded-xl p-6 border border-[#233648]">
                             <span class="material-symbols-outlined text-primary text-3xl mb-3">people</span>
                             <p class="text-[#92adc9] text-xs uppercase">Total Usuarios</p>
                             <p id="total-users" class="text-white text-3xl font-bold">0</p>
+                        </div>
+                        <div class="bg-[#1c2127] rounded-xl p-6 border border-[#233648]">
+                            <span class="material-symbols-outlined text-primary text-3xl mb-3">admin_panel_settings</span>
+                            <p class="text-[#92adc9] text-xs uppercase">Administradores</p>
+                            <p id="total-admins" class="text-white text-3xl font-bold">0</p>
                         </div>
                         <div class="bg-[#1c2127] rounded-xl p-6 border border-[#233648]">
                             <span class="material-symbols-outlined text-orange-500 text-3xl mb-3">directions_car</span>
@@ -187,12 +177,10 @@ export class AdminDashboardView {
                             <p class="text-[#92adc9] text-xs uppercase">Vigilancia</p>
                             <p id="total-guards" class="text-white text-3xl font-bold">0</p>
                         </div>
-                    </div>
-
-                    <div class="bg-[#1c2127] rounded-xl p-6 border border-[#233648]">
-                        <h3 class="text-white font-bold mb-4">Distribución por Roles</h3>
-                        <div id="role-chart" class="h-64 flex items-center justify-center text-[#92adc9]">
-                            Cargando estadísticas...
+                        <div class="bg-[#1c2127] rounded-xl p-6 border border-[#233648]">
+                            <span class="material-symbols-outlined text-purple-500 text-3xl mb-3">engineering</span>
+                            <p class="text-[#92adc9] text-xs uppercase">Taller</p>
+                            <p id="total-taller" class="text-white text-3xl font-bold">0</p>
                         </div>
                     </div>
                 </div>
@@ -202,7 +190,6 @@ export class AdminDashboardView {
     }
 
     async onMount() {
-        window.adminView = this;
         await this.loadAdminInfo();
         await this.loadUsers();
         await this.loadReports();
@@ -218,7 +205,8 @@ export class AdminDashboardView {
                 .single();
             
             if (profile) {
-                document.getElementById('admin-name').innerText = profile.full_name;
+                const nameElement = document.getElementById('admin-name');
+                if (nameElement) nameElement.innerText = profile.full_name;
             }
         }
     }
@@ -244,34 +232,35 @@ export class AdminDashboardView {
                 query = query.eq('role', filterRole);
             }
 
-            const from = (this.currentPage - 1) * this.pageSize;
-            const to = from + this.pageSize - 1;
-
-            const { data: users, error, count } = await query.range(from, to);
+            const { data: users, error } = await query;
 
             if (error) throw error;
 
-            this.renderUsersTable(users || []);
-            this.renderPagination(count || 0);
+            this.users = users || [];
+            this.renderUsersTable();
         } catch (error) {
             console.error('Error cargando usuarios:', error);
-            document.getElementById('users-table-body').innerHTML = `
-                <tr>
-                    <td colspan="6" class="px-4 py-8 text-center text-red-500">
-                        Error cargando usuarios: ${error.message}
-                    </td>
-                </tr>
-            `;
+            const tbody = document.getElementById('users-table-body');
+            if (tbody) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="5" class="px-4 py-8 text-center text-red-500">
+                            Error cargando usuarios: ${error.message}
+                        </td>
+                    </tr>
+                `;
+            }
         }
     }
 
-    renderUsersTable(users) {
+    renderUsersTable() {
         const tbody = document.getElementById('users-table-body');
+        if (!tbody) return;
         
-        if (users.length === 0) {
+        if (this.users.length === 0) {
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="6" class="px-4 py-8 text-center text-[#92adc9]">
+                    <td colspan="5" class="px-4 py-8 text-center text-[#92adc9]">
                         No hay usuarios para mostrar
                     </td>
                 </tr>
@@ -279,7 +268,7 @@ export class AdminDashboardView {
             return;
         }
 
-        tbody.innerHTML = users.map(user => {
+        tbody.innerHTML = this.users.map(user => {
             const roleColors = {
                 admin: 'text-primary bg-primary/10 border-primary/30',
                 driver: 'text-orange-500 bg-orange-500/10 border-orange-500/30',
@@ -305,12 +294,7 @@ export class AdminDashboardView {
                         </span>
                     </td>
                     <td class="px-4 py-3 text-white">${user.employee_id || '-'}</td>
-                    <td class="px-4 py-3 text-white">${user.points_balance || 0}</td>
                     <td class="px-4 py-3">
-                        <button onclick="window.adminView.editUser('${user.id}')" 
-                                class="text-primary hover:text-blue-400 mr-2">
-                            <span class="material-symbols-outlined text-sm">edit</span>
-                        </button>
                         <button onclick="window.adminView.deleteUser('${user.id}')" 
                                 class="text-red-500 hover:text-red-400">
                             <span class="material-symbols-outlined text-sm">delete</span>
@@ -321,44 +305,66 @@ export class AdminDashboardView {
         }).join('');
     }
 
-    renderPagination(total) {
-        const totalPages = Math.ceil(total / this.pageSize);
-        const pagination = document.getElementById('pagination');
-        
-        if (totalPages <= 1) {
-            pagination.innerHTML = '';
-            return;
-        }
+    async loadReports() {
+        try {
+            const { data: profiles } = await supabase
+                .from('profiles')
+                .select('role');
 
-        let html = '';
-        for (let i = 1; i <= totalPages; i++) {
-            html += `
-                <button onclick="window.adminView.goToPage(${i})" 
-                        class="px-3 py-1 rounded-lg ${i === this.currentPage ? 'bg-primary text-white' : 'bg-[#1c2127] text-[#92adc9] hover:text-white'}">
-                    ${i}
-                </button>
-            `;
+            if (profiles) {
+                const stats = {
+                    total: profiles.length,
+                    admins: profiles.filter(p => p.role === 'admin').length,
+                    drivers: profiles.filter(p => p.role === 'driver').length,
+                    guards: profiles.filter(p => p.role === 'guard').length,
+                    talleres: profiles.filter(p => p.role === 'taller').length
+                };
+
+                // Actualizar elementos del DOM si existen
+                const totalUsers = document.getElementById('total-users');
+                const totalAdmins = document.getElementById('total-admins');
+                const totalDrivers = document.getElementById('total-drivers');
+                const totalGuards = document.getElementById('total-guards');
+                const totalTaller = document.getElementById('total-taller');
+
+                if (totalUsers) totalUsers.innerText = stats.total;
+                if (totalAdmins) totalAdmins.innerText = stats.admins;
+                if (totalDrivers) totalDrivers.innerText = stats.drivers;
+                if (totalGuards) totalGuards.innerText = stats.guards;
+                if (totalTaller) totalTaller.innerText = stats.talleres;
+            }
+        } catch (error) {
+            console.error('Error cargando reportes:', error);
         }
-        
-        pagination.innerHTML = html;
     }
 
-    goToPage(page) {
-        this.currentPage = page;
-        this.loadUsers();
+    switchTab(tab) {
+        document.querySelectorAll('.tab-panel').forEach(el => el.classList.add('hidden'));
+        document.querySelectorAll('.tab-btn').forEach(el => {
+            el.classList.remove('active', 'bg-primary', 'text-white');
+            el.classList.add('text-[#92adc9]');
+        });
+
+        const panel = document.getElementById(`${tab}-panel`);
+        const btn = document.getElementById(`tab-${tab}`);
+        
+        if (panel) panel.classList.remove('hidden');
+        if (btn) {
+            btn.classList.add('active', 'bg-primary', 'text-white');
+            btn.classList.remove('text-[#92adc9]');
+        }
     }
 
     async createUser() {
-        const fullname = document.getElementById('new-fullname').value;
-        const email = document.getElementById('new-email').value;
-        const password = document.getElementById('new-password').value;
-        const passwordConfirm = document.getElementById('new-password-confirm').value;
-        const role = document.getElementById('new-role').value;
-        const employeeId = document.getElementById('new-employee-id').value;
-        const points = document.getElementById('new-points').value;
-        const trust = document.getElementById('new-trust').value;
+        const fullname = document.getElementById('new-fullname')?.value;
+        const email = document.getElementById('new-email')?.value;
+        const password = document.getElementById('new-password')?.value;
+        const passwordConfirm = document.getElementById('new-password-confirm')?.value;
+        const role = document.getElementById('new-role')?.value;
+        const employeeId = document.getElementById('new-employee-id')?.value;
         
         const resultDiv = document.getElementById('create-result');
+        if (!resultDiv) return;
 
         // Validaciones
         if (!fullname || !email || !password) {
@@ -391,17 +397,15 @@ export class AdminDashboardView {
 
             if (authError) throw authError;
 
-            // 2. Crear/Actualizar perfil
+            // 2. Crear perfil
             const { error: profileError } = await supabase
                 .from('profiles')
                 .upsert({
                     id: authData.user.id,
                     email: email,
                     full_name: fullname,
-                    role: role,
+                    role: role || 'driver',
                     employee_id: employeeId || null,
-                    points_balance: parseInt(points) || 0,
-                    trust_score: parseInt(trust) || 100,
                     created_at: new Date().toISOString()
                 });
 
@@ -410,12 +414,14 @@ export class AdminDashboardView {
             this.showCreateResult(`✅ Usuario ${fullname} creado exitosamente`, 'success');
             
             // Limpiar formulario
-            document.getElementById('create-user-form').reset();
+            const form = document.getElementById('create-user-form');
+            if (form) form.reset();
             
             // Recargar lista de usuarios
             setTimeout(() => {
                 this.switchTab('users');
                 this.loadUsers();
+                this.loadReports();
             }, 1500);
 
         } catch (error) {
@@ -426,6 +432,8 @@ export class AdminDashboardView {
 
     showCreateResult(message, type) {
         const resultDiv = document.getElementById('create-result');
+        if (!resultDiv) return;
+        
         resultDiv.innerHTML = message;
         resultDiv.classList.remove('hidden');
         
@@ -440,83 +448,6 @@ export class AdminDashboardView {
         }, 5000);
     }
 
-    async loadReports() {
-        try {
-            const { data: profiles } = await supabase
-                .from('profiles')
-                .select('role');
-
-            if (profiles) {
-                const total = profiles.length;
-                const drivers = profiles.filter(p => p.role === 'driver').length;
-                const guards = profiles.filter(p => p.role === 'guard').length;
-                const talleres = profiles.filter(p => p.role === 'taller').length;
-                const admins = profiles.filter(p => p.role === 'admin').length;
-
-                document.getElementById('total-users').innerText = total;
-                document.getElementById('total-drivers').innerText = drivers;
-                document.getElementById('total-guards').innerText = guards;
-
-                document.getElementById('role-chart').innerHTML = `
-                    <div class="w-full space-y-3">
-                        <div class="flex items-center gap-2">
-                            <span class="w-20 text-[#92adc9] text-xs">Admin:</span>
-                            <div class="flex-1 h-4 bg-[#111a22] rounded-full overflow-hidden">
-                                <div class="h-full bg-primary" style="width: ${(admins/total)*100}%"></div>
-                            </div>
-                            <span class="text-white text-xs font-bold">${admins}</span>
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <span class="w-20 text-[#92adc9] text-xs">Conductor:</span>
-                            <div class="flex-1 h-4 bg-[#111a22] rounded-full overflow-hidden">
-                                <div class="h-full bg-orange-500" style="width: ${(drivers/total)*100}%"></div>
-                            </div>
-                            <span class="text-white text-xs font-bold">${drivers}</span>
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <span class="w-20 text-[#92adc9] text-xs">Vigilancia:</span>
-                            <div class="flex-1 h-4 bg-[#111a22] rounded-full overflow-hidden">
-                                <div class="h-full bg-emerald-500" style="width: ${(guards/total)*100}%"></div>
-                            </div>
-                            <span class="text-white text-xs font-bold">${guards}</span>
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <span class="w-20 text-[#92adc9] text-xs">Taller:</span>
-                            <div class="flex-1 h-4 bg-[#111a22] rounded-full overflow-hidden">
-                                <div class="h-full bg-purple-500" style="width: ${(talleres/total)*100}%"></div>
-                            </div>
-                            <span class="text-white text-xs font-bold">${talleres}</span>
-                        </div>
-                    </div>
-                `;
-            }
-        } catch (error) {
-            console.error('Error cargando reportes:', error);
-        }
-    }
-
-    switchTab(tab) {
-        document.querySelectorAll('.tab-panel').forEach(el => el.classList.add('hidden'));
-        document.querySelectorAll('.tab-btn').forEach(el => {
-            el.classList.remove('active', 'bg-primary', 'text-white');
-            el.classList.add('text-[#92adc9]');
-        });
-
-        document.getElementById(`${tab}-panel`).classList.remove('hidden');
-        document.getElementById(`tab-${tab}`).classList.add('active', 'bg-primary', 'text-white');
-    }
-
-    async logout() {
-        await supabase.auth.signOut();
-        localStorage.clear();
-        window.location.hash = '#login';
-        window.location.reload();
-    }
-
-    editUser(userId) {
-        alert(`Editar usuario ${userId} - Funcionalidad en desarrollo`);
-    }
-
     async deleteUser(userId) {
         if (!confirm('¿Estás seguro de eliminar este usuario?')) return;
 
@@ -526,8 +457,16 @@ export class AdminDashboardView {
             
             alert('Usuario eliminado');
             this.loadUsers();
+            this.loadReports();
         } catch (error) {
             alert('Error eliminando usuario: ' + error.message);
         }
+    }
+
+    async logout() {
+        await supabase.auth.signOut();
+        localStorage.clear();
+        window.location.hash = '#login';
+        window.location.reload();
     }
 }
