@@ -2,13 +2,21 @@ export class Layout {
     constructor() {
         // Leemos el rol del usuario (admin, guard, driver, taller, guest)
         this.role = localStorage.getItem('userRole') || 'guest';
+        this.userId = localStorage.getItem('userId');
         console.log('🎨 Layout inicializado con rol:', this.role);
+    }
+
+    // Verificar si hay sesión válida
+    hasValidSession() {
+        return this.role && this.role !== 'guest' && this.userId;
     }
 
     // Genera el HTML del menú lateral según el rol
     getSidebar() {
-        // Si es conductor o invitado, NO mostramos sidebar (vista móvil pura)
-        if (this.role === 'driver' || this.role === 'guest') return '';
+        // Si no hay sesión válida o es conductor/invitado, NO mostrar sidebar
+        if (!this.hasValidSession() || this.role === 'driver' || this.role === 'guest') {
+            return '';
+        }
 
         let menuItems = '';
 
@@ -79,49 +87,36 @@ export class Layout {
         } 
         
         // ============================================
-        // MENÚ PARA TALLER (MECÁNICO) - NUEVO
+        // MENÚ PARA TALLER
         // ============================================
         else if (this.role === 'taller') {
             menuItems = `
                 <div class="text-xs font-bold text-[#92adc9] uppercase tracking-wider mb-2 px-2">Taller</div>
                 
-                <a href="#workshop" class="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-purple-600 text-white shadow-lg shadow-purple-500/20 mb-1">
+                <a href="#taller-dashboard" class="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-purple-600 text-white shadow-lg shadow-purple-500/20 mb-1">
                     <span class="material-symbols-outlined">engineering</span> 
                     <span class="font-medium text-sm">Panel Taller</span>
                 </a>
                 
-                <a href="#pending-checklists" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[#92adc9] hover:text-white hover:bg-purple-500/20 transition-all mb-1">
-                    <span class="material-symbols-outlined text-[22px]">checklist</span> 
-                    <span class="font-medium text-sm">Checklists Pendientes</span>
-                    <span class="ml-auto bg-yellow-500/20 text-yellow-500 text-[10px] px-2 py-0.5 rounded-full">3</span>
-                </a>
-                
-                <a href="#maintenance-queue" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[#92adc9] hover:text-white hover:bg-purple-500/20 transition-all mb-1">
-                    <span class="material-symbols-outlined text-[22px]">build</span> 
-                    <span class="font-medium text-sm">Cola de Mantenimiento</span>
-                </a>
-                
-                <a href="#workshop-history" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[#92adc9] hover:text-white hover:bg-purple-500/20 transition-all mb-1">
-                    <span class="material-symbols-outlined text-[22px]">history</span> 
-                    <span class="font-medium text-sm">Historial de Reparaciones</span>
-                </a>
-                
-                <a href="#parts-inventory" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[#92adc9] hover:text-white hover:bg-purple-500/20 transition-all mb-1">
+                <a href="#taller-inventory" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[#92adc9] hover:text-white hover:bg-purple-500/20 transition-all mb-1">
                     <span class="material-symbols-outlined text-[22px]">inventory</span> 
-                    <span class="font-medium text-sm">Inventario de Refacciones</span>
+                    <span class="font-medium text-sm">Inventario Taller</span>
                 </a>
                 
-                <div class="text-xs font-bold text-[#92adc9] uppercase tracking-wider mt-6 mb-2 px-2">Reportes</div>
+                <a href="#taller-stock" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[#92adc9] hover:text-white hover:bg-purple-500/20 transition-all mb-1">
+                    <span class="material-symbols-outlined text-[22px]">build</span> 
+                    <span class="font-medium text-sm">Stock Refacciones</span>
+                </a>
                 
-                <a href="#workshop-reports" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[#92adc9] hover:text-white hover:bg-purple-500/20 transition-all">
+                <a href="#taller-reports" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[#92adc9] hover:text-white hover:bg-purple-500/20 transition-all mb-1">
                     <span class="material-symbols-outlined text-[22px]">bar_chart</span> 
-                    <span class="font-medium text-sm">Estadísticas Taller</span>
+                    <span class="font-medium text-sm">Reportes Taller</span>
                 </a>
             `;
         }
         
         // ============================================
-        // MENÚ PARA VIGILANCIA (GUARDIA)
+        // MENÚ PARA VIGILANCIA
         // ============================================
         else if (this.role === 'guard') {
             menuItems = `
@@ -132,19 +127,9 @@ export class Layout {
                     <span class="font-medium text-sm">Escáner QR</span>
                 </a>
                 
-                <a href="#access-control" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[#92adc9] hover:text-white hover:bg-emerald-500/20 transition-all mb-1">
-                    <span class="material-symbols-outlined text-[22px]">lock</span> 
-                    <span class="font-medium text-sm">Control de Accesos</span>
-                </a>
-                
-                <a href="#exit-records" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[#92adc9] hover:text-white hover:bg-emerald-500/20 transition-all mb-1">
-                    <span class="material-symbols-outlined text-[22px]">exit_to_app</span> 
-                    <span class="font-medium text-sm">Registro de Salidas</span>
-                </a>
-                
                 <a href="#incident" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-red-400 hover:text-white hover:bg-red-500/20 transition-all mt-4 border border-red-500/20">
                     <span class="material-symbols-outlined text-[22px]">report_problem</span> 
-                    <span class="font-medium text-sm">Reportar Daño</span>
+                    <span class="font-medium text-sm">Reportar Incidente</span>
                 </a>
             `;
         }
@@ -184,8 +169,10 @@ export class Layout {
     }
 
     render(contentHTML) {
-        // Para invitados (login) o conductores, solo contenido sin layout
-        if (this.role === 'guest' || this.role === 'driver') {
+        const hasValidSession = this.hasValidSession();
+        
+        // Para invitados (login) o conductores, solo contenido sin sidebar
+        if (!hasValidSession || this.role === 'driver') {
             return contentHTML;
         }
 
@@ -209,16 +196,6 @@ export class Layout {
                     </div>
                     
                     <div class="flex items-center gap-6">
-                        <div class="relative hidden lg:block w-72">
-                            <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-[#92adc9]">
-                                <span class="material-symbols-outlined text-[18px]">search</span>
-                            </span>
-                            <input class="bg-[#1c2127] border border-[#324d67] text-white text-xs rounded-full focus:ring-1 focus:ring-primary focus:border-primary block w-full pl-10 p-2 placeholder-slate-500 outline-none transition-all" 
-                                   placeholder="Buscar unidad, conductor, producto..." 
-                                   type="text"
-                                   id="global-search">
-                        </div>
-                        
                         <div class="flex items-center gap-3 pl-4 border-l border-[#324d67]">
                             <div class="flex flex-col text-right hidden sm:block">
                                 <p class="text-white text-xs font-bold leading-none">
@@ -259,6 +236,6 @@ export class Layout {
 
     getInitials() {
         const name = localStorage.getItem('userName') || this.role;
-        return name.charAt(0).toUpperCase();
+        return name ? name.charAt(0).toUpperCase() : '?';
     }
 }
