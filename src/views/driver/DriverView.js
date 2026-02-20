@@ -3,7 +3,7 @@ import { supabase } from '../../config/supabaseClient.js';
 export class DriverView {
     constructor() {
         this.activeTab = 'unidad';
-        // NO USAR userId fijo - lo obtendremos de la sesión
+        // Ya no usamos userId fijo - lo obtendremos de la sesión
         this.userId = null; 
         this.currentTrip = null;
         this.watchPositionId = null;
@@ -601,7 +601,7 @@ export class DriverView {
                 accuracy: locationData.accuracy,
                 total_distance: locationData.total_distance,
                 moving_time: locationData.moving_time,
-                idle_time: locationData.idleTime,
+                idle_time: locationData.idle_time,
                 timestamp: locationData.timestamp
             });
 
@@ -1064,15 +1064,50 @@ export class DriverView {
         }
     }
 
+    // ==================== VISUALIZACIÓN DE FOTOS CON URLS FIRMADAS ====================
     async viewReceptionPhoto() {
         if (!this.currentTrip?.reception_photo_path) return;
         
-        const { data } = supabase.storage
-            .from('trip-photos')
-            .getPublicUrl(this.currentTrip.reception_photo_path);
+        try {
+            // Generar URL firmada válida por 60 segundos
+            const { data, error } = await supabase.storage
+                .from('trip-photos')
+                .createSignedUrl(this.currentTrip.reception_photo_path, 60);
+            
+            if (error) {
+                console.error('Error generando URL firmada:', error);
+                alert('No se pudo cargar la imagen');
+                return;
+            }
+            
+            if (data?.signedUrl) {
+                window.open(data.signedUrl, '_blank');
+            }
+        } catch (error) {
+            console.error('Error al ver foto:', error);
+        }
+    }
+
+    async displayReceptionPhoto() {
+        if (!this.currentTrip?.reception_photo_path) return;
         
-        if (data?.publicUrl) {
-            window.open(data.publicUrl, '_blank');
+        try {
+            // Generar URL firmada válida por 5 minutos para la vista previa
+            const { data, error } = await supabase.storage
+                .from('trip-photos')
+                .createSignedUrl(this.currentTrip.reception_photo_path, 300);
+            
+            if (error) {
+                console.error('Error generando URL firmada:', error);
+                return;
+            }
+            
+            if (data?.signedUrl) {
+                document.getElementById('reception-photo-display').src = data.signedUrl;
+                document.getElementById('reception-photo-container').classList.remove('hidden');
+            }
+        } catch (error) {
+            console.error('Error al mostrar foto:', error);
         }
     }
 
@@ -1117,21 +1152,9 @@ export class DriverView {
             setTimeout(() => this.startTracking(), 500);
         }
     }
-
-    async displayReceptionPhoto() {
-        if (!this.currentTrip?.reception_photo_path) return;
-        
-        const { data } = supabase.storage
-            .from('trip-photos')
-            .getPublicUrl(this.currentTrip.reception_photo_path);
-        
-        if (data?.publicUrl) {
-            document.getElementById('reception-photo-display').src = data.publicUrl;
-            document.getElementById('reception-photo-container').classList.remove('hidden');
-        }
-    }
 }
 
+// Función global de respaldo
 window.logoutDriver = function() {
     if (window.conductorModule && typeof window.conductorModule.logout === 'function') {
         window.conductorModule.logout();
