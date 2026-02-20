@@ -12,19 +12,14 @@ export class DriverView {
         
         // Sistema de logística completo
         this.tripLogistics = {
-            // Tiempos
             startTime: null,
             exitTime: null,
             entryTime: null,
             exitGateTime: null,
             entryGateTime: null,
-            
-            // Kilometraje
             exitKm: null,
             entryKm: null,
             totalDistance: 0,
-            
-            // Estadísticas de viaje
             averageSpeed: 0,
             maxSpeed: 0,
             idleTime: 0,
@@ -32,26 +27,14 @@ export class DriverView {
             lastSpeed: 0,
             lastUpdateTime: null,
             lastPosition: null,
-            
-            // Detalles de solicitud y retorno
             requestDetails: null,
             returnDetails: null,
-            
-            // Código de emergencia
             emergencyCode: null,
             emergencyExpiry: null,
-            
-            // Firmas
             driverSignature: null,
             guardSignature: null,
-            
-            // Checklist
             checklistExit: {},
-            
-            // Notas
             notes: [],
-            
-            // Supervisor
             supervisor: null
         };
         
@@ -66,7 +49,7 @@ export class DriverView {
         <div class="fixed inset-0 w-full h-full bg-[#0d141c] font-display flex justify-center overflow-hidden">
             <div class="w-full md:max-w-md bg-[#111a22] h-full relative shadow-2xl border-x border-[#233648] flex flex-col">
                 
-                <!-- HEADER MEJORADO CON INDICADOR GPS -->
+                <!-- HEADER -->
                 <header class="w-full shrink-0 flex items-center justify-between border-b border-[#233648] px-5 py-4 bg-[#111a22] z-20">
                     <div class="flex items-center gap-4 flex-1 min-w-0">
                         <div id="profile-avatar" class="shrink-0 h-12 w-12 rounded-full border-2 border-primary bg-slate-700 bg-cover bg-center shadow-lg"></div>
@@ -99,7 +82,7 @@ export class DriverView {
                         <div id="unidad-content" class="space-y-3"></div>
                     </section>
 
-                    <!-- PESTAÑA CHECKLIST -->
+                    <!-- PESTAÑA CHECKLIST (CON CÁMARA FUNCIONAL) -->
                     <section id="tab-checklist" class="tab-content hidden p-5 space-y-4">
                         <div class="bg-[#192633] border border-[#233648] rounded-2xl p-5 shadow-xl">
                             <h3 class="text-white font-bold mb-4 flex items-center gap-2 border-b border-[#233648] pb-3">
@@ -111,14 +94,15 @@ export class DriverView {
 
                     <!-- PESTAÑA RUTA - SIN MAPA, SOLO DATOS -->
                     <section id="tab-ruta" class="tab-content hidden h-full flex flex-col">
-                        
-                        <!-- Panel de control de ruta -->
                         <div class="p-5 space-y-4">
                             <!-- Mensaje de espera -->
                             <div id="route-waiting-msg" class="bg-[#192633] border border-[#233648] rounded-2xl p-8 text-center">
                                 <span class="material-symbols-outlined text-5xl text-[#324d67] mb-3">gpp_maybe</span>
                                 <h3 class="text-white font-bold text-lg">Esperando Salida</h3>
-                                <p class="text-[#92adc9] text-xs mt-2">Muestra tu código al guardia para autorizar la salida</p>
+                                <p class="text-[#92adc9] text-xs mt-2">Esperando autorización del guardia...</p>
+                                <div class="mt-4 flex justify-center">
+                                    <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                                </div>
                             </div>
 
                             <!-- Panel de información de viaje ACTIVO -->
@@ -128,8 +112,8 @@ export class DriverView {
                                     <div class="grid grid-cols-2 gap-4 mb-4">
                                         <div>
                                             <p class="text-[10px] text-[#92adc9] uppercase mb-1">Km Salida</p>
-                                            <input type="number" id="exit-km-input" step="0.1" placeholder="0.0" 
-                                                   class="w-full bg-[#111a22] border border-[#233648] text-white p-3 rounded-xl text-lg font-bold">
+                                            <p id="exit-km-display" class="text-2xl font-black text-primary">0.0</p>
+                                            <input type="hidden" id="exit-km-input" value="0">
                                         </div>
                                         <div>
                                             <p class="text-[10px] text-[#92adc9] uppercase mb-1">Km Actual</p>
@@ -158,24 +142,6 @@ export class DriverView {
                                     </div>
                                 </div>
 
-                                <!-- Botones de acción (solo visibles en modo manual) -->
-                                <div class="space-y-2 hidden">
-                                    <button id="btn-start-route" class="w-full py-5 bg-emerald-600 hover:bg-emerald-500 text-white font-black rounded-xl uppercase text-sm shadow-lg">
-                                        <span class="material-symbols-outlined inline-block mr-2">play_arrow</span>
-                                        INICIAR VIAJE
-                                    </button>
-                                    
-                                    <button id="btn-pause-route" class="w-full py-4 bg-orange-600 hover:bg-orange-500 text-white font-black rounded-xl uppercase text-sm hidden">
-                                        <span class="material-symbols-outlined inline-block mr-2">pause</span>
-                                        PAUSAR SEGUIMIENTO
-                                    </button>
-                                    
-                                    <button id="btn-end-route" class="w-full py-5 bg-red-600 hover:bg-red-500 text-white font-black rounded-xl uppercase text-sm hidden">
-                                        <span class="material-symbols-outlined inline-block mr-2">stop</span>
-                                        FINALIZAR VIAJE
-                                    </button>
-                                </div>
-
                                 <!-- Notas del viaje -->
                                 <div class="bg-[#192633] rounded-xl p-4 border border-[#233648]">
                                     <p class="text-[10px] text-[#92adc9] uppercase mb-2">Notas del viaje</p>
@@ -201,9 +167,8 @@ export class DriverView {
                         </div>
                     </section>
 
-                    <!-- PESTAÑA PERFIL MEJORADA -->
+                    <!-- PESTAÑA PERFIL -->
                     <section id="tab-perfil" class="tab-content hidden p-5 space-y-5">
-                        <!-- Gafete digital -->
                         <div class="bg-white rounded-3xl p-6 shadow-2xl">
                             <div class="flex justify-between items-start mb-6">
                                 <div>
@@ -213,10 +178,8 @@ export class DriverView {
                                 <div id="card-photo" class="h-16 w-16 bg-slate-100 rounded-xl bg-cover bg-center"></div>
                             </div>
 
-                            <!-- Código de acceso -->
                             <div id="access-code-container" class="mb-6"></div>
 
-                            <!-- Datos del conductor y supervisor -->
                             <div class="bg-slate-50 p-4 rounded-2xl mb-4">
                                 <h4 class="text-slate-800 text-xs font-black uppercase mb-3 border-b border-slate-200 pb-2">
                                     <span class="material-symbols-outlined text-sm text-primary">badge</span> Datos
@@ -316,14 +279,13 @@ export class DriverView {
     }
 
     async onMount() {
-        // Usar el userId fijo de pruebas
         this.userId = 'd0c1e2f3-0000-0000-0000-000000000001'; 
         
         await this.loadProfileData();
         await this.loadDashboardState();
         this.setupEventListeners();
 
-        // Suscripción en tiempo real a cambios en el viaje (para detectar escaneos del guardia)
+        // Suscripción en tiempo real para detectar escaneos del guardia
         supabase.channel('driver_realtime')
             .on('postgres_changes', { 
                 event: 'UPDATE', 
@@ -346,7 +308,7 @@ export class DriverView {
             .subscribe();
     }
 
-    // Manejador de actualizaciones del viaje (escaneos del guardia)
+    // ==================== MANEJADOR DE ESCANEOS DEL GUARDIA ====================
     async handleTripUpdate(updatedTrip) {
         const previousStatus = this.currentTrip?.status;
         this.currentTrip = updatedTrip;
@@ -355,7 +317,7 @@ export class DriverView {
         if (updatedTrip.status === 'in_progress' && previousStatus !== 'in_progress') {
             console.log('🚀 Viaje iniciado por guardia - comenzando tracking');
             
-            // Mostrar notificación
+            // Notificación
             if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
             
             // Actualizar UI
@@ -363,9 +325,10 @@ export class DriverView {
             document.getElementById('route-waiting-msg').classList.add('hidden');
             document.getElementById('active-trip-panel').classList.remove('hidden');
             
-            // Establecer kilometraje de salida si está disponible
+            // Establecer kilometraje de salida
             if (updatedTrip.exit_km) {
                 this.tripLogistics.exitKm = updatedTrip.exit_km;
+                document.getElementById('exit-km-display').innerText = updatedTrip.exit_km.toFixed(1);
                 document.getElementById('exit-km-input').value = updatedTrip.exit_km;
             }
             
@@ -377,7 +340,7 @@ export class DriverView {
         else if (updatedTrip.status === 'completed' && previousStatus !== 'completed') {
             console.log('🏁 Viaje finalizado por guardia');
             
-            // Mostrar notificación
+            // Notificación
             if (navigator.vibrate) navigator.vibrate([300]);
             
             // Actualizar UI
@@ -385,37 +348,31 @@ export class DriverView {
             document.getElementById('active-trip-panel').classList.add('hidden');
             document.getElementById('route-waiting-msg').classList.remove('hidden');
             
-            // Establecer kilometraje de entrada si está disponible
-            if (updatedTrip.entry_km) {
-                this.tripLogistics.entryKm = updatedTrip.entry_km;
-                document.getElementById('exit-km-input').value = updatedTrip.entry_km;
-            }
+            // Mostrar resumen
+            const totalDistance = updatedTrip.return_details?.total_distance || this.tripLogistics.totalDistance;
+            alert(`✅ Viaje completado\nDistancia: ${totalDistance.toFixed(1)} km`);
             
             // Detener GPS
             this.stopTracking();
-            
-            // Mostrar resumen
-            alert(`✅ Viaje completado\nDistancia: ${updatedTrip.return_details?.total_distance || 0} km`);
             
             // Recargar estado
             this.loadDashboardState();
         }
         
-        // CASO 3: Otros cambios (actualizar UI)
+        // CASO 3: Otros cambios
         else {
             this.loadDashboardState();
         }
     }
 
+    // ==================== CONFIGURACIÓN ====================
     setupEventListeners() {
-        // Persistencia del GPS cuando la app está en background
         document.addEventListener('visibilitychange', () => {
             if (!document.hidden && this.activeTab === 'ruta' && this.currentTrip?.status === 'in_progress') {
                 this.startTracking();
             }
         });
 
-        // Guardar notas automáticamente cada 30 segundos
         setInterval(() => {
             if (this.currentTrip?.status === 'in_progress') {
                 this.saveTripNotes();
@@ -423,25 +380,13 @@ export class DriverView {
         }, 30000);
     }
 
-    // ==================== MÉTODO DE LOGOUT ====================
+    // ==================== LOGOUT ====================
     async logout() {
-        // Confirmar con el usuario
-        if (!confirm('¿Estás seguro que deseas cerrar sesión?')) {
-            return;
-        }
+        if (!confirm('¿Estás seguro que deseas cerrar sesión?')) return;
 
         try {
-            // Mostrar indicador de carga
-            const logoutBtn = document.querySelector('[onclick*="logout"]');
-            if (logoutBtn) {
-                logoutBtn.innerHTML = '<span class="material-symbols-outlined text-sm animate-spin">progress_activity</span>';
-                logoutBtn.disabled = true;
-            }
-
-            // 1. Detener GPS si está activo
             this.stopTracking();
-
-            // 2. Si hay un viaje en progreso, preguntar si quiere finalizarlo
+            
             if (this.currentTrip && this.currentTrip.status === 'in_progress') {
                 const shouldEndTrip = confirm('Tienes un viaje en progreso. ¿Quieres finalizarlo antes de salir?');
                 if (shouldEndTrip) {
@@ -449,7 +394,6 @@ export class DriverView {
                 }
             }
 
-            // 3. Cerrar sesión en Supabase (si aplica)
             try {
                 await supabase.auth.signOut();
             } catch (e) {
@@ -459,23 +403,19 @@ export class DriverView {
         } catch (error) {
             console.error('Error durante logout:', error);
         } finally {
-            // 4. Limpiar localStorage
             localStorage.clear();
-            
-            // 5. Redirigir al login
             window.location.hash = '#login';
             window.location.reload();
         }
     }
 
-    // ==================== SISTEMA GPS ====================
+    // ==================== GPS ====================
     startTracking() {
         if (!navigator.geolocation) {
             alert("El dispositivo no tiene sensor GPS.");
             return;
         }
 
-        // Limpiar watch anterior
         if (this.watchPositionId) {
             navigator.geolocation.clearWatch(this.watchPositionId);
         }
@@ -489,13 +429,10 @@ export class DriverView {
             </div>
         `;
 
-        // Solicitar permisos y comenzar tracking
         navigator.geolocation.getCurrentPosition(
-            // Success
             (pos) => {
                 this.handleFirstPosition(pos);
                 
-                // Watch position para tracking continuo
                 this.watchPositionId = navigator.geolocation.watchPosition(
                     (position) => this.handlePositionUpdate(position),
                     (error) => this.handleGPSError(error),
@@ -507,7 +444,6 @@ export class DriverView {
                     }
                 );
             },
-            // Error
             (err) => {
                 this.handleGPSError(err);
             },
@@ -516,17 +452,14 @@ export class DriverView {
     }
 
     handleFirstPosition(pos) {
-        // Registrar hora de salida si es la primera posición y el viaje está en progreso
         if (!this.tripLogistics.startTime && this.currentTrip?.status === 'in_progress') {
             this.tripLogistics.startTime = new Date();
             
-            // Actualizar en la base de datos
             this.updateTripInDatabase({
                 start_time: this.tripLogistics.startTime.toISOString()
             });
         }
 
-        // Actualizar UI
         document.getElementById('gps-status-indicator').innerHTML = `
             <div class="flex items-center justify-center gap-2 text-emerald-400">
                 <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
@@ -545,10 +478,8 @@ export class DriverView {
         const now = new Date();
         const speedKmh = Math.round((speed || 0) * 3.6);
 
-        // Actualizar velocidad en UI
         document.getElementById('live-speed').innerText = `${speedKmh} km/h`;
 
-        // Calcular distancia si tenemos posición anterior
         if (this.tripLogistics.lastPosition) {
             const distance = this.calculateDistance(
                 this.tripLogistics.lastPosition.lat,
@@ -557,23 +488,18 @@ export class DriverView {
                 longitude
             );
 
-            // Solo sumar distancias razonables (< 500m)
             if (distance < 0.5) {
                 this.tripLogistics.totalDistance += distance;
                 
-                // Calcular consumo (promedio 8 km/L)
                 const fuelConsumption = this.tripLogistics.totalDistance / 8;
                 
-                // Actualizar UI
                 document.getElementById('live-distance').innerText = this.tripLogistics.totalDistance.toFixed(1);
                 document.getElementById('live-fuel').innerText = fuelConsumption.toFixed(1);
                 
-                // Actualizar estadísticas en perfil
                 document.getElementById('summary-distance').innerText = this.tripLogistics.totalDistance.toFixed(1) + ' km';
                 document.getElementById('summary-fuel').innerText = fuelConsumption.toFixed(1) + ' L';
             }
 
-            // Calcular tiempo en movimiento
             const timeDiff = (now - this.tripLogistics.lastUpdateTime) / 1000;
             if (speedKmh > 1) {
                 this.tripLogistics.movingTime += timeDiff;
@@ -581,19 +507,16 @@ export class DriverView {
                 this.tripLogistics.idleTime += timeDiff;
             }
 
-            // Velocidad máxima
             if (speedKmh > this.tripLogistics.maxSpeed) {
                 this.tripLogistics.maxSpeed = speedKmh;
             }
 
-            // Velocidad promedio
             const totalHours = (now - this.tripLogistics.startTime) / 3600000;
             if (totalHours > 0) {
                 this.tripLogistics.averageSpeed = this.tripLogistics.totalDistance / totalHours;
             }
         }
 
-        // Actualizar tiempo transcurrido
         if (this.tripLogistics.startTime) {
             const duration = Math.floor((now - this.tripLogistics.startTime) / 1000);
             const hours = Math.floor(duration / 3600);
@@ -603,12 +526,10 @@ export class DriverView {
                 `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
         }
 
-        // Guardar posición para cálculos futuros
         this.tripLogistics.lastPosition = { lat: latitude, lng: longitude, timestamp: now };
         this.tripLogistics.lastUpdateTime = now;
         this.tripLogistics.lastSpeed = speedKmh;
 
-        // ENVIAR A SUPABASE - SOLO SI EL VIAJE ESTÁ EN PROGRESO
         if (this.currentTrip?.status === 'in_progress') {
             this.sendLocationToDatabase({
                 lat: latitude,
@@ -684,7 +605,7 @@ export class DriverView {
         }
     }
 
-    // ==================== FUNCIONES DE BASE DE DATOS ====================
+    // ==================== BASE DE DATOS ====================
     async sendLocationToDatabase(locationData) {
         if (!this.currentTrip) return;
 
@@ -724,78 +645,31 @@ export class DriverView {
 
     // ==================== FUNCIONES DEL VIAJE ====================
     async startTrip() {
-        // Este método ahora es solo para modo manual
-        // El inicio automático se maneja por escaneo del guardia
         alert('El viaje se iniciará automáticamente cuando el guardia escanee tu código');
-    }
-
-    pauseTrip() {
-        this.stopTracking();
-        
-        document.getElementById('btn-pause-route').classList.add('hidden');
-        document.getElementById('btn-start-route').classList.remove('hidden');
-        document.getElementById('btn-start-route').innerHTML = `
-            <span class="material-symbols-outlined inline-block mr-2">play_arrow</span>
-            REANUDAR VIAJE
-        `;
     }
 
     async endTrip() {
         if (!this.currentTrip) return;
         
-        // Este método se llama automáticamente cuando el guardia escanea el código de regreso
-        // También se usa para finalizar manualmente si es necesario
-        
-        const entryKm = document.getElementById('exit-km-input').value;
-        
-        this.tripLogistics.entryKm = parseFloat(entryKm) || this.tripLogistics.totalDistance;
-        this.tripLogistics.entryTime = new Date();
-        this.tripLogistics.entryGateTime = new Date();
-
         // Calcular distancia total
-        const totalDistance = this.tripLogistics.entryKm || this.tripLogistics.totalDistance;
+        const totalDistance = this.tripLogistics.totalDistance;
         
-        // Preparar datos completos para la base de datos
         const tripData = {
-            entry_time: this.tripLogistics.entryTime.toISOString(),
-            entry_gate_time: this.tripLogistics.entryGateTime.toISOString(),
-            entry_km: this.tripLogistics.entryKm,
+            entry_time: new Date().toISOString(),
+            entry_gate_time: new Date().toISOString(),
+            entry_km: totalDistance,
             return_details: {
-                end_time: this.tripLogistics.entryTime.toISOString(),
+                end_time: new Date().toISOString(),
                 total_distance: totalDistance,
                 average_speed: this.tripLogistics.averageSpeed,
                 max_speed: this.tripLogistics.maxSpeed,
                 moving_time: this.tripLogistics.movingTime,
                 idle_time: this.tripLogistics.idleTime,
-                fuel_consumption: totalDistance / 8,
-                route_summary: {
-                    points: this.tripLogistics.lastPosition ? [this.tripLogistics.lastPosition] : []
-                }
+                fuel_consumption: totalDistance / 8
             }
         };
 
-        // Guardar en Supabase
         await this.updateTripInDatabase(tripData);
-
-        // Guardar resumen en tabla separada
-        await supabase.from('trip_summaries').insert({
-            trip_id: this.currentTrip.id,
-            total_distance: totalDistance,
-            average_speed: this.tripLogistics.averageSpeed,
-            max_speed: this.tripLogistics.maxSpeed,
-            moving_time_seconds: Math.floor(this.tripLogistics.movingTime),
-            idle_time_seconds: Math.floor(this.tripLogistics.idleTime),
-            fuel_consumption: totalDistance / 8,
-            start_km: this.tripLogistics.exitKm,
-            end_km: this.tripLogistics.entryKm,
-            start_time: this.tripLogistics.startTime?.toISOString(),
-            end_time: this.tripLogistics.entryTime.toISOString()
-        });
-
-        this.stopTracking();
-        alert('Viaje finalizado correctamente');
-        await this.loadDashboardState();
-        this.switchTab('unidad');
     }
 
     async saveTripNotes() {
@@ -816,9 +690,8 @@ export class DriverView {
     async activateEmergency() {
         const description = document.getElementById('emergency-desc').value;
         
-        // Generar código de emergencia
         const emergencyCode = 'EMG-' + Math.random().toString(36).substring(2, 8).toUpperCase();
-        const expiryTime = new Date(Date.now() + 30 * 60000); // 30 minutos
+        const expiryTime = new Date(Date.now() + 30 * 60000);
 
         await this.updateTripInDatabase({
             emergency_code: emergencyCode,
@@ -835,9 +708,8 @@ export class DriverView {
         document.getElementById('modal-emergency').classList.add('hidden');
     }
 
-    // ==================== FUNCIONES DE PERFIL Y CHECKLIST ====================
+    // ==================== PERFIL Y CHECKLIST ====================
     async loadProfileData() {
-        // Usar el userId fijo en lugar de la sesión
         const { data: p, error } = await supabase
             .from('profiles')
             .select('*')
@@ -856,14 +728,8 @@ export class DriverView {
             document.getElementById('card-full-name').innerText = p.full_name;
             document.getElementById('card-photo').style.backgroundImage = `url('${p.photo_url || ''}')`;
             document.getElementById('lic-number').innerText = p.license_number || 'No Registrada';
-            
-            if (p.role === 'supervisor' || p.role === 'admin') {
-                document.getElementById('profile-manager').innerText = 'Supervisor';
-                document.getElementById('profile-role').innerText = p.role === 'admin' ? 'Administrador' : 'Supervisor';
-            } else {
-                document.getElementById('profile-manager').innerText = p.supervisor_name || 'Central COV';
-                document.getElementById('profile-role').innerText = 'Conductor';
-            }
+            document.getElementById('profile-manager').innerText = p.supervisor_name || 'Central COV';
+            document.getElementById('profile-role').innerText = 'Conductor';
         }
     }
 
@@ -882,9 +748,6 @@ export class DriverView {
         const unityCont = document.getElementById('unidad-content');
         const waitingMsg = document.getElementById('route-waiting-msg');
         const activePanel = document.getElementById('active-trip-panel');
-        const btnStart = document.getElementById('btn-start-route');
-        const btnPause = document.getElementById('btn-pause-route');
-        const btnEnd = document.getElementById('btn-end-route');
 
         if (!trip) {
             await this.renderAvailableUnits(unityCont);
@@ -910,7 +773,6 @@ export class DriverView {
                 if (waitingMsg) waitingMsg.classList.add('hidden');
                 if (activePanel) activePanel.classList.remove('hidden');
 
-                // Cargar datos existentes
                 if (trip.start_time) {
                     this.tripLogistics.startTime = new Date(trip.start_time);
                     document.getElementById('summary-start-time').innerText = 
@@ -920,10 +782,10 @@ export class DriverView {
 
                 if (trip.exit_km) {
                     this.tripLogistics.exitKm = trip.exit_km;
+                    document.getElementById('exit-km-display').innerText = trip.exit_km.toFixed(1);
                     document.getElementById('exit-km-input').value = trip.exit_km;
                 }
 
-                // Iniciar GPS automáticamente si estamos en la pestaña de ruta
                 if (this.activeTab === 'ruta') {
                     setTimeout(() => this.startTracking(), 1000);
                 }
@@ -942,7 +804,6 @@ export class DriverView {
             }
         }
 
-        // Renderizar checklist
         const checkCont = document.getElementById('checklist-content');
         if (trip) {
             this.renderMechanicChecklist(trip, checkCont);
@@ -994,6 +855,7 @@ export class DriverView {
         this.switchTab('checklist');
     }
 
+    // ==================== CHECKLIST CON CÁMARA FUNCIONAL ====================
     renderMechanicChecklist(trip, container) {
         if (trip.status === 'requested') {
             container.innerHTML = `
@@ -1034,11 +896,11 @@ export class DriverView {
                         </div>
                         
                         <!-- Botón para tomar foto -->
-                        <label for="reception-photo-input" 
-                               class="w-full h-14 bg-[#233648] hover:bg-primary/20 text-white rounded-xl flex items-center justify-center gap-3 cursor-pointer font-bold transition-all border-2 border-dashed border-[#324d67] hover:border-primary">
+                        <button onclick="window.conductorModule.takePhoto()" 
+                                class="w-full h-14 bg-[#233648] hover:bg-primary/20 text-white rounded-xl flex items-center justify-center gap-3 font-bold transition-all border-2 border-dashed border-[#324d67] hover:border-primary">
                             <span class="material-symbols-outlined text-2xl">add_a_photo</span>
                             <span>TOMAR FOTO DE RECEPCIÓN</span>
-                        </label>
+                        </button>
                         
                         <!-- Checkbox de aceptación -->
                         <label class="flex items-start gap-3 cursor-pointer mt-6 p-3 bg-[#1c2127] rounded-xl">
@@ -1063,52 +925,83 @@ export class DriverView {
                 </div>
             `;
 
-            // Lógica para manejar la foto
-            const photoInput = document.getElementById('reception-photo-input');
-            const photoPreview = document.getElementById('reception-photo-preview');
-            const photoImg = document.getElementById('reception-photo-img');
+            // Lógica para checkbox
             const acceptChk = document.getElementById('accept-conditions-chk');
             const btnConfirm = document.getElementById('btn-confirm-reception');
             
-            // Resetear variable
-            this.receptionPhotoFile = null;
-            
-            // Validar formulario
             const validateForm = () => {
                 btnConfirm.disabled = !(this.receptionPhotoFile && acceptChk.checked);
             };
 
-            // Cuando se selecciona una foto
-            photoInput.addEventListener('change', (e) => {
-                const file = e.target.files[0];
-                if(!file) return;
-                
-                // Validar que sea imagen
-                if (!file.type.startsWith('image/')) {
-                    alert('Por favor selecciona una imagen válida');
-                    return;
-                }
-                
-                // Validar tamaño (máximo 5MB)
-                if (file.size > 5 * 1024 * 1024) {
-                    alert('La imagen no debe superar los 5MB');
-                    return;
-                }
-                
-                this.receptionPhotoFile = file;
-                
-                // Mostrar preview
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    photoImg.src = e.target.result;
-                    photoPreview.classList.remove('hidden');
-                };
-                reader.readAsDataURL(file);
-                
-                validateForm();
-            });
-
             acceptChk.addEventListener('change', validateForm);
+        }
+    }
+
+    // Método para tomar foto (simula el click en el input file)
+    takePhoto() {
+        const input = document.getElementById('reception-photo-input');
+        if (input) {
+            input.click();
+        } else {
+            // Crear input temporal si no existe
+            const tempInput = document.createElement('input');
+            tempInput.type = 'file';
+            tempInput.accept = 'image/*';
+            tempInput.capture = 'environment';
+            tempInput.style.display = 'none';
+            
+            tempInput.addEventListener('change', (e) => this.handlePhotoSelected(e));
+            
+            document.body.appendChild(tempInput);
+            tempInput.click();
+            
+            setTimeout(() => document.body.removeChild(tempInput), 1000);
+        }
+    }
+
+    // Manejar selección de foto
+    handlePhotoSelected(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        
+        this.processPhotoFile(file);
+    }
+
+    // Procesar archivo de foto
+    processPhotoFile(file) {
+        // Validar que sea imagen
+        if (!file.type.startsWith('image/')) {
+            alert('Por favor selecciona una imagen válida');
+            return;
+        }
+        
+        // Validar tamaño (máximo 5MB)
+        if (file.size > 5 * 1024 * 1024) {
+            alert('La imagen no debe superar los 5MB');
+            return;
+        }
+        
+        this.receptionPhotoFile = file;
+        
+        // Mostrar preview
+        const photoPreview = document.getElementById('reception-photo-preview');
+        const photoImg = document.getElementById('reception-photo-img');
+        
+        if (photoPreview && photoImg) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                photoImg.src = e.target.result;
+                photoPreview.classList.remove('hidden');
+            };
+            reader.readAsDataURL(file);
+        }
+        
+        // Validar formulario
+        const acceptChk = document.getElementById('accept-conditions-chk');
+        const btnConfirm = document.getElementById('btn-confirm-reception');
+        
+        if (btnConfirm && acceptChk) {
+            btnConfirm.disabled = !(this.receptionPhotoFile && acceptChk.checked);
         }
     }
 
@@ -1126,13 +1019,11 @@ export class DriverView {
         try {
             const bucketName = 'trip-photos';
             
-            // Usar el userId fijo en lugar de la sesión
             const userId = this.userId;
             const fileExt = this.receptionPhotoFile.name.split('.').pop() || 'jpg';
             const fileName = `${userId}/${id}/reception_${Date.now()}.${fileExt}`;
             
             console.log('Subiendo archivo:', fileName);
-            console.log('Usuario:', userId);
 
             // SUBIR LA IMAGEN
             const { data: uploadData, error: uploadError } = await supabase.storage
@@ -1195,7 +1086,6 @@ export class DriverView {
         }
     }
 
-    // Método para ver la foto después
     async viewReceptionPhoto() {
         if (!this.currentTrip?.reception_photo_path) return;
         
@@ -1241,7 +1131,6 @@ export class DriverView {
         document.getElementById(`tab-${tabId}`).classList.remove('hidden');
         document.getElementById(`nav-${tabId}`).classList.add('active', 'text-primary');
 
-        // Mostrar foto de recepción si existe en perfil
         if (tabId === 'perfil' && this.currentTrip?.reception_photo_path) {
             this.displayReceptionPhoto();
         }
@@ -1265,12 +1154,11 @@ export class DriverView {
     }
 }
 
-// ==================== FUNCIÓN GLOBAL DE RESPALDO PARA LOGOUT ====================
+// Función global de respaldo
 window.logoutDriver = function() {
     if (window.conductorModule && typeof window.conductorModule.logout === 'function') {
         window.conductorModule.logout();
     } else {
-        // Fallback: limpiar localStorage y redirigir
         localStorage.clear();
         window.location.hash = '#login';
         window.location.reload();
