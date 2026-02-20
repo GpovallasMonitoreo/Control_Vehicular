@@ -3,8 +3,8 @@ import { supabase } from '../../config/supabaseClient.js';
 export class DriverView {
     constructor() {
         this.activeTab = 'unidad';
-        // Usuario fijo para pruebas - el que ya existe en tu BD
-        this.userId = 'd0c1e2f3-0000-0000-0000-000000000001'; 
+        // NO USAR userId fijo - lo obtendremos de la sesión
+        this.userId = null; 
         this.currentTrip = null;
         this.watchPositionId = null;
         this.gpsRetryCount = 0;
@@ -271,7 +271,18 @@ export class DriverView {
     }
 
     async onMount() {
-        this.userId = 'd0c1e2f3-0000-0000-0000-000000000001'; 
+        // OBTENER EL USUARIO DE LA SESIÓN, NO USAR ID FIJO
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!session) {
+            console.error('❌ No hay sesión activa');
+            alert('Sesión expirada. Por favor inicia sesión nuevamente.');
+            window.location.hash = '#login';
+            return;
+        }
+        
+        this.userId = session.user.id;
+        console.log('✅ Usuario autenticado:', this.userId);
         
         await this.loadProfileData();
         await this.loadDashboardState();
@@ -370,11 +381,7 @@ export class DriverView {
                 }
             }
 
-            try {
-                await supabase.auth.signOut();
-            } catch (e) {
-                console.log('No hay sesión de Supabase activa');
-            }
+            await supabase.auth.signOut();
 
         } catch (error) {
             console.error('Error durante logout:', error);
@@ -594,7 +601,7 @@ export class DriverView {
                 accuracy: locationData.accuracy,
                 total_distance: locationData.total_distance,
                 moving_time: locationData.moving_time,
-                idle_time: locationData.idle_time,
+                idle_time: locationData.idleTime,
                 timestamp: locationData.timestamp
             });
 
@@ -685,6 +692,8 @@ export class DriverView {
 
     // ==================== PERFIL Y CHECKLIST ====================
     async loadProfileData() {
+        if (!this.userId) return;
+        
         const { data: p, error } = await supabase
             .from('profiles')
             .select('*')
@@ -709,6 +718,8 @@ export class DriverView {
     }
 
     async loadDashboardState() {
+        if (!this.userId) return;
+        
         const { data: trips } = await supabase
             .from('trips')
             .select(`*, vehicles(*)`)
@@ -899,7 +910,6 @@ export class DriverView {
             const btnConfirm = document.getElementById('btn-confirm-reception');
             
             if (acceptChk && btnConfirm) {
-                // Remover listeners anteriores
                 const newAcceptChk = acceptChk.cloneNode(true);
                 acceptChk.parentNode.replaceChild(newAcceptChk, acceptChk);
                 
@@ -914,7 +924,6 @@ export class DriverView {
         const photoInput = document.getElementById('reception-photo-input');
         if (!photoInput) return;
         
-        // Remover listeners anteriores
         const newPhotoInput = photoInput.cloneNode(true);
         photoInput.parentNode.replaceChild(newPhotoInput, photoInput);
         
@@ -982,16 +991,16 @@ export class DriverView {
         try {
             const bucketName = 'trip-photos';
             
-            // Verificar que el bucket existe (diagnóstico)
-            const { data: buckets } = await supabase.storage.listBuckets();
-            console.log('Buckets disponibles:', buckets);
+            // Verificar sesión activa
+            const { data: { session } } = await supabase.auth.getSession();
             
-            const bucketExists = buckets?.some(b => b.name === bucketName);
-            if (!bucketExists) {
-                throw new Error(`El bucket '${bucketName}' no existe. Verifica en Storage.`);
+            if (!session) {
+                throw new Error('No hay sesión activa. Inicia sesión primero.');
             }
             
-            const userId = this.userId;
+            console.log('Usuario autenticado:', session.user.id);
+            
+            const userId = session.user.id; // Usar el ID de la sesión
             const fileExt = this.receptionPhotoFile.name.split('.').pop() || 'jpg';
             const fileName = `${userId}/${id}/reception_${Date.now()}.${fileExt}`;
             
@@ -1011,11 +1020,9 @@ export class DriverView {
                 if (uploadError.message?.includes('duplicate')) {
                     throw new Error('La imagen ya existe. Intenta de nuevo.');
                 } else if (uploadError.message?.includes('permission')) {
-                    throw new Error('Error de permisos. Verifica las políticas RLS en Storage.');
+                    throw new Error('Error de permisos RLS. Verifica las políticas en storage.objects');
                 } else if (uploadError.message?.includes('bucket')) {
                     throw new Error(`Bucket '${bucketName}' no encontrado. Verifica en Storage.`);
-                } else if (uploadError.message?.includes('new row violates')) {
-                    throw new Error('Error de permisos RLS. Verifica las políticas en storage.objects');
                 } else {
                     throw uploadError;
                 }
