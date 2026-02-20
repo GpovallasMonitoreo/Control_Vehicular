@@ -3,13 +3,14 @@ import { supabase } from '../../config/supabaseClient.js';
 export class DriverView {
     constructor() {
         this.activeTab = 'unidad';
+        // Usuario fijo para pruebas - el que ya existe en tu BD
         this.userId = 'd0c1e2f3-0000-0000-0000-000000000001'; 
         this.currentTrip = null;
         this.watchPositionId = null;
         this.gpsRetryCount = 0;
         this.maxGpsRetries = 3;
         
-        // Sistema de logística
+        // Sistema de logística completo
         this.tripLogistics = {
             startTime: null,
             exitTime: null,
@@ -37,6 +38,7 @@ export class DriverView {
             supervisor: null
         };
         
+        // Archivo de foto de recepción
         this.receptionPhotoFile = null;
         
         window.conductorModule = this;
@@ -275,7 +277,6 @@ export class DriverView {
         await this.loadDashboardState();
         this.setupEventListeners();
 
-        // Suscripción en tiempo real para detectar escaneos del guardia
         supabase.channel('driver_realtime')
             .on('postgres_changes', { 
                 event: 'UPDATE', 
@@ -455,7 +456,6 @@ export class DriverView {
 
         document.getElementById('live-speed').innerText = `${speedKmh} km/h`;
 
-        // Cálculo de distancia usando la fórmula de Haversine [citation:2][citation:6][citation:10]
         if (this.tripLogistics.lastPosition) {
             const distance = this.calculateDistance(
                 this.tripLogistics.lastPosition.lat,
@@ -464,7 +464,6 @@ export class DriverView {
                 longitude
             );
 
-            // Solo sumar distancias razonables (< 500m)
             if (distance < 0.5) {
                 this.tripLogistics.totalDistance += distance;
                 
@@ -521,9 +520,8 @@ export class DriverView {
         }
     }
 
-    // Fórmula Haversine validada [citation:6][citation:10]
     calculateDistance(lat1, lon1, lat2, lon2) {
-        const R = 6371; // Radio de la Tierra en km
+        const R = 6371;
         const dLat = this.deg2rad(lat2 - lat1);
         const dLon = this.deg2rad(lon2 - lon1);
         const a = 
@@ -901,6 +899,7 @@ export class DriverView {
             const btnConfirm = document.getElementById('btn-confirm-reception');
             
             if (acceptChk && btnConfirm) {
+                // Remover listeners anteriores
                 const newAcceptChk = acceptChk.cloneNode(true);
                 acceptChk.parentNode.replaceChild(newAcceptChk, acceptChk);
                 
@@ -915,6 +914,7 @@ export class DriverView {
         const photoInput = document.getElementById('reception-photo-input');
         if (!photoInput) return;
         
+        // Remover listeners anteriores
         const newPhotoInput = photoInput.cloneNode(true);
         photoInput.parentNode.replaceChild(newPhotoInput, photoInput);
         
@@ -982,8 +982,8 @@ export class DriverView {
         try {
             const bucketName = 'trip-photos';
             
-            // Verificar que el bucket existe antes de subir
-            const { data: buckets, error: bucketsError } = await supabase.storage.listBuckets();
+            // Verificar que el bucket existe (diagnóstico)
+            const { data: buckets } = await supabase.storage.listBuckets();
             console.log('Buckets disponibles:', buckets);
             
             const bucketExists = buckets?.some(b => b.name === bucketName);
@@ -1014,12 +1014,14 @@ export class DriverView {
                     throw new Error('Error de permisos. Verifica las políticas RLS en Storage.');
                 } else if (uploadError.message?.includes('bucket')) {
                     throw new Error(`Bucket '${bucketName}' no encontrado. Verifica en Storage.`);
+                } else if (uploadError.message?.includes('new row violates')) {
+                    throw new Error('Error de permisos RLS. Verifica las políticas en storage.objects');
                 } else {
                     throw uploadError;
                 }
             }
 
-            console.log('Upload successful:', uploadData);
+            console.log('✅ Upload successful:', uploadData);
 
             const accessCode = Math.random().toString(36).substring(2, 7).toUpperCase();
 
@@ -1048,7 +1050,7 @@ export class DriverView {
             }, 1000);
 
         } catch (error) {
-            console.error('Error completo:', error);
+            console.error('❌ Error completo:', error);
             alert('Error: ' + (error.message || 'No se pudo subir la imagen'));
             btn.innerHTML = originalText;
             btn.disabled = false;
