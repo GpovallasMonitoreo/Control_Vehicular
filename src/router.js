@@ -3,9 +3,9 @@ import { Layout } from './components/Layout.js';
 // Vistas Auth
 import { LoginView } from './views/auth/LoginView.js';
 
-// Vistas Admin
+// Vistas Admin (TODAS LAS QUE TIENES EN TU CARPETA)
 import { DashboardView } from './views/admin/DashboardView.js';
-import { AdminDashboardView } from './views/admin/AdminDashboardView.js'; // Para gestión de usuarios
+import { AdminDashboardView } from './views/admin/AdminDashboardView.js'; // Gestión de usuarios
 import { AssignmentsView } from './views/admin/AssignmentsView.js';
 import { FuelView } from './views/admin/FuelView.js';
 import { MaintenanceView } from './views/admin/MaintenanceView.js';
@@ -14,20 +14,17 @@ import { IncidentsDashboard } from './views/admin/IncidentsDashboard.js';
 import { ReportsView } from './views/admin/ReportsView.js';
 import { FleetView } from './views/admin/FleetView.js';
 import { InventoryStockView } from './views/admin/InventoryStockView.js';
-import { TrackingView } from './views/admin/TrackingView.js';
+import { TrackingView } from './views/admin/TrackingView.js'; // ✅ TU VISTA DE MAPA
 
-// Vistas Taller (Mecánico)
-import { WorkshopView } from './views/taller/WorkshopView.js';
-import { PendingChecklistsView } from './views/taller/PendingChecklistsView.js';
-import { MaintenanceQueueView } from './views/taller/MaintenanceQueueView.js';
-import { WorkshopHistoryView } from './views/taller/WorkshopHistoryView.js';
-import { PartsInventoryView } from './views/taller/PartsInventoryView.js';
-import { WorkshopReportsView } from './views/taller/WorkshopReportsView.js';
+// Vistas Taller (las que YA TIENES en admin, que usará el rol 'taller')
+// NOTA: El rol 'taller' usará las mismas vistas de admin pero con permisos restringidos
+import { MaintenanceView as TallerMaintenanceView } from './views/admin/MaintenanceView.js';
+import { InventoryView as TallerInventoryView } from './views/admin/InventoryView.js';
+import { InventoryStockView as TallerStockView } from './views/admin/InventoryStockView.js';
+import { ReportsView as TallerReportsView } from './views/admin/ReportsView.js';
 
 // Vistas Vigilancia (Guardia)
 import { ScannerView } from './views/guard/ScannerView.js';
-import { AccessControlView } from './views/guard/AccessControlView.js';
-import { ExitRecordsView } from './views/guard/ExitRecordsView.js';
 
 // Vistas Compartidas
 import { IncidentsView } from './views/shared/IncidentsView.js';
@@ -41,17 +38,17 @@ export class Router {
         this.appElement = document.getElementById('app');
         this.layout = new Layout();
 
-        // Mapeo de rutas
+        // MAPEO DE RUTAS - SOLO CON TUS VISTAS EXISTENTES
         this.routes = {
             // Auth
             '': LoginView,
             '#login': LoginView,
             
             // ============================================
-            // ADMINISTRADOR
+            // ADMINISTRADOR (acceso completo)
             // ============================================
             '#dashboard': DashboardView,
-            '#users': AdminDashboardView,          // Gestión de usuarios
+            '#users': AdminDashboardView,
             '#assignments': AssignmentsView,
             '#inventory': InventoryView,
             '#fleet': FleetView,
@@ -60,24 +57,21 @@ export class Router {
             '#incidents-admin': IncidentsDashboard,
             '#reports': ReportsView,
             '#stock': InventoryStockView,
-            '#tracking': TrackingView,
+            '#tracking': TrackingView, // ✅ TU MAPA EN TIEMPO REAL
             
             // ============================================
-            // TALLER (MECÁNICO)
+            // TALLER (MECÁNICO) - USA LAS MISMAS VISTAS DE ADMIN
+            // PERO CON RUTAS ESPECÍFICAS PARA SU ROL
             // ============================================
-            '#workshop': WorkshopView,
-            '#pending-checklists': PendingChecklistsView,
-            '#maintenance-queue': MaintenanceQueueView,
-            '#workshop-history': WorkshopHistoryView,
-            '#parts-inventory': PartsInventoryView,
-            '#workshop-reports': WorkshopReportsView,
+            '#taller-dashboard': TallerMaintenanceView,     // Panel principal del taller
+            '#taller-inventory': TallerInventoryView,       // Inventario de refacciones
+            '#taller-stock': TallerStockView,               // Stock y recetas
+            '#taller-reports': TallerReportsView,           // Reportes del taller
             
             // ============================================
             // VIGILANCIA (GUARDIA)
             // ============================================
             '#scanner': ScannerView,
-            '#access-control': AccessControlView,
-            '#exit-records': ExitRecordsView,
             
             // ============================================
             // CONDUCTOR
@@ -114,7 +108,7 @@ export class Router {
         if (role && hash === '#login') {
             const redirectMap = {
                 'admin': '#dashboard',
-                'taller': '#workshop',
+                'taller': '#taller-dashboard', // Redirige al panel de taller
                 'guard': '#scanner',
                 'driver': '#driver'
             };
@@ -169,7 +163,7 @@ export class Router {
     }
 
     hasPermission(role, hash) {
-        // Definir permisos por rol
+        // Definir permisos por rol - SOLO CON RUTAS EXISTENTES
         const permissions = {
             'admin': [
                 '#dashboard', '#users', '#assignments', '#inventory', '#fleet',
@@ -177,12 +171,11 @@ export class Router {
                 '#tracking', '#incident'
             ],
             'taller': [
-                '#workshop', '#pending-checklists', '#maintenance-queue',
-                '#workshop-history', '#parts-inventory', '#workshop-reports',
-                '#incident'
+                '#taller-dashboard', '#taller-inventory', '#taller-stock', 
+                '#taller-reports', '#incident'
             ],
             'guard': [
-                '#scanner', '#access-control', '#exit-records', '#incident'
+                '#scanner', '#incident'
             ],
             'driver': [
                 '#driver', '#incident'
@@ -200,7 +193,7 @@ export class Router {
     redirectToDefault(role) {
         const defaultRoutes = {
             'admin': '#dashboard',
-            'taller': '#workshop',
+            'taller': '#taller-dashboard',
             'guard': '#scanner',
             'driver': '#driver'
         };
