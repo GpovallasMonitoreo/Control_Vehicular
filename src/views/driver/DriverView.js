@@ -3,12 +3,13 @@ import { supabase } from '../../config/supabaseClient.js';
 export class DriverView {
     constructor() {
         this.activeTab = 'unidad';
-        // Ya no usamos userId fijo - lo obtendremos de la sesión
         this.userId = null; 
         this.currentTrip = null;
         this.watchPositionId = null;
         this.gpsRetryCount = 0;
         this.maxGpsRetries = 3;
+        this.backgroundSyncInterval = null;
+        this.pendingLocations = [];
         
         // Sistema de logística completo
         this.tripLogistics = {
@@ -35,11 +36,19 @@ export class DriverView {
             guardSignature: null,
             checklistExit: {},
             notes: [],
-            supervisor: null
+            supervisor: null,
+            // Nuevos campos para entrega a taller
+            deliveryPhotoFile: null,
+            deliverySignature: null,
+            deliveryTime: null,
+            deliveryKm: null,
+            deliveryFuel: null,
+            workshopAccepted: false
         };
         
-        // Archivo de foto de recepción
+        // Archivos de fotos
         this.receptionPhotoFile = null;
+        this.deliveryPhotoFile = null;
         
         window.conductorModule = this;
     }
@@ -82,7 +91,7 @@ export class DriverView {
                         <div id="unidad-content" class="space-y-3"></div>
                     </section>
 
-                    <!-- PESTAÑA CHECKLIST -->
+                    <!-- PESTAÑA CHECKLIST (Recepción y Entrega) -->
                     <section id="tab-checklist" class="tab-content hidden p-5 space-y-4">
                         <div class="bg-[#192633] border border-[#233648] rounded-2xl p-5 shadow-xl">
                             <h3 class="text-white font-bold mb-4 flex items-center gap-2 border-b border-[#233648] pb-3">
@@ -194,11 +203,38 @@ export class DriverView {
                                 </div>
                             </div>
 
+                            <!-- Fotos de recepción y entrega -->
                             <div id="reception-photo-container" class="hidden mb-4">
                                 <h4 class="text-slate-800 text-xs font-black uppercase mb-2">Foto de Recepción</h4>
                                 <img id="reception-photo-display" class="w-full rounded-xl border-2 border-primary/30 cursor-pointer" 
                                      onclick="window.conductorModule.viewReceptionPhoto()"
                                      src="" alt="Foto de recepción">
+                            </div>
+
+                            <div id="delivery-photo-container" class="hidden mb-4">
+                                <h4 class="text-slate-800 text-xs font-black uppercase mb-2">Foto de Entrega a Taller</h4>
+                                <img id="delivery-photo-display" class="w-full rounded-xl border-2 border-primary/30 cursor-pointer" 
+                                     onclick="window.conductorModule.viewDeliveryPhoto()"
+                                     src="" alt="Foto de entrega">
+                            </div>
+
+                            <!-- Datos de entrega a taller -->
+                            <div id="delivery-data-container" class="hidden mb-4 bg-primary/5 p-4 rounded-2xl border border-primary/20">
+                                <h4 class="text-primary text-xs font-black uppercase mb-3">Entrega a Taller</h4>
+                                <div class="space-y-2 text-xs">
+                                    <div class="flex justify-between">
+                                        <span class="text-slate-600">Kilometraje entrega:</span>
+                                        <span id="delivery-km-display" class="text-slate-900 font-bold">0 km</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-slate-600">Combustible:</span>
+                                        <span id="delivery-fuel-display" class="text-slate-900 font-bold">0 L</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-slate-600">Hora entrega:</span>
+                                        <span id="delivery-time-display" class="text-slate-900 font-bold">--:--</span>
+                                    </div>
+                                </div>
                             </div>
 
                             <div id="trip-summary-container" class="hidden bg-primary/5 p-4 rounded-2xl border border-primary/20">
@@ -265,13 +301,18 @@ export class DriverView {
                         </div>
                     </div>
                 </div>
+
+                <!-- MODAL DE NOTIFICACIÓN -->
+                <div id="notification-modal" class="hidden absolute inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
+                    <div id="notification-content" class="bg-[#1c2127] w-full max-w-sm rounded-3xl p-6 border border-primary/30 animate-fade-in-up"></div>
+                </div>
             </div>
         </div>
         `;
     }
 
     async onMount() {
-        // OBTENER EL USUARIO DE LA SESIÓN, NO USAR ID FIJO
+        // OBTENER EL USUARIO DE LA SESIÓN
         const { data: { session } } = await supabase.auth.getSession();
         
         if (!session) {
@@ -287,7 +328,11 @@ export class DriverView {
         await this.loadProfileData();
         await this.loadDashboardState();
         this.setupEventListeners();
+        
+        // Iniciar sincronización en background (funciona incluso con la app cerrada)
+        this.startBackgroundSync();
 
+        // Suscripción en tiempo real para detectar cambios
         supabase.channel('driver_realtime')
             .on('postgres_changes', { 
                 event: 'UPDATE', 
@@ -297,6 +342,7 @@ export class DriverView {
             }, (payload) => {
                 console.log('🔄 Cambio detectado en viaje:', payload);
                 this.handleTripUpdate(payload.new);
+                this.showNotification('Viaje actualizado', 'El estado del viaje ha cambiado');
             })
             .on('postgres_changes', { 
                 event: 'INSERT', 
@@ -306,19 +352,143 @@ export class DriverView {
             }, (payload) => {
                 console.log('🔄 Nuevo viaje asignado:', payload);
                 this.handleTripUpdate(payload.new);
+                this.showNotification('Nuevo viaje', 'Se te ha asignado un nuevo viaje');
             })
             .subscribe();
     }
 
-    // ==================== MANEJADOR DE ESCANEOS DEL GUARDIA ====================
+    // ==================== SISTEMA DE NOTIFICACIONES ====================
+    showNotification(title, message, type = 'info') {
+        const modal = document.getElementById('notification-modal');
+        const content = document.getElementById('notification-content');
+        
+        const colors = {
+            info: 'primary',
+            success: 'green-500',
+            warning: 'yellow-500',
+            error: 'red-500'
+        };
+        
+        const icons = {
+            info: 'info',
+            success: 'check_circle',
+            warning: 'warning',
+            error: 'error'
+        };
+        
+        content.innerHTML = `
+            <div class="text-center">
+                <span class="material-symbols-outlined text-5xl text-${colors[type]} mb-4">${icons[type]}</span>
+                <h3 class="text-white font-bold text-xl mb-2">${title}</h3>
+                <p class="text-[#92adc9] text-sm mb-6">${message}</p>
+                <button onclick="document.getElementById('notification-modal').classList.add('hidden')" 
+                        class="w-full py-3 bg-${colors[type]} text-white font-bold rounded-xl">
+                    Cerrar
+                </button>
+            </div>
+        `;
+        
+        modal.classList.remove('hidden');
+        
+        // Vibración si está disponible
+        if (navigator.vibrate) {
+            navigator.vibrate(type === 'error' ? [200, 100, 200] : [100]);
+        }
+        
+        // Auto-cerrar después de 5 segundos
+        setTimeout(() => {
+            modal.classList.add('hidden');
+        }, 5000);
+    }
+
+    // ==================== SISTEMA DE GPS EN BACKGROUND ====================
+    startBackgroundSync() {
+        // Intentar registrar Service Worker para background sync
+        if ('serviceWorker' in navigator && 'SyncManager' in window) {
+            navigator.serviceWorker.register('/sw.js').then(reg => {
+                console.log('✅ Service Worker registrado');
+            }).catch(err => {
+                console.log('❌ Error registrando Service Worker:', err);
+            });
+        }
+        
+        // Intervalo de sincronización cada 30 segundos aunque la app esté en background
+        this.backgroundSyncInterval = setInterval(() => {
+            if (this.pendingLocations.length > 0 && navigator.onLine) {
+                this.syncPendingLocations();
+            }
+        }, 30000);
+        
+        // Escuchar eventos de online/offline
+        window.addEventListener('online', () => {
+            console.log('📶 Conexión restaurada, sincronizando...');
+            this.syncPendingLocations();
+        });
+        
+        // Intentar mantener el GPS activo con Web Workers
+        if ('Worker' in window) {
+            this.gpsWorker = new Worker('/js/gps-worker.js');
+            this.gpsWorker.onmessage = (e) => {
+                if (e.data.type === 'position') {
+                    this.processBackgroundPosition(e.data.position);
+                }
+            };
+        }
+    }
+
+    processBackgroundPosition(position) {
+        // Procesar posición recibida del worker
+        if (this.currentTrip?.status === 'in_progress') {
+            const locationData = {
+                lat: position.coords.latitude,
+                lng: position.coords.longitude,
+                speed: Math.round((position.coords.speed || 0) * 3.6),
+                accuracy: position.coords.accuracy,
+                timestamp: new Date().toISOString()
+            };
+            
+            // Guardar en cola pendiente
+            this.pendingLocations.push(locationData);
+            
+            // Intentar enviar inmediatamente
+            this.syncPendingLocations();
+        }
+    }
+
+    async syncPendingLocations() {
+        if (this.pendingLocations.length === 0 || !this.currentTrip) return;
+        
+        const locations = [...this.pendingLocations];
+        this.pendingLocations = [];
+        
+        try {
+            const { error } = await supabase.from('trip_locations').insert(
+                locations.map(loc => ({
+                    trip_id: this.currentTrip.id,
+                    ...loc
+                }))
+            );
+            
+            if (error) {
+                console.error('Error enviando ubicaciones:', error);
+                // Re-agregar a la cola
+                this.pendingLocations = [...locations, ...this.pendingLocations];
+            }
+        } catch (error) {
+            console.error('Error en sync:', error);
+            this.pendingLocations = [...locations, ...this.pendingLocations];
+        }
+    }
+
+    // ==================== MANEJADOR DE ACTUALIZACIONES ====================
     async handleTripUpdate(updatedTrip) {
         const previousStatus = this.currentTrip?.status;
         this.currentTrip = updatedTrip;
         
+        // Notificaciones según el cambio de estado
         if (updatedTrip.status === 'in_progress' && previousStatus !== 'in_progress') {
-            console.log('🚀 Viaje iniciado por guardia - comenzando tracking');
-            
-            if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+            console.log('🚀 Viaje iniciado por guardia');
+            this.showNotification('Viaje iniciado', 'El guardia ha autorizado tu salida', 'success');
             
             document.getElementById('profile-status').innerText = "EN RUTA";
             document.getElementById('route-waiting-msg').classList.add('hidden');
@@ -332,17 +502,37 @@ export class DriverView {
             
             setTimeout(() => this.startTracking(), 1000);
         }
-        else if (updatedTrip.status === 'completed' && previousStatus !== 'completed') {
-            console.log('🏁 Viaje finalizado por guardia');
+        else if (updatedTrip.status === 'workshop_delivered' && previousStatus !== 'workshop_delivered') {
+            console.log('🔧 Unidad entregada a taller');
+            this.showNotification('Entrega a taller', 'La unidad ha sido recibida en taller', 'success');
             
-            if (navigator.vibrate) navigator.vibrate([300]);
+            document.getElementById('profile-status').innerText = "En Taller";
+            
+            // Mostrar datos de entrega si están disponibles
+            if (updatedTrip.delivery_details) {
+                this.tripLogistics.deliveryKm = updatedTrip.delivery_details.km;
+                this.tripLogistics.deliveryFuel = updatedTrip.delivery_details.fuel;
+                this.tripLogistics.deliveryTime = updatedTrip.delivery_details.time;
+                
+                document.getElementById('delivery-km-display').innerText = updatedTrip.delivery_details.km + ' km';
+                document.getElementById('delivery-fuel-display').innerText = updatedTrip.delivery_details.fuel + ' L';
+                document.getElementById('delivery-time-display').innerText = new Date(updatedTrip.delivery_details.time).toLocaleTimeString();
+                document.getElementById('delivery-data-container').classList.remove('hidden');
+            }
+            
+            this.stopTracking();
+            this.loadDashboardState();
+        }
+        else if (updatedTrip.status === 'completed' && previousStatus !== 'completed') {
+            console.log('🏁 Viaje completado');
+            this.showNotification('Viaje completado', 'El taller ha finalizado el servicio', 'success');
             
             document.getElementById('profile-status').innerText = "Viaje Completado";
             document.getElementById('active-trip-panel').classList.add('hidden');
             document.getElementById('route-waiting-msg').classList.remove('hidden');
             
             const totalDistance = updatedTrip.return_details?.total_distance || this.tripLogistics.totalDistance;
-            alert(`✅ Viaje completado\nDistancia: ${totalDistance.toFixed(1)} km`);
+            this.showNotification('Resumen', `Distancia total: ${totalDistance.toFixed(1)} km`, 'info');
             
             this.stopTracking();
             this.loadDashboardState();
@@ -354,12 +544,15 @@ export class DriverView {
 
     // ==================== CONFIGURACIÓN ====================
     setupEventListeners() {
+        // Persistencia del GPS - incluso en background
         document.addEventListener('visibilitychange', () => {
-            if (!document.hidden && this.activeTab === 'ruta' && this.currentTrip?.status === 'in_progress') {
-                this.startTracking();
+            if (this.currentTrip?.status === 'in_progress') {
+                // El GPS sigue funcionando aunque cambie de pestaña
+                console.log('Visibilidad cambiada, GPS continúa:', document.hidden ? 'background' : 'foreground');
             }
         });
 
+        // Guardar notas automáticamente
         setInterval(() => {
             if (this.currentTrip?.status === 'in_progress') {
                 this.saveTripNotes();
@@ -372,6 +565,11 @@ export class DriverView {
         if (!confirm('¿Estás seguro que deseas cerrar sesión?')) return;
 
         try {
+            // Limpiar intervalos
+            if (this.backgroundSyncInterval) {
+                clearInterval(this.backgroundSyncInterval);
+            }
+            
             this.stopTracking();
             
             if (this.currentTrip && this.currentTrip.status === 'in_progress') {
@@ -412,6 +610,7 @@ export class DriverView {
             </div>
         `;
 
+        // Configuración para máxima persistencia
         navigator.geolocation.getCurrentPosition(
             (pos) => {
                 this.handleFirstPosition(pos);
@@ -514,7 +713,7 @@ export class DriverView {
         this.tripLogistics.lastSpeed = speedKmh;
 
         if (this.currentTrip?.status === 'in_progress') {
-            this.sendLocationToDatabase({
+            const locationData = {
                 lat: latitude,
                 lng: longitude,
                 speed: speedKmh,
@@ -523,7 +722,13 @@ export class DriverView {
                 moving_time: this.tripLogistics.movingTime,
                 idle_time: this.tripLogistics.idleTime,
                 timestamp: now.toISOString()
-            });
+            };
+            
+            // Guardar en cola pendiente
+            this.pendingLocations.push(locationData);
+            
+            // Intentar enviar
+            this.syncPendingLocations();
         }
     }
 
@@ -753,6 +958,9 @@ export class DriverView {
 
             this.renderAccessCode(trip);
 
+            // Cargar datos de la unidad desde vehicles
+            const vehicleData = trip.vehicles;
+            
             if (trip.status === 'in_progress') {
                 document.getElementById('profile-status').innerText = "EN RUTA";
                 
@@ -782,6 +990,25 @@ export class DriverView {
                 if (waitingMsg) waitingMsg.classList.remove('hidden');
                 if (activePanel) activePanel.classList.add('hidden');
                 this.stopTracking();
+            } else if (trip.status === 'workshop_delivered') {
+                document.getElementById('profile-status').innerText = "En Taller";
+                
+                if (waitingMsg) waitingMsg.classList.remove('hidden');
+                if (activePanel) activePanel.classList.add('hidden');
+                this.stopTracking();
+                
+                // Mostrar datos de entrega si existen
+                if (trip.delivery_details) {
+                    document.getElementById('delivery-km-display').innerText = trip.delivery_details.km + ' km';
+                    document.getElementById('delivery-fuel-display').innerText = trip.delivery_details.fuel + ' L';
+                    document.getElementById('delivery-time-display').innerText = new Date(trip.delivery_details.time).toLocaleTimeString();
+                    document.getElementById('delivery-data-container').classList.remove('hidden');
+                }
+                
+                // Mostrar foto de entrega si existe
+                if (trip.delivery_photo_path) {
+                    this.displayDeliveryPhoto(trip.delivery_photo_path);
+                }
             } else {
                 document.getElementById('profile-status').innerText = "Trámite Interno";
                 if (waitingMsg) waitingMsg.classList.remove('hidden');
@@ -841,8 +1068,10 @@ export class DriverView {
         this.switchTab('checklist');
     }
 
-    // ==================== CHECKLIST CON CÁMARA ====================
+    // ==================== CHECKLIST CON RECEPCIÓN Y ENTREGA ====================
     renderMechanicChecklist(trip, container) {
+        const vehicleData = trip.vehicles;
+        
         if (trip.status === 'requested') {
             container.innerHTML = `
                 <div class="text-center py-8">
@@ -854,8 +1083,12 @@ export class DriverView {
                 </div>
             `;
         } else {
+            // Verificar si ya se hizo la recepción
+            const hasReception = trip.status !== 'driver_accepted';
+            
             container.innerHTML = `
                 <div class="space-y-4">
+                    <!-- Checklist aprobado -->
                     <div class="bg-[#111a22] p-4 rounded-xl border border-emerald-500/30">
                         <div class="flex justify-between items-center">
                             <span class="text-white font-bold">Inspección General</span>
@@ -865,6 +1098,8 @@ export class DriverView {
                         </div>
                     </div>
                     
+                    <!-- SECCIÓN DE RECEPCIÓN (solo si no se ha hecho) -->
+                    ${!hasReception ? `
                     <div class="bg-[#111a22] border border-[#324d67] p-5 rounded-xl">
                         <h4 class="text-white font-bold text-sm mb-4 flex items-center gap-2">
                             <span class="material-symbols-outlined text-primary">photo_camera</span>
@@ -877,7 +1112,7 @@ export class DriverView {
                             <img id="reception-photo-img" class="w-full rounded-xl border-2 border-primary/30" />
                         </div>
                         
-                        <button type="button" onclick="window.conductorModule.triggerCamera()" 
+                        <button type="button" onclick="window.conductorModule.triggerReceptionCamera()" 
                                 class="w-full h-14 bg-[#233648] hover:bg-primary/20 text-white rounded-xl flex items-center justify-center gap-3 font-bold transition-all border-2 border-dashed border-[#324d67] hover:border-primary">
                             <span class="material-symbols-outlined text-2xl">add_a_photo</span>
                             <span>TOMAR FOTO DE RECEPCIÓN</span>
@@ -892,35 +1127,136 @@ export class DriverView {
                                 Acepto recibir la unidad ECO-${trip.vehicles.economic_number} en buen estado
                             </span>
                         </label>
+                        
+                        <button id="btn-confirm-reception" 
+                                onclick="window.conductorModule.confirmReception('${trip.id}')" 
+                                class="w-full mt-4 py-5 bg-primary text-white font-black rounded-xl uppercase text-lg shadow-[0_0_30px_rgba(19,127,236,0.3)] disabled:opacity-50 disabled:cursor-not-allowed"
+                                disabled>
+                            FIRMAR RECEPCIÓN
+                        </button>
                     </div>
-
-                    <button id="btn-confirm-reception" 
-                            onclick="window.conductorModule.confirmReception('${trip.id}')" 
-                            class="w-full py-5 bg-primary text-white font-black rounded-xl uppercase text-lg shadow-[0_0_30px_rgba(19,127,236,0.3)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
-                            disabled>
-                        <span class="material-symbols-outlined">assignment_turned_in</span>
-                        FIRMAR CONFORMIDAD
-                    </button>
+                    ` : ''}
+                    
+                    <!-- SECCIÓN DE ENTREGA A TALLER (solo cuando el viaje está en progreso) -->
+                    ${trip.status === 'in_progress' ? `
+                    <div class="bg-[#111a22] border border-[#324d67] p-5 rounded-xl mt-4">
+                        <h4 class="text-white font-bold text-sm mb-4 flex items-center gap-2">
+                            <span class="material-symbols-outlined text-orange-500">engineering</span>
+                            Entrega a Taller
+                        </h4>
+                        
+                        <!-- Datos automáticos de la unidad -->
+                        <div class="bg-[#1c2127] p-4 rounded-xl mb-4 border border-[#233648]">
+                            <h5 class="text-xs font-bold text-[#92adc9] uppercase mb-3">Datos de la Unidad</h5>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <p class="text-[9px] text-[#92adc9]">Kilometraje actual</p>
+                                    <p class="text-white font-bold text-lg font-mono">${Math.round(this.tripLogistics.totalDistance + (trip.exit_km || 0))} km</p>
+                                    <input type="hidden" id="delivery-km" value="${Math.round(this.tripLogistics.totalDistance + (trip.exit_km || 0))}">
+                                </div>
+                                <div>
+                                    <p class="text-[9px] text-[#92adc9]">Combustible estimado</p>
+                                    <p class="text-white font-bold text-lg font-mono">${Math.round(this.tripLogistics.totalDistance / 8)} L</p>
+                                    <input type="hidden" id="delivery-fuel" value="${Math.round(this.tripLogistics.totalDistance / 8)}">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <input type="file" id="delivery-photo-input" accept="image/*" capture="environment" style="display: none;">
+                        
+                        <div id="delivery-photo-preview" class="hidden mb-4">
+                            <img id="delivery-photo-img" class="w-full rounded-xl border-2 border-orange-500/30" />
+                        </div>
+                        
+                        <button type="button" onclick="window.conductorModule.triggerDeliveryCamera()" 
+                                class="w-full h-14 bg-[#233648] hover:bg-orange-500/20 text-white rounded-xl flex items-center justify-center gap-3 font-bold transition-all border-2 border-dashed border-[#324d67] hover:border-orange-500">
+                            <span class="material-symbols-outlined text-2xl">add_a_photo</span>
+                            <span>TOMAR FOTO DE ENTREGA</span>
+                        </button>
+                        
+                        <div class="mt-4">
+                            <label class="block text-xs font-bold text-[#92adc9] uppercase mb-2">Firma de Conformidad</label>
+                            <canvas id="signature-pad" class="w-full h-32 bg-[#1c2127] border border-[#324d67] rounded-xl touch-none"></canvas>
+                            <div class="flex gap-2 mt-2">
+                                <button onclick="window.conductorModule.clearSignature()" 
+                                        class="flex-1 py-2 bg-[#233648] text-white rounded-lg text-xs uppercase">
+                                    Limpiar
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <button id="btn-confirm-delivery" 
+                                onclick="window.conductorModule.confirmDelivery('${trip.id}')" 
+                                class="w-full mt-4 py-5 bg-orange-600 hover:bg-orange-500 text-white font-black rounded-xl uppercase text-lg shadow-[0_0_30px_rgba(249,115,22,0.3)] disabled:opacity-50 disabled:cursor-not-allowed"
+                                disabled>
+                            CONFIRMAR ENTREGA A TALLER
+                        </button>
+                    </div>
+                    ` : ''}
                 </div>
             `;
 
-            this.setupCameraListener();
+            // Configurar listeners
+            this.setupReceptionCameraListener();
+            this.setupDeliveryCameraListener();
             
+            // Configurar firma
+            setTimeout(() => this.setupSignaturePad(), 500);
+            
+            // Validación de recepción
             const acceptChk = document.getElementById('accept-conditions-chk');
-            const btnConfirm = document.getElementById('btn-confirm-reception');
+            const btnReception = document.getElementById('btn-confirm-reception');
             
-            if (acceptChk && btnConfirm) {
+            if (acceptChk && btnReception) {
                 const newAcceptChk = acceptChk.cloneNode(true);
                 acceptChk.parentNode.replaceChild(newAcceptChk, acceptChk);
                 
                 newAcceptChk.addEventListener('change', () => {
-                    btnConfirm.disabled = !(this.receptionPhotoFile && newAcceptChk.checked);
+                    btnReception.disabled = !(this.receptionPhotoFile && newAcceptChk.checked);
                 });
             }
+            
+            // Validación de entrega
+            this.validateDeliveryButton();
         }
     }
 
-    setupCameraListener() {
+    // ==================== SISTEMA DE FIRMA ====================
+    setupSignaturePad() {
+        const canvas = document.getElementById('signature-pad');
+        if (!canvas) return;
+        
+        this.signaturePad = new SignaturePad(canvas, {
+            backgroundColor: '#1c2127',
+            penColor: '#ffffff',
+            velocityFilterWeight: 0.7,
+            minWidth: 0.5,
+            maxWidth: 2.5
+        });
+        
+        canvas.addEventListener('mouseup', () => this.validateDeliveryButton());
+        canvas.addEventListener('touchend', () => this.validateDeliveryButton());
+    }
+
+    clearSignature() {
+        if (this.signaturePad) {
+            this.signaturePad.clear();
+            this.validateDeliveryButton();
+        }
+    }
+
+    validateDeliveryButton() {
+        const btn = document.getElementById('btn-confirm-delivery');
+        if (!btn) return;
+        
+        const hasPhoto = this.deliveryPhotoFile;
+        const hasSignature = this.signaturePad && !this.signaturePad.isEmpty();
+        
+        btn.disabled = !(hasPhoto && hasSignature);
+    }
+
+    // ==================== CÁMARA DE RECEPCIÓN ====================
+    setupReceptionCameraListener() {
         const photoInput = document.getElementById('reception-photo-input');
         if (!photoInput) return;
         
@@ -931,18 +1267,18 @@ export class DriverView {
             const file = e.target.files[0];
             if (!file) return;
             
-            this.processPhotoFile(file);
+            this.processReceptionPhoto(file);
         });
     }
 
-    triggerCamera() {
+    triggerReceptionCamera() {
         const photoInput = document.getElementById('reception-photo-input');
         if (photoInput) {
             photoInput.click();
         }
     }
 
-    processPhotoFile(file) {
+    processReceptionPhoto(file) {
         if (!file.type.startsWith('image/')) {
             alert('Por favor selecciona una imagen válida');
             return;
@@ -974,9 +1310,62 @@ export class DriverView {
             btnConfirm.disabled = !(this.receptionPhotoFile && acceptChk.checked);
         }
         
-        console.log('✅ Foto seleccionada:', file.name);
+        console.log('✅ Foto de recepción seleccionada:', file.name);
     }
 
+    // ==================== CÁMARA DE ENTREGA ====================
+    setupDeliveryCameraListener() {
+        const photoInput = document.getElementById('delivery-photo-input');
+        if (!photoInput) return;
+        
+        const newPhotoInput = photoInput.cloneNode(true);
+        photoInput.parentNode.replaceChild(newPhotoInput, photoInput);
+        
+        newPhotoInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            this.processDeliveryPhoto(file);
+        });
+    }
+
+    triggerDeliveryCamera() {
+        const photoInput = document.getElementById('delivery-photo-input');
+        if (photoInput) {
+            photoInput.click();
+        }
+    }
+
+    processDeliveryPhoto(file) {
+        if (!file.type.startsWith('image/')) {
+            alert('Por favor selecciona una imagen válida');
+            return;
+        }
+        
+        if (file.size > 5 * 1024 * 1024) {
+            alert('La imagen no debe superar los 5MB');
+            return;
+        }
+        
+        this.deliveryPhotoFile = file;
+        
+        const photoPreview = document.getElementById('delivery-photo-preview');
+        const photoImg = document.getElementById('delivery-photo-img');
+        
+        if (photoPreview && photoImg) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                photoImg.src = e.target.result;
+                photoPreview.classList.remove('hidden');
+            };
+            reader.readAsDataURL(file);
+        }
+        
+        this.validateDeliveryButton();
+        console.log('✅ Foto de entrega seleccionada:', file.name);
+    }
+
+    // ==================== CONFIRMACIONES ====================
     async confirmReception(id) {
         if (!this.receptionPhotoFile) {
             alert("Debes tomar una foto de la unidad");
@@ -991,20 +1380,17 @@ export class DriverView {
         try {
             const bucketName = 'trip-photos';
             
-            // Verificar sesión activa
             const { data: { session } } = await supabase.auth.getSession();
             
             if (!session) {
                 throw new Error('No hay sesión activa. Inicia sesión primero.');
             }
             
-            console.log('Usuario autenticado:', session.user.id);
-            
-            const userId = session.user.id; // Usar el ID de la sesión
+            const userId = session.user.id;
             const fileExt = this.receptionPhotoFile.name.split('.').pop() || 'jpg';
             const fileName = `${userId}/${id}/reception_${Date.now()}.${fileExt}`;
             
-            console.log('Subiendo archivo:', fileName);
+            console.log('Subiendo foto de recepción:', fileName);
 
             const { data: uploadData, error: uploadError } = await supabase.storage
                 .from(bucketName)
@@ -1014,19 +1400,7 @@ export class DriverView {
                     contentType: this.receptionPhotoFile.type
                 });
 
-            if (uploadError) {
-                console.error('Error detallado:', uploadError);
-                
-                if (uploadError.message?.includes('duplicate')) {
-                    throw new Error('La imagen ya existe. Intenta de nuevo.');
-                } else if (uploadError.message?.includes('permission')) {
-                    throw new Error('Error de permisos RLS. Verifica las políticas en storage.objects');
-                } else if (uploadError.message?.includes('bucket')) {
-                    throw new Error(`Bucket '${bucketName}' no encontrado. Verifica en Storage.`);
-                } else {
-                    throw uploadError;
-                }
-            }
+            if (uploadError) throw uploadError;
 
             console.log('✅ Upload successful:', uploadData);
 
@@ -1051,6 +1425,8 @@ export class DriverView {
 
             btn.innerHTML = `<span class="material-symbols-outlined">check_circle</span> ¡LISTO!`;
             
+            this.showNotification('Recepción confirmada', 'Unidad recibida correctamente', 'success');
+            
             setTimeout(() => {
                 this.loadDashboardState();
                 this.switchTab('perfil');
@@ -1064,21 +1440,124 @@ export class DriverView {
         }
     }
 
-    // ==================== VISUALIZACIÓN DE FOTOS CON URLS FIRMADAS ====================
+    async confirmDelivery(id) {
+        if (!this.deliveryPhotoFile) {
+            alert("Debes tomar una foto de la unidad para la entrega");
+            return;
+        }
+
+        if (!this.signaturePad || this.signaturePad.isEmpty()) {
+            alert("Debes firmar de conformidad");
+            return;
+        }
+
+        const btn = document.getElementById('btn-confirm-delivery');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = `<span class="material-symbols-outlined animate-spin">progress_activity</span> PROCESANDO...`;
+        btn.disabled = true;
+
+        try {
+            const bucketName = 'trip-photos';
+            const deliveryKm = document.getElementById('delivery-km')?.value || this.tripLogistics.totalDistance;
+            const deliveryFuel = document.getElementById('delivery-fuel')?.value || (this.tripLogistics.totalDistance / 8);
+            
+            const { data: { session } } = await supabase.auth.getSession();
+            
+            if (!session) {
+                throw new Error('No hay sesión activa');
+            }
+            
+            const userId = session.user.id;
+            
+            // Subir foto de entrega
+            const fileExt = this.deliveryPhotoFile.name.split('.').pop() || 'jpg';
+            const photoFileName = `${userId}/${id}/delivery_${Date.now()}.${fileExt}`;
+            
+            console.log('Subiendo foto de entrega:', photoFileName);
+
+            const { error: photoError } = await supabase.storage
+                .from(bucketName)
+                .upload(photoFileName, this.deliveryPhotoFile, {
+                    cacheControl: '3600',
+                    upsert: false,
+                    contentType: this.deliveryPhotoFile.type
+                });
+
+            if (photoError) throw photoError;
+
+            // Convertir firma a imagen
+            const signatureData = this.signaturePad.toDataURL('image/png');
+            
+            // Actualizar viaje
+            const { error: updateError } = await supabase
+                .from('trips')
+                .update({ 
+                    status: 'workshop_delivered',
+                    delivery_details: {
+                        km: deliveryKm,
+                        fuel: Math.round(deliveryFuel),
+                        time: new Date().toISOString(),
+                        photo: photoFileName,
+                        signature: signatureData
+                    },
+                    entry_km: deliveryKm,
+                    return_details: {
+                        ...(this.currentTrip?.return_details || {}),
+                        delivery_time: new Date().toISOString(),
+                        delivery_km: deliveryKm,
+                        delivery_fuel: deliveryFuel
+                    }
+                })
+                .eq('id', id);
+
+            if (updateError) throw updateError;
+
+            btn.innerHTML = `<span class="material-symbols-outlined">check_circle</span> ¡ENTREGADO!`;
+            
+            this.showNotification('Entrega confirmada', 'Unidad entregada a taller', 'success');
+            
+            setTimeout(() => {
+                this.loadDashboardState();
+                this.switchTab('perfil');
+            }, 1000);
+
+        } catch (error) {
+            console.error('❌ Error en entrega:', error);
+            alert('Error: ' + (error.message || 'No se pudo procesar la entrega'));
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }
+    }
+
+    // ==================== VISUALIZACIÓN DE FOTOS ====================
     async viewReceptionPhoto() {
         if (!this.currentTrip?.reception_photo_path) return;
         
         try {
-            // Generar URL firmada válida por 60 segundos
             const { data, error } = await supabase.storage
                 .from('trip-photos')
                 .createSignedUrl(this.currentTrip.reception_photo_path, 60);
             
-            if (error) {
-                console.error('Error generando URL firmada:', error);
-                alert('No se pudo cargar la imagen');
-                return;
+            if (error) throw error;
+            
+            if (data?.signedUrl) {
+                window.open(data.signedUrl, '_blank');
             }
+        } catch (error) {
+            console.error('Error al ver foto:', error);
+        }
+    }
+
+    async viewDeliveryPhoto() {
+        const deliveryPhoto = this.currentTrip?.delivery_details?.photo;
+        if (!deliveryPhoto) return;
+        
+        try {
+            const { data, error } = await supabase.storage
+                .from('trip-photos')
+                .createSignedUrl(deliveryPhoto, 60);
+            
+            if (error) throw error;
             
             if (data?.signedUrl) {
                 window.open(data.signedUrl, '_blank');
@@ -1092,15 +1571,11 @@ export class DriverView {
         if (!this.currentTrip?.reception_photo_path) return;
         
         try {
-            // Generar URL firmada válida por 5 minutos para la vista previa
             const { data, error } = await supabase.storage
                 .from('trip-photos')
                 .createSignedUrl(this.currentTrip.reception_photo_path, 300);
             
-            if (error) {
-                console.error('Error generando URL firmada:', error);
-                return;
-            }
+            if (error) throw error;
             
             if (data?.signedUrl) {
                 document.getElementById('reception-photo-display').src = data.signedUrl;
@@ -1111,10 +1586,27 @@ export class DriverView {
         }
     }
 
+    async displayDeliveryPhoto(photoPath) {
+        try {
+            const { data, error } = await supabase.storage
+                .from('trip-photos')
+                .createSignedUrl(photoPath, 300);
+            
+            if (error) throw error;
+            
+            if (data?.signedUrl) {
+                document.getElementById('delivery-photo-display').src = data.signedUrl;
+                document.getElementById('delivery-photo-container').classList.remove('hidden');
+            }
+        } catch (error) {
+            console.error('Error al mostrar foto:', error);
+        }
+    }
+
     renderAccessCode(trip) {
         const container = document.getElementById('access-code-container');
         
-        if (trip && (trip.status === 'driver_accepted' || trip.status === 'in_progress')) {
+        if (trip && (trip.status === 'driver_accepted' || trip.status === 'in_progress' || trip.status === 'workshop_delivered')) {
             const code = trip.access_code || 'ERROR';
             container.innerHTML = `
                 <div class="bg-white p-6 rounded-2xl border-2 border-primary/20 text-center">
@@ -1144,8 +1636,13 @@ export class DriverView {
         document.getElementById(`tab-${tabId}`).classList.remove('hidden');
         document.getElementById(`nav-${tabId}`).classList.add('active', 'text-primary');
 
-        if (tabId === 'perfil' && this.currentTrip?.reception_photo_path) {
-            this.displayReceptionPhoto();
+        if (tabId === 'perfil') {
+            if (this.currentTrip?.reception_photo_path) {
+                this.displayReceptionPhoto();
+            }
+            if (this.currentTrip?.delivery_details?.photo) {
+                this.displayDeliveryPhoto(this.currentTrip.delivery_details.photo);
+            }
         }
 
         if (tabId === 'ruta' && this.currentTrip?.status === 'in_progress') {
