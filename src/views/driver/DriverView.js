@@ -651,7 +651,6 @@ export class DriverView {
     async endTrip() {
         if (!this.currentTrip) return;
         
-        // Calcular distancia total
         const totalDistance = this.tripLogistics.totalDistance;
         
         const tripData = {
@@ -887,8 +886,8 @@ export class DriverView {
                             Foto de Recepción
                         </h4>
                         
-                        <!-- Input de cámara -->
-                        <input type="file" id="reception-photo-input" accept="image/*" capture="environment" class="hidden">
+                        <!-- Input de cámara (OCULTO pero con ID fijo) -->
+                        <input type="file" id="reception-photo-input" accept="image/*" capture="environment" style="display: none;">
                         
                         <!-- Vista previa de la imagen -->
                         <div id="reception-photo-preview" class="hidden mb-4">
@@ -896,7 +895,7 @@ export class DriverView {
                         </div>
                         
                         <!-- Botón para tomar foto -->
-                        <button onclick="window.conductorModule.takePhoto()" 
+                        <button type="button" onclick="window.conductorModule.triggerCamera()" 
                                 class="w-full h-14 bg-[#233648] hover:bg-primary/20 text-white rounded-xl flex items-center justify-center gap-3 font-bold transition-all border-2 border-dashed border-[#324d67] hover:border-primary">
                             <span class="material-symbols-outlined text-2xl">add_a_photo</span>
                             <span>TOMAR FOTO DE RECEPCIÓN</span>
@@ -925,23 +924,47 @@ export class DriverView {
                 </div>
             `;
 
-            // Lógica para checkbox
+            // Configurar el event listener para el input file
+            this.setupCameraListener();
+            
+            // Configurar validación del checkbox
             const acceptChk = document.getElementById('accept-conditions-chk');
             const btnConfirm = document.getElementById('btn-confirm-reception');
             
-            const validateForm = () => {
-                btnConfirm.disabled = !(this.receptionPhotoFile && acceptChk.checked);
-            };
-
-            acceptChk.addEventListener('change', validateForm);
+            if (acceptChk && btnConfirm) {
+                // Remover event listeners anteriores para evitar duplicados
+                const newAcceptChk = acceptChk.cloneNode(true);
+                acceptChk.parentNode.replaceChild(newAcceptChk, acceptChk);
+                
+                newAcceptChk.addEventListener('change', () => {
+                    btnConfirm.disabled = !(this.receptionPhotoFile && newAcceptChk.checked);
+                });
+            }
         }
     }
 
-    // Método para tomar foto (simula el click en el input file)
-    takePhoto() {
-        const input = document.getElementById('reception-photo-input');
-        if (input) {
-            input.click();
+    // Método para configurar el listener de la cámara
+    setupCameraListener() {
+        const photoInput = document.getElementById('reception-photo-input');
+        if (!photoInput) return;
+        
+        // Remover listeners anteriores para evitar duplicados
+        const newPhotoInput = photoInput.cloneNode(true);
+        photoInput.parentNode.replaceChild(newPhotoInput, photoInput);
+        
+        newPhotoInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            this.processPhotoFile(file);
+        });
+    }
+
+    // Método para activar la cámara
+    triggerCamera() {
+        const photoInput = document.getElementById('reception-photo-input');
+        if (photoInput) {
+            photoInput.click();
         } else {
             // Crear input temporal si no existe
             const tempInput = document.createElement('input');
@@ -950,21 +973,15 @@ export class DriverView {
             tempInput.capture = 'environment';
             tempInput.style.display = 'none';
             
-            tempInput.addEventListener('change', (e) => this.handlePhotoSelected(e));
+            tempInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) this.processPhotoFile(file);
+                document.body.removeChild(tempInput);
+            });
             
             document.body.appendChild(tempInput);
             tempInput.click();
-            
-            setTimeout(() => document.body.removeChild(tempInput), 1000);
         }
-    }
-
-    // Manejar selección de foto
-    handlePhotoSelected(event) {
-        const file = event.target.files[0];
-        if (!file) return;
-        
-        this.processPhotoFile(file);
     }
 
     // Procesar archivo de foto
@@ -1003,6 +1020,8 @@ export class DriverView {
         if (btnConfirm && acceptChk) {
             btnConfirm.disabled = !(this.receptionPhotoFile && acceptChk.checked);
         }
+        
+        console.log('✅ Foto seleccionada:', file.name);
     }
 
     async confirmReception(id) {
