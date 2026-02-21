@@ -79,6 +79,17 @@ export class DriverView {
                         </div>
                         <p class="text-green-200 text-[8px] mt-1">Muestra este código al guardia al salir</p>
                     </div>
+
+                    <!-- BANNER DE INCIDENCIA -->
+                    <div id="incident-banner" class="hidden mt-3 bg-gradient-to-r from-red-600 to-orange-600 p-3 rounded-xl">
+                        <div class="flex items-center gap-2">
+                            <span class="material-symbols-outlined text-white">warning</span>
+                            <div>
+                                <p class="text-white text-[10px] font-bold uppercase">Incidencia reportada</p>
+                                <p id="incident-message" class="text-white/90 text-[8px]">Unidad en revisión - Espera resolución</p>
+                            </div>
+                        </div>
+                    </div>
                 </header>
 
                 <main class="flex-1 overflow-y-auto custom-scrollbar relative pb-20" id="main-content">
@@ -542,7 +553,6 @@ export class DriverView {
     // ==================== ESTADÍSTICAS DE PERFIL ====================
     async loadLastTripStats() {
         try {
-            // Cargar último viaje completado - USAR maybeSingle()
             const { data: lastTrip, error: lastError } = await supabase
                 .from('trips')
                 .select(`
@@ -562,7 +572,6 @@ export class DriverView {
                 .limit(1)
                 .maybeSingle();
 
-            // Cargar total de viajes y km
             const { data: stats, error: statsError } = await supabase
                 .from('trips')
                 .select('id, entry_km, exit_km')
@@ -585,7 +594,6 @@ export class DriverView {
                 document.getElementById('last-trip-distance').innerText = `${Math.round(distancia)} km`;
                 document.getElementById('last-trip-destination').innerText = lastTrip.destination || 'No especificado';
             } else {
-                // No hay viajes completados
                 if (content) {
                     content.innerHTML = `
                         <div class="text-center py-4 text-slate-400">
@@ -686,20 +694,41 @@ export class DriverView {
                         this.startTracking();
                     }
                     
-                    // Si el viaje se completó, actualizar perfil y limpiar selección
                     if (newStatus === 'completed') {
                         this.currentTrip = null;
                         this.selectedVehicleForRequest = null;
                         await this.loadLastTripStats();
-                        await this.loadAvailableUnits(); // Recargar unidades disponibles
+                        await this.loadAvailableUnits();
                         this.switchTab('unidad');
                         this.showToast('✅ Viaje completado', 'Puedes solicitar una nueva unidad', 'success');
+                    }
+                    
+                    if (newStatus === 'incident_report') {
+                        this.showIncidentBanner(payload.new);
+                    } else {
+                        this.hideIncidentBanner();
                     }
                 }
             })
             .subscribe((status) => {
                 console.log('📡 Estado de suscripción:', status);
             });
+    }
+
+    // ==================== BANNER DE INCIDENCIA ====================
+    showIncidentBanner(trip) {
+        const banner = document.getElementById('incident-banner');
+        const message = document.getElementById('incident-message');
+        
+        if (banner && message) {
+            message.innerText = trip.incident_description || 'Unidad en revisión - Espera resolución del taller';
+            banner.classList.remove('hidden');
+        }
+    }
+
+    hideIncidentBanner() {
+        const banner = document.getElementById('incident-banner');
+        if (banner) banner.classList.add('hidden');
     }
 
     // ==================== TOAST ====================
@@ -730,6 +759,7 @@ export class DriverView {
             'driver_accepted': { title: '🔑 Listo para salir', msg: `Código: ${tripData.access_code || '---'}`, type: 'success' },
             'in_progress': { title: '🚗 Viaje iniciado', msg: 'GPS activado', type: 'success' },
             'awaiting_return_checklist': { title: '🏁 Viaje terminado', msg: 'Dirígete a taller', type: 'warning' },
+            'incident_report': { title: '⚠️ Incidencia reportada', msg: 'Unidad en revisión - Espera al taller', type: 'error' },
             'completed': { title: '🎉 Unidad liberada', msg: 'Viaje completado', type: 'success' }
         };
 
@@ -741,6 +771,7 @@ export class DriverView {
                 'driver_accepted': 'unidad',
                 'in_progress': 'ruta',
                 'awaiting_return_checklist': 'taller-final',
+                'incident_report': 'unidad',
                 'completed': 'unidad'
             };
             
@@ -770,6 +801,12 @@ export class DriverView {
         } else {
             const banner = document.getElementById('access-code-banner');
             if (banner) banner.classList.add('hidden');
+        }
+        
+        if (trip.status === 'incident_report') {
+            this.showIncidentBanner(trip);
+        } else {
+            this.hideIncidentBanner();
         }
         
         this.updateProgressBars(trip);
@@ -913,12 +950,11 @@ export class DriverView {
         try {
             console.log('Sincronizando ubicaciones:', locations);
             
-            // Preparar datos con tipos correctos
             const dataToInsert = locations.map(loc => ({
                 trip_id: this.currentTrip.id,
                 lat: Number(loc.lat),
                 lng: Number(loc.lng),
-                speed: Math.min(999, Math.round(loc.speed || 0)), // Limitar a 999 km/h
+                speed: Math.min(999, Math.round(loc.speed || 0)),
                 accuracy: loc.accuracy ? Number(loc.accuracy.toFixed(2)) : null,
                 timestamp: loc.timestamp
             }));
@@ -929,7 +965,6 @@ export class DriverView {
             
             if (error) {
                 console.error('Error al sincronizar:', error);
-                // Devolver a la cola solo si es error de red
                 if (error.code === '23503' || error.code === '22003') {
                     console.warn('Error de datos, descartando ubicaciones problemáticas');
                 } else {
@@ -1421,7 +1456,7 @@ export class DriverView {
             this.selectedVehicleForRequest = null;
             await this.loadDashboardState();
             await this.loadLastTripStats();
-            await this.loadAvailableUnits(); // Recargar unidades disponibles
+            await this.loadAvailableUnits();
             this.switchTab('unidad');
         }
     }
@@ -1488,6 +1523,7 @@ export class DriverView {
             'driver_accepted': { text: 'Listo para salir', color: 'bg-green-500', tab: 'unidad' },
             'in_progress': { text: 'En ruta', color: 'bg-primary', tab: 'ruta' },
             'awaiting_return_checklist': { text: 'Regresado - Ir a taller', color: 'bg-purple-500', tab: 'taller-final' },
+            'incident_report': { text: 'INCIDENCIA', color: 'bg-red-500', tab: 'unidad' },
             'completed': { text: 'Viaje completado', color: 'bg-emerald-500', tab: 'unidad' }
         };
 
