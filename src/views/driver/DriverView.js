@@ -750,7 +750,271 @@ export class DriverView {
         }
     }
 
-    // ==================== MÉTODOS NUEVOS AGREGADOS ====================
+    // ==================== MÉTODOS PARA SOLICITAR UNIDAD ====================
+
+    /**
+     * Envía la solicitud de una nueva unidad
+     */
+    async enviarSolicitud() {
+        // Validar que haya una unidad seleccionada
+        if (!this.selectedVehicleForRequest) {
+            this.showToast('Error', 'Debes seleccionar una unidad', 'error');
+            return;
+        }
+
+        // Obtener valores del formulario
+        const destino = document.getElementById('solicitud-destino').value;
+        const motivo = document.getElementById('solicitud-motivo').value;
+        const jefe = document.getElementById('solicitud-jefe').value;
+        const departamento = document.getElementById('solicitud-departamento').value;
+
+        // Validar campos requeridos
+        if (!destino) {
+            this.showToast('Error', 'El destino es obligatorio', 'error');
+            document.getElementById('solicitud-destino').focus();
+            return;
+        }
+
+        if (!motivo) {
+            this.showToast('Error', 'El motivo del viaje es obligatorio', 'error');
+            document.getElementById('solicitud-motivo').focus();
+            return;
+        }
+
+        // Deshabilitar botón mientras se procesa
+        const btn = document.querySelector('[onclick="window.conductorModule.enviarSolicitud()"]');
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<span class="animate-spin inline-block mr-2">⌛</span> ENVIANDO...';
+        }
+
+        try {
+            // Obtener coordenadas del destino si están disponibles
+            let destinationCoords = null;
+            const coordsDiv = document.getElementById('destination-coords');
+            if (!coordsDiv.classList.contains('hidden')) {
+                const lat = parseFloat(document.getElementById('dest-lat').innerText);
+                const lon = parseFloat(document.getElementById('dest-lon').innerText);
+                if (!isNaN(lat) && !isNaN(lon) && lat !== 0 && lon !== 0) {
+                    destinationCoords = { lat, lon };
+                }
+            }
+
+            // Crear la solicitud en la base de datos
+            const { data, error } = await supabase
+                .from('trips')
+                .insert([
+                    {
+                        driver_id: this.userId,
+                        vehicle_id: this.selectedVehicleForRequest.id,
+                        status: 'requested',
+                        destination: destino,
+                        reason: motivo,
+                        supervisor: jefe,
+                        department: departamento,
+                        request_details: {
+                            destination_coords: destinationCoords,
+                            requested_at: new Date().toISOString(),
+                            vehicle_info: {
+                                plate: this.selectedVehicleForRequest.plate,
+                                model: this.selectedVehicleForRequest.model,
+                                eco: this.selectedVehicleForRequest.eco
+                            }
+                        }
+                    }
+                ])
+                .select()
+                .single();
+
+            if (error) throw error;
+
+            // Limpiar formulario
+            document.getElementById('solicitud-destino').value = '';
+            document.getElementById('solicitud-motivo').value = '';
+            document.getElementById('solicitud-jefe').value = '';
+            document.getElementById('solicitud-departamento').value = '';
+            document.getElementById('destination-coords').classList.add('hidden');
+            
+            // Ocultar formulario y mostrar mensaje de éxito
+            document.getElementById('form-content').classList.add('hidden');
+            document.getElementById('no-vehicle-selected-msg').classList.remove('hidden');
+            document.getElementById('no-vehicle-selected-msg').innerHTML = `
+                <span class="material-symbols-outlined text-3xl text-green-500 mb-2">check_circle</span>
+                <p class="text-white text-sm mb-3">¡Solicitud enviada con éxito!</p>
+                <p class="text-[#92adc9] text-xs mb-3">Tu solicitud está siendo procesada</p>
+                <button onclick="window.conductorModule.switchTab('unidad')" 
+                        class="px-6 py-3 bg-primary text-white text-xs font-bold rounded-lg w-full">
+                    VER ESTADO
+                </button>
+            `;
+
+            this.showToast('Éxito', 'Solicitud enviada correctamente', 'success');
+
+            // Actualizar el estado del dashboard para mostrar la nueva solicitud
+            await this.loadDashboardState();
+
+        } catch (error) {
+            console.error('Error enviando solicitud:', error);
+            this.showToast('Error', 'No se pudo enviar la solicitud', 'error');
+        } finally {
+            // Restaurar botón
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = 'ENVIAR SOLICITUD';
+            }
+        }
+    }
+
+    /**
+     * Obtiene la ubicación actual para el campo de destino
+     */
+    getCurrentLocationForDestination() {
+        if (!navigator.geolocation) {
+            this.showToast('Error', 'GPS no disponible', 'error');
+            return;
+        }
+
+        this.showToast('Obteniendo ubicación', 'Espera mientras obtenemos tu posición...', 'info');
+
+        navigator.geolocation.getCurrentPosition(
+            async (position) => {
+                const { latitude, longitude } = position.coords;
+                
+                // Mostrar coordenadas
+                document.getElementById('destination-coords').classList.remove('hidden');
+                document.getElementById('dest-lat').innerText = latitude.toFixed(6);
+                document.getElementById('dest-lon').innerText = longitude.toFixed(6);
+                
+                // Obtener dirección de las coordenadas (reverse geocoding)
+                try {
+                    const response = await fetch(
+                        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&accept-language=es`
+                    );
+                    const data = await response.json();
+                    
+                    if (data.display_name) {
+                        document.getElementById('solicitud-destino').value = data.display_name.split(',')[0];
+                    } else {
+                        document.getElementById('solicitud-destino').value = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+                    }
+                    
+                    this.showToast('Ubicación obtenida', 'Se ha completado el campo destino', 'success');
+                } catch (error) {
+                    console.error('Error obteniendo dirección:', error);
+                    document.getElementById('solicitud-destino').value = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+                    this.showToast('Ubicación obtenida', 'Solo se obtuvieron las coordenadas', 'warning');
+                }
+            },
+            (error) => {
+                console.error('Error obteniendo ubicación:', error);
+                let errorMsg = 'Error obteniendo ubicación';
+                if (error.code === 1) errorMsg = 'Permiso denegado';
+                if (error.code === 2) errorMsg = 'Señal no disponible';
+                if (error.code === 3) errorMsg = 'Tiempo de espera agotado';
+                this.showToast('Error', errorMsg, 'error');
+            },
+            {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 0
+            }
+        );
+    }
+
+    /**
+     * Actualiza los datos de un viaje en la base de datos
+     */
+    async updateTripInDatabase(updates) {
+        if (!this.currentTrip) return;
+        
+        try {
+            const { error } = await supabase
+                .from('trips')
+                .update(updates)
+                .eq('id', this.currentTrip.id);
+
+            if (error) throw error;
+            
+            // Actualizar el objeto local
+            this.currentTrip = { ...this.currentTrip, ...updates };
+            
+        } catch (error) {
+            console.error('Error actualizando viaje:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Activa una emergencia
+     */
+    async activateEmergency() {
+        const description = document.getElementById('emergency-desc').value;
+        
+        if (!description) {
+            this.showToast('Error', 'Describe la emergencia', 'error');
+            return;
+        }
+
+        if (!this.currentTrip) {
+            this.showToast('Error', 'No hay un viaje activo', 'error');
+            return;
+        }
+
+        try {
+            const { error } = await supabase
+                .from('trips')
+                .update({
+                    status: 'incident_report',
+                    incident_description: description,
+                    incident_reported_at: new Date().toISOString()
+                })
+                .eq('id', this.currentTrip.id);
+
+            if (error) throw error;
+
+            // Cerrar modal
+            document.getElementById('modal-emergency').classList.add('hidden');
+            document.getElementById('emergency-desc').value = '';
+
+            this.showToast('Emergencia reportada', 'Se notificó a las autoridades', 'warning');
+
+        } catch (error) {
+            console.error('Error reportando emergencia:', error);
+            this.showToast('Error', 'No se pudo reportar la emergencia', 'error');
+        }
+    }
+
+    /**
+     * Confirma la liberación del taller
+     */
+    async confirmarLiberacionTaller() {
+        if (!this.currentTrip) return;
+
+        try {
+            const { error } = await supabase
+                .from('trips')
+                .update({
+                    status: 'completed',
+                    completed_at: new Date().toISOString()
+                })
+                .eq('id', this.currentTrip.id);
+
+            if (error) throw error;
+
+            this.showToast('Éxito', 'Unidad liberada correctamente', 'success');
+            
+            // Volver a la pestaña de unidades
+            setTimeout(() => {
+                this.switchTab('unidad');
+            }, 1500);
+
+        } catch (error) {
+            console.error('Error liberando unidad:', error);
+            this.showToast('Error', 'No se pudo liberar la unidad', 'error');
+        }
+    }
+
+    // ==================== MÉTODOS GPS Y SINCRONIZACIÓN ====================
 
     /**
      * Inicia la sincronización en segundo plano de ubicaciones
@@ -1054,7 +1318,7 @@ export class DriverView {
         return deg * (Math.PI/180);
     }
 
-    // ==================== FIN MÉTODOS NUEVOS ====================
+    // ==================== MÉTODOS PRINCIPALES ====================
 
     async onMount() {
         this.showLoader();
@@ -1080,7 +1344,7 @@ export class DriverView {
             this.setupRealtimeSubscription();
             this.setupPeriodicUpdates();
             this.setupConnectionMonitor();
-            this.startBackgroundSync(); // Ahora este método existe
+            this.startBackgroundSync();
             
             this.switchTab('unidad'); 
             this.hideLoader();
@@ -1544,16 +1808,16 @@ export class DriverView {
                 document.getElementById('route-waiting-msg')?.classList.add('hidden');
                 document.getElementById('active-trip-panel')?.classList.remove('hidden');
                 setTimeout(() => {
-                    this.startTracking(); // Ahora este método existe
+                    this.startTracking();
                     this.initDriverMap();
                 }, 300);
             } else {
                 document.getElementById('route-waiting-msg')?.classList.remove('hidden');
                 document.getElementById('active-trip-panel')?.classList.add('hidden');
-                this.stopTracking(); // Ahora este método existe
+                this.stopTracking();
             }
         } else {
-            this.stopTracking(); // Ahora este método existe
+            this.stopTracking();
         }
 
         if (tabId === 'perfil') { this.loadProfileData(); this.loadLastTripStats(); }
