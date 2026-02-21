@@ -321,21 +321,15 @@ export class WorkshopView {
         
         if (!video || !canvas || !this.currentPhotoCallback) return;
 
-        // Configurar canvas al tamaño del video
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
 
-        // Dibujar el frame actual del video en el canvas
         const context = canvas.getContext('2d');
         context.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-        // Convertir a base64 (JPEG de buena calidad)
         const photoData = canvas.toDataURL('image/jpeg', 0.9);
 
-        // Ejecutar el callback con la foto
         this.currentPhotoCallback(photoData);
-
-        // Cerrar la cámara
         this.closeCamera();
     }
 
@@ -378,7 +372,7 @@ export class WorkshopView {
         );
     }
 
-    // ========== RESTO DE MÉTODOS (sin cambios) ==========
+    // ========== RESTO DE MÉTODOS ==========
     async loadVehicleByEcoOrPlate() {
         const input = document.getElementById('manual-vehicle-input');
         if (!input.value.trim()) {
@@ -782,14 +776,19 @@ export class WorkshopView {
 
         try {
             if (this.receptionMode === 'initial') {
+                // Usar los nombres correctos de columna
+                const updateData = {
+                    status: 'awaiting_driver_signature',
+                    workshop_reception_photos: this.receptionPhotos,
+                    workshop_driver_photo: this.driverPhoto,
+                    workshop_reception_at: new Date().toISOString()
+                };
+                
+                console.log('Actualizando viaje con:', updateData);
+                
                 const { error } = await supabase
                     .from('trips')
-                    .update({
-                        status: 'awaiting_driver_signature',
-                        workshop_reception_photos: this.receptionPhotos,
-                        workshop_driver_photo: this.driverPhoto,
-                        workshop_reception_at: new Date().toISOString()
-                    })
+                    .update(updateData)
                     .eq('id', this.currentTrip.id);
 
                 if (error) throw error;
@@ -802,16 +801,21 @@ export class WorkshopView {
                 const newStatus = hasIncident ? 'incident_report' : 'completed';
                 const newKm = (this.currentVehicle.current_km || 0) + 100;
 
+                // Usar los nombres correctos de columna
+                const updateData = {
+                    status: newStatus,
+                    workshop_return_checklist: this.checklistItems,
+                    workshop_return_photos: this.deliveryPhotos,
+                    workshop_completed_at: new Date().toISOString(),
+                    entry_km: newKm,
+                    incident_notes: incidentNotes || null
+                };
+
+                console.log('Actualizando viaje con:', updateData);
+
                 const { error: tripError } = await supabase
                     .from('trips')
-                    .update({
-                        status: newStatus,
-                        workshop_return_checklist: this.checklistItems,
-                        workshop_return_photos: this.deliveryPhotos,
-                        workshop_completed_at: new Date().toISOString(),
-                        entry_km: newKm,
-                        incident_notes: incidentNotes || null
-                    })
+                    .update(updateData)
                     .eq('id', this.currentTrip.id);
 
                 if (tripError) throw tripError;
@@ -832,7 +836,7 @@ export class WorkshopView {
             this.switchMode('scanner');
 
         } catch (error) {
-            console.error('Error:', error);
+            console.error('Error completando proceso:', error);
             alert('Error: ' + error.message);
             btn.disabled = false;
             btn.innerHTML = this.receptionMode === 'initial' ? 'COMPLETAR RECEPCIÓN INICIAL' : 'COMPLETAR RECEPCIÓN FINAL';
@@ -849,15 +853,19 @@ export class WorkshopView {
         if (!confirm('¿Reportar esta incidencia?')) return;
 
         try {
+            const updateData = {
+                status: 'incident_report',
+                workshop_return_checklist: this.checklistItems,
+                workshop_return_photos: this.deliveryPhotos,
+                workshop_completed_at: new Date().toISOString(),
+                incident_notes: notes
+            };
+
+            console.log('Reportando incidencia:', updateData);
+
             const { error } = await supabase
                 .from('trips')
-                .update({
-                    status: 'incident_report',
-                    workshop_return_checklist: this.checklistItems,
-                    workshop_return_photos: this.deliveryPhotos,
-                    workshop_completed_at: new Date().toISOString(),
-                    incident_notes: notes
-                })
+                .update(updateData)
                 .eq('id', this.currentTrip.id);
 
             if (error) throw error;
@@ -869,7 +877,7 @@ export class WorkshopView {
             this.switchMode('scanner');
 
         } catch (error) {
-            console.error('Error:', error);
+            console.error('Error reportando incidencia:', error);
             alert('Error al reportar incidencia');
         }
     }
