@@ -749,7 +749,7 @@ export class WorkshopView {
             <div class="bg-blue-500/10 border border-blue-500/30 p-4 rounded-lg">
                 <p class="text-blue-400 text-sm flex items-center gap-2">
                     <span class="material-symbols-outlined">info</span>
-                    El conductor podrá firmar después de este proceso
+                    Al completar se generará un código de acceso para el guardia
                 </p>
             </div>
         `;
@@ -904,14 +904,18 @@ export class WorkshopView {
 
         try {
             if (this.receptionMode === 'initial') {
+                // Generar código de acceso para el guardia (6 dígitos)
+                const accessCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+                
                 const updateData = {
-                    status: 'awaiting_driver_signature',
+                    status: 'driver_accepted', // Cambiamos directamente a driver_accepted
                     workshop_reception_photos: this.receptionPhotos,
                     workshop_driver_photo: this.driverPhoto,
-                    workshop_reception_at: new Date().toISOString()
+                    workshop_reception_at: new Date().toISOString(),
+                    access_code: accessCode // Guardamos el código en la base de datos
                 };
                 
-                console.log('Actualizando viaje con:', updateData);
+                console.log('✅ Recepción inicial completada. Código generado:', accessCode);
                 
                 const { error } = await supabase
                     .from('trips')
@@ -919,7 +923,9 @@ export class WorkshopView {
                     .eq('id', this.currentTrip.id);
 
                 if (error) throw error;
-                alert('✅ Recepción inicial completada');
+                
+                // Mostrar mensaje con el código generado
+                alert(`✅ RECEPCIÓN COMPLETADA\n\nCódigo de acceso para el guardia: ${accessCode}\n\nEl conductor debe usar este código al pasar por la garita.`);
 
             } else {
                 const incidentNotes = document.getElementById('incident-notes')?.value;
