@@ -10,7 +10,9 @@ export class InventoryView {
         this.vehicleLogs = [];
         this.vehicleTrips = [];
         this.vehicleDocuments = [];
-        this.vehicleInspectionsPhotos = []; // NUEVO: Para guardar las fotos de los viajes
+        this.allAppTrips = []; // Todos los viajes de la app
+        this.vehicleAppTrips = []; // Viajes de la unidad seleccionada
+        this.vehicleInspectionsPhotos = []; 
         this.selectedVehicle = null;
         this.pendingStockDeduction = [];
         this.realtimeChannel = null; 
@@ -139,10 +141,7 @@ export class InventoryView {
 
     setupRealtimeSubscription() {
         if (!supabase) return;
-        
-        if (this.realtimeChannel) {
-            supabase.removeChannel(this.realtimeChannel);
-        }
+        if (this.realtimeChannel) supabase.removeChannel(this.realtimeChannel);
 
         this.realtimeChannel = supabase
             .channel('inventory_realtime')
@@ -151,6 +150,10 @@ export class InventoryView {
             })
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'vehicle_inspections' }, () => {
                 this.refreshInspections();
+            })
+            // Detectar cambios en viajes para actualizar estado a "En Uso"
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'trips' }, () => {
+                this.loadAllData(); // Recarga general para sincronizar estados de viajes y vehículos
             })
             .subscribe((status) => {
                 console.log('📡 Inventario Realtime:', status);
@@ -201,17 +204,20 @@ export class InventoryView {
         }
     }
 
+    // --- CARGA DE DATOS SEGUROS ---
     async loadAllData() {
         if (!supabase) return;
 
         try {
-            const [vehRes, drvRes, insRes, invRes, srvRes, docRes] = await Promise.all([
+            const [vehRes, drvRes, insRes, invRes, srvRes, docRes, tripsAllRes] = await Promise.all([
                 supabase.from('vehicles').select('*').order('economic_number'),
                 supabase.from('profiles').select('*').eq('role', 'driver'),
                 supabase.from('vehicle_inspections').select('*, vehicles(economic_number, plate, model)').order('created_at', { ascending: false }).then(r => r.error ? {data: []} : r),
                 supabase.from('inventory_items').select('*').order('name').then(r => r.error ? {data: []} : r),
                 supabase.from('service_templates').select('*, service_template_items(quantity, inventory_items(id, name, cost, unit, stock, sku))').then(r => r.error ? {data: []} : r),
-                supabase.from('vehicle_documents').select('*').then(r => r.error ? {data: []} : r)
+                supabase.from('vehicle_documents').select('*').then(r => r.error ? {data: []} : r),
+                // Extraer todos los viajes de la app para ver destinos e historiales gráficos
+                supabase.from('trips').select('id, vehicle_id, status, destination, created_at, profiles:driver_id(full_name), workshop_reception_photos, workshop_return_photos').order('created_at', { ascending: false }).then(r => r.error ? {data: []} : r)
             ]);
 
             this.vehicles = vehRes.data || [];
@@ -220,6 +226,7 @@ export class InventoryView {
             this.inventory = invRes.data || [];
             this.services = srvRes.data || [];
             this.vehicleDocuments = docRes.data || [];
+            this.allAppTrips = tripsAllRes.data || [];
 
             this.renderVehiclesGrid();
             this.renderDriversTable();
@@ -271,12 +278,25 @@ export class InventoryView {
         grid.innerHTML = this.vehicles.map(v => {
             const imgUrl = (v.image_url && v.image_url !== "0" && v.image_url !== "null") ? v.image_url : 'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&w=500&q=60';
             
+            // VERIFICAR ESTADO "EN USO" BASADO EN VIAJES ACTIVOS
+            const activeTrip = this.allAppTrips.find(t => t.vehicle_id === v.id && ['requested', 'approved_for_taller', 'driver_accepted', 'in_progress'].includes(t.status));
+            let statusName = v.status === 'active' ? 'Disponible' : (v.status === 'maintenance' ? 'En Taller' : 'Inactivo');
+            let statusColor = v.status === 'active' ? 'border-green-500 text-green-400' : (v.status === 'maintenance' ? 'border-orange-500 text-orange-400' : 'border-red-500 text-red-400');
+            
+            if (activeTrip) {
+                statusName = 'En Uso';
+                statusColor = 'border-blue-500 text-blue-400 bg-blue-500/20';
+            } else if (v.status === 'in_use') {
+                statusName = 'En Uso';
+                statusColor = 'border-blue-500 text-blue-400 bg-blue-500/20';
+            }
+            
             return `
             <div class="bg-[#1c2127] border border-[#324d67] rounded-xl overflow-hidden group hover:border-primary transition-all cursor-pointer shadow-lg hover:shadow-[0_0_20px_rgba(19,127,236,0.15)] hover:-translate-y-1 relative" onclick="window.invModule.openVehicleDetail('${v.id}')">
                 <div class="h-40 bg-[#111a22] relative border-b border-[#324d67]">
                     <img src="${imgUrl}" class="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity duration-500">
-                    <div class="absolute top-2 right-2 bg-black/80 backdrop-blur-md text-white text-[10px] font-black px-3 py-1 rounded border ${v.status === 'active' ? 'border-green-500 text-green-400' : (v.status === 'maintenance' ? 'border-orange-500 text-orange-400' : 'border-red-500 text-red-400')} uppercase tracking-widest">
-                        ${v.status === 'active' ? 'Disponible' : (v.status === 'maintenance' ? 'En Taller' : 'Inactivo')}
+                    <div class="absolute top-2 right-2 bg-black/80 backdrop-blur-md text-white text-[10px] font-black px-3 py-1 rounded border ${statusColor} uppercase tracking-widest shadow-lg">
+                        ${statusName}
                     </div>
                 </div>
                 <div class="p-5">
@@ -654,18 +674,19 @@ export class InventoryView {
         this.selectedVehicle = this.vehicles.find(v => v.id === id);
         if(!this.selectedVehicle) return;
 
-        // Se añadió la consulta para obtener las fotos de las inspecciones de los viajes de esta unidad
-        const [logsRes, tripsRes, docsRes, inspectionsPhotosRes] = await Promise.all([
+        // Limpiar para asegurar info fresca
+        this.vehicleAppTrips = this.allAppTrips.filter(t => t.vehicle_id === id);
+        this.vehicleInspectionsPhotos = this.vehicleAppTrips.filter(t => (t.workshop_reception_photos && t.workshop_reception_photos.length > 0) || (t.workshop_return_photos && t.workshop_return_photos.length > 0));
+
+        const [logsRes, tripsRes, docsRes] = await Promise.all([
             supabase.from('vehicle_logs').select('*').eq('vehicle_id', id).order('date', {ascending: false}).then(r => r.error ? {data:[]} : r),
             supabase.from('vehicle_trips').select('*').eq('vehicle_id', id).order('start_date', {ascending: false}).then(r => r.error ? {data:[]} : r),
-            supabase.from('vehicle_documents').select('*').eq('vehicle_id', id).order('uploaded_at', {ascending: false}).then(r => r.error ? {data:[]} : r),
-            supabase.from('trips').select('id, created_at, workshop_reception_photos, workshop_return_photos, profiles:driver_id(full_name)').eq('vehicle_id', id).order('created_at', {ascending: false}).then(r => r.error ? {data:[]} : r)
+            supabase.from('vehicle_documents').select('*').eq('vehicle_id', id).order('uploaded_at', {ascending: false}).then(r => r.error ? {data:[]} : r)
         ]);
         
         this.vehicleLogs = logsRes?.data || [];
         this.vehicleTrips = tripsRes?.data || [];
         this.vehicleDocuments = docsRes?.data || [];
-        this.vehicleInspectionsPhotos = inspectionsPhotosRes?.data || [];
         
         const totalTripKm = this.vehicleTrips.reduce((sum, trip) => sum + Number(trip.distance_km || 0), 0);
         const currentKm = Number(this.selectedVehicle.initial_km || 0) + totalTripKm;
@@ -687,8 +708,25 @@ export class InventoryView {
 
         const totalTripKm = this.vehicleTrips.reduce((sum, trip) => sum + Number(trip.distance_km || 0), 0);
         const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${this.selectedVehicle.id}&color=111a22`;
-        
         const imgUrl = (this.selectedVehicle.image_url && this.selectedVehicle.image_url !== "0" && this.selectedVehicle.image_url !== "null") ? this.selectedVehicle.image_url : 'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&w=800&q=60';
+
+        // LÓGICA DE ESTADO (Activo, Mantenimiento, En Uso)
+        const activeTrip = this.vehicleAppTrips.find(t => ['requested', 'approved_for_taller', 'driver_accepted', 'in_progress'].includes(t.status));
+        let statusName = this.selectedVehicle.status === 'active' ? 'Disponible' : (this.selectedVehicle.status === 'maintenance' ? 'En Taller' : 'Inactivo');
+        let statusClass = this.selectedVehicle.status === 'active' ? 'border-green-500 text-green-400 bg-green-500/10' : (this.selectedVehicle.status === 'maintenance' ? 'border-orange-500 text-orange-400 bg-orange-500/10' : 'border-red-500 text-red-400 bg-red-500/10');
+        
+        let destinationHtml = `<span class="flex items-center gap-1 text-slate-500"><span class="material-symbols-outlined text-[14px]">not_listed_location</span> Sin historial reciente</span>`;
+        
+        if (activeTrip) {
+            statusName = 'En Uso';
+            statusClass = 'border-blue-500 text-blue-400 bg-blue-500/10';
+            destinationHtml = `<span class="text-blue-400 font-bold animate-pulse flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">directions_car</span> En ruta a: ${activeTrip.destination || 'Destino múltiple'}</span>`;
+        } else if (this.selectedVehicle.status === 'in_use') {
+            statusName = 'En Uso';
+            statusClass = 'border-blue-500 text-blue-400 bg-blue-500/10';
+        } else if (this.vehicleAppTrips[0]) {
+            destinationHtml = `<span class="flex items-center gap-1 text-[#92adc9]"><span class="material-symbols-outlined text-[14px]">history</span> Últ. viaje: ${this.vehicleAppTrips[0].destination || 'No especificado'}</span>`;
+        }
 
         content.className = "bg-[#0d141c] w-full max-w-7xl h-[95vh] rounded-2xl shadow-2xl flex flex-col border border-[#324d67] overflow-hidden animate-fade-in-up font-display";
         
@@ -705,12 +743,15 @@ export class InventoryView {
                     <div>
                         <div class="flex items-center gap-2 mb-1">
                             <span class="bg-primary text-white text-[10px] font-black px-2 py-0.5 rounded tracking-widest">ECO-${this.selectedVehicle.economic_number}</span>
-                            <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${this.selectedVehicle.status === 'active' ? 'border-green-500 text-green-400 bg-green-500/10' : (this.selectedVehicle.status === 'maintenance' ? 'border-orange-500 text-orange-400 bg-orange-500/10' : 'border-red-500 text-red-400 bg-red-500/10')}">${this.selectedVehicle.status === 'active' ? 'Disponible' : (this.selectedVehicle.status === 'maintenance' ? 'En Taller' : 'Inactivo')}</span>
+                            <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${statusClass}">${statusName}</span>
                         </div>
                         <h2 class="text-3xl font-black text-white uppercase tracking-tight">${this.selectedVehicle.brand} ${this.selectedVehicle.model} <span class="text-primary">${this.selectedVehicle.year || ''}</span></h2>
-                        <div class="flex gap-4 mt-2 text-sm text-[#92adc9] font-mono">
+                        <div class="flex gap-4 mt-2 text-sm text-[#92adc9] font-mono items-center">
                             <span class="bg-[#1c2127] border border-[#324d67] px-2 py-1 rounded text-white font-bold">${this.selectedVehicle.plate}</span>
                             <span class="flex items-center gap-1"><span class="material-symbols-outlined text-sm">speed</span> ${Number(this.selectedVehicle.current_km).toLocaleString()} km</span>
+                            <div class="border-l border-[#324d67] pl-4 ml-2">
+                                ${destinationHtml}
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -729,7 +770,7 @@ export class InventoryView {
                     <span class="material-symbols-outlined text-[18px]">info</span> Expediente Principal
                 </button>
                 <button onclick="window.invModule.switchVehicleTab(2)" id="veh-tab-2" class="py-4 px-6 text-sm font-bold border-b-2 border-transparent text-[#92adc9] hover:text-white transition-colors flex items-center gap-2 whitespace-nowrap">
-                    <span class="material-symbols-outlined text-[18px]">engineering</span> Datos Técnicos
+                    <span class="material-symbols-outlined text-[18px]">engineering</span> Datos Técnicos y Salud
                 </button>
                 <button onclick="window.invModule.switchVehicleTab(3)" id="veh-tab-3" class="py-4 px-6 text-sm font-bold border-b-2 border-transparent text-[#92adc9] hover:text-white transition-colors flex items-center gap-2 whitespace-nowrap">
                     <span class="material-symbols-outlined text-[18px]">history</span> Bitácora y Servicios
@@ -782,7 +823,7 @@ export class InventoryView {
                                         </div>
                                         <div class="bg-[#1c2127] p-3 rounded-lg border border-[#324d67]">
                                             <div class="flex justify-between items-center mb-1">
-                                                <span class="text-xs text-[#92adc9]">Recorrido Histórico (Trayectos manuales):</span>
+                                                <span class="text-xs text-[#92adc9]">Recorrido Histórico (Manual):</span>
                                                 <span class="text-sm font-bold text-primary">${totalTripKm.toLocaleString()} km</span>
                                             </div>
                                         </div>
@@ -825,51 +866,78 @@ export class InventoryView {
 
                 <div id="veh-tab-content-2" class="hidden h-full overflow-y-auto p-6 custom-scrollbar">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div class="bg-[#111a22] border border-[#324d67] rounded-xl p-6 shadow-lg">
-                            <h3 class="font-bold text-white mb-6 flex items-center gap-2 border-b border-[#324d67] pb-2 uppercase tracking-widest text-xs">
-                                <span class="material-symbols-outlined text-blue-400">precision_manufacturing</span> Especificaciones de Fabrica
-                            </h3>
-                            <div class="space-y-4">
-                                <div class="flex justify-between items-center border-b border-[#233648] pb-2">
-                                    <span class="text-xs font-bold text-[#92adc9] uppercase">Tipo de Vehículo</span>
-                                    <span class="text-white text-sm font-medium">${this.selectedVehicle.vehicle_type || 'No especificado'}</span>
+                        
+                        <div class="space-y-6">
+                            <div class="bg-[#111a22] border border-[#324d67] rounded-xl p-6 shadow-lg">
+                                <h3 class="font-bold text-white mb-6 flex items-center gap-2 border-b border-[#324d67] pb-2 uppercase tracking-widest text-xs">
+                                    <span class="material-symbols-outlined text-blue-400">precision_manufacturing</span> Especificaciones de Fabrica
+                                </h3>
+                                <div class="space-y-4">
+                                    <div class="flex justify-between items-center border-b border-[#233648] pb-2">
+                                        <span class="text-xs font-bold text-[#92adc9] uppercase">Tipo de Vehículo</span>
+                                        <span class="text-white text-sm font-medium">${this.selectedVehicle.vehicle_type || 'No especificado'}</span>
+                                    </div>
+                                    <div class="flex justify-between items-center border-b border-[#233648] pb-2">
+                                        <span class="text-xs font-bold text-[#92adc9] uppercase">Motor</span>
+                                        <span class="text-white text-sm font-medium font-mono">${this.selectedVehicle.engine || 'No especificado'}</span>
+                                    </div>
+                                    <div class="flex justify-between items-center border-b border-[#233648] pb-2">
+                                        <span class="text-xs font-bold text-[#92adc9] uppercase">Transmisión</span>
+                                        <span class="text-white text-sm font-medium">${this.selectedVehicle.transmission || 'No especificado'}</span>
+                                    </div>
+                                    <div class="flex justify-between items-center border-b border-[#233648] pb-2">
+                                        <span class="text-xs font-bold text-[#92adc9] uppercase">Combustible</span>
+                                        <span class="text-white text-sm font-medium">${this.selectedVehicle.fuel_type || 'No especificado'}</span>
+                                    </div>
+                                    <div class="flex justify-between items-center border-b border-[#233648] pb-2">
+                                        <span class="text-xs font-bold text-[#92adc9] uppercase">Capacidad/Carga</span>
+                                        <span class="text-white text-sm font-medium">${this.selectedVehicle.capacity || 'No especificado'}</span>
+                                    </div>
+                                    <div class="flex justify-between items-center pb-2">
+                                        <span class="text-xs font-bold text-[#92adc9] uppercase">Asignado a (Centro Costo)</span>
+                                        <span class="bg-[#1c2127] text-white px-2 py-1 rounded text-xs border border-[#324d67] font-mono tracking-wider">${this.selectedVehicle.cost_center || 'No asignado'}</span>
+                                    </div>
                                 </div>
-                                <div class="flex justify-between items-center border-b border-[#233648] pb-2">
-                                    <span class="text-xs font-bold text-[#92adc9] uppercase">Motor</span>
-                                    <span class="text-white text-sm font-medium font-mono">${this.selectedVehicle.engine || 'No especificado'}</span>
-                                </div>
-                                <div class="flex justify-between items-center border-b border-[#233648] pb-2">
-                                    <span class="text-xs font-bold text-[#92adc9] uppercase">Transmisión</span>
-                                    <span class="text-white text-sm font-medium">${this.selectedVehicle.transmission || 'No especificado'}</span>
-                                </div>
-                                <div class="flex justify-between items-center border-b border-[#233648] pb-2">
-                                    <span class="text-xs font-bold text-[#92adc9] uppercase">Combustible</span>
-                                    <span class="text-white text-sm font-medium">${this.selectedVehicle.fuel_type || 'No especificado'}</span>
-                                </div>
-                                <div class="flex justify-between items-center border-b border-[#233648] pb-2">
-                                    <span class="text-xs font-bold text-[#92adc9] uppercase">Capacidad/Carga</span>
-                                    <span class="text-white text-sm font-medium">${this.selectedVehicle.capacity || 'No especificado'}</span>
-                                </div>
-                                <div class="flex justify-between items-center pb-2">
-                                    <span class="text-xs font-bold text-[#92adc9] uppercase">Asignado a (Centro Costo)</span>
-                                    <span class="bg-[#1c2127] text-white px-2 py-1 rounded text-xs border border-[#324d67] font-mono tracking-wider">${this.selectedVehicle.cost_center || 'No asignado'}</span>
+                            </div>
+                            
+                            <div class="bg-[#111a22] border border-[#324d67] rounded-xl p-6 shadow-lg">
+                                <h3 class="font-bold text-white mb-6 flex items-center gap-2 border-b border-[#324d67] pb-2 uppercase tracking-widest text-xs">
+                                    <span class="material-symbols-outlined text-green-500">imagesmode</span> Fotografía de la Unidad
+                                </h3>
+                                <div class="aspect-video bg-[#0d141c] rounded-xl border border-[#324d67] overflow-hidden flex items-center justify-center relative group cursor-pointer" onclick="window.invModule.viewPhoto('${imgUrl}')">
+                                    <img src="${imgUrl}" class="w-full h-full object-cover">
+                                    <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                        <span class="material-symbols-outlined text-white text-3xl">zoom_in</span>
+                                    </div>
                                 </div>
                             </div>
                         </div>
 
-                        <div class="bg-[#111a22] border border-[#324d67] rounded-xl p-6 shadow-lg">
-                            <h3 class="font-bold text-white mb-6 flex items-center gap-2 border-b border-[#324d67] pb-2 uppercase tracking-widest text-xs">
-                                <span class="material-symbols-outlined text-green-500">imagesmode</span> Fotografía de la Unidad
-                            </h3>
-                            <div class="aspect-video bg-[#0d141c] rounded-xl border border-[#324d67] overflow-hidden flex items-center justify-center relative group">
-                                <img src="${imgUrl}" class="w-full h-full object-cover">
-                                <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                    <button class="bg-[#233648] text-white px-4 py-2 rounded-lg font-bold text-xs flex items-center gap-2 border border-[#324d67] hover:bg-primary transition-colors">
-                                        <span class="material-symbols-outlined text-[16px]">visibility</span> Ver Completa
-                                    </button>
+                        <div class="bg-[#111a22] border border-[#324d67] rounded-xl p-6 shadow-lg flex flex-col h-[700px]">
+                            <div class="flex justify-between items-center border-b border-[#324d67] pb-2 mb-4 shrink-0">
+                                <h3 class="font-bold text-white uppercase tracking-widest text-xs flex items-center gap-2">
+                                    <span class="material-symbols-outlined text-green-500">health_and_safety</span> Salud Total de Unidad
+                                </h3>
+                                <div id="overall-health-badge" class="text-2xl font-black text-green-400 font-mono text-right">100%</div>
+                            </div>
+                            
+                            <div class="bg-blue-500/10 border border-blue-500/30 p-3 rounded-lg mb-4 text-xs text-blue-400 shrink-0">
+                                Ajusta el peso (%) que tiene cada pieza sobre el vehículo (debe sumar 100%) y su salud actual para calcular el estado global de la unidad.
+                            </div>
+                            
+                            <div class="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-3" id="components-container">
                                 </div>
+                            
+                            <div class="mt-4 pt-4 border-t border-[#324d67] flex gap-3 shrink-0">
+                                <button onclick="window.invModule.addComponentRow()" class="bg-[#233648] hover:bg-primary text-white px-3 py-2.5 rounded-lg text-xs font-bold transition-colors flex-1 flex items-center justify-center gap-1 shadow">
+                                    <span class="material-symbols-outlined text-sm">add</span> Añadir Pieza
+                                </button>
+                                <button onclick="window.invModule.saveComponentsHealth()" class="bg-green-600 hover:bg-green-500 text-white px-3 py-2.5 rounded-lg text-xs font-bold transition-colors flex-1 flex items-center justify-center gap-1 shadow-lg shadow-green-900/20">
+                                    <span class="material-symbols-outlined text-sm">save</span> Guardar Salud
+                                </button>
                             </div>
                         </div>
+
                     </div>
                 </div>
 
@@ -927,10 +995,13 @@ export class InventoryView {
 
             </div>
         `;
+        
+        // Pinta la UI de salud de componentes
+        setTimeout(() => this.renderComponentsHealth(), 100);
     }
 
     switchVehicleTab(num) {
-        for(let i=1; i<=4; i++) { // Cambiado a 4 para incluir la nueva pestaña
+        for(let i=1; i<=4; i++) { 
             const btn = document.getElementById(`veh-tab-${i}`);
             const content = document.getElementById(`veh-tab-content-${i}`);
             if(btn) btn.className = "py-4 px-6 text-sm font-bold border-b-2 border-transparent text-[#92adc9] hover:text-white transition-colors flex items-center gap-2 whitespace-nowrap";
@@ -940,7 +1011,158 @@ export class InventoryView {
         document.getElementById(`veh-tab-content-${num}`).classList.replace('hidden', 'block');
     }
 
-    // --- NUEVO: GALERÍA DE FOTOS DE VIAJES ---
+    // --- NUEVO LÓGICA DE SALUD DE COMPONENTES ---
+    renderComponentsHealth() {
+        let comps = this.selectedVehicle.components;
+        if (!comps || !Array.isArray(comps) || comps.length === 0) {
+            comps = [
+                { name: 'Motor', weight: 40, health: 100 },
+                { name: 'Transmisión', weight: 25, health: 100 },
+                { name: 'Frenos', weight: 15, health: 100 },
+                { name: 'Suspensión', weight: 10, health: 100 },
+                { name: 'Llantas', weight: 10, health: 100 }
+            ];
+        }
+
+        const container = document.getElementById('components-container');
+        if(!container) return;
+        
+        container.innerHTML = comps.map((c, i) => `
+            <div class="component-row bg-[#1c2127] p-3 rounded-lg border border-[#233648] hover:border-primary/50 transition-colors">
+                <div class="flex items-center gap-2 mb-3">
+                    <span class="material-symbols-outlined text-[#92adc9] text-sm">settings</span>
+                    <input type="text" class="comp-name flex-1 bg-transparent border-b border-transparent hover:border-[#324d67] focus:border-primary text-white text-xs px-1 outline-none font-bold" value="${c.name}" placeholder="Nombre pieza">
+                    <button onclick="this.closest('.component-row').remove(); window.invModule.calculateTotalHealth()" class="text-red-400 hover:bg-red-500/20 p-1 rounded transition-colors"><span class="material-symbols-outlined text-[14px]">delete</span></button>
+                </div>
+                <div class="flex items-center gap-4">
+                    <div class="flex-1">
+                        <label class="text-[8px] text-[#92adc9] uppercase font-bold block mb-1">Peso en Unidad (%)</label>
+                        <div class="relative">
+                            <input type="number" class="comp-weight w-full bg-[#111a22] border border-[#324d67] text-white text-xs px-2 py-1.5 rounded outline-none focus:border-primary text-center" value="${c.weight}" oninput="window.invModule.calculateTotalHealth()">
+                            <span class="absolute right-2 top-1.5 text-[9px] text-[#92adc9]">%</span>
+                        </div>
+                    </div>
+                    <div class="flex-1">
+                        <label class="text-[8px] text-[#92adc9] uppercase font-bold block mb-1">Salud Actual (%)</label>
+                        <div class="relative">
+                            <input type="number" class="comp-health w-full bg-[#111a22] border border-[#324d67] text-white text-xs px-2 py-1.5 rounded outline-none focus:border-primary text-center" value="${c.health}" oninput="window.invModule.calculateTotalHealth()">
+                            <span class="absolute right-2 top-1.5 text-[9px] text-[#92adc9]">%</span>
+                        </div>
+                    </div>
+                    <div class="w-16 text-right border-l border-[#324d67] pl-3">
+                        <label class="text-[8px] text-[#92adc9] uppercase font-bold block mb-1">Aporta</label>
+                        <span class="comp-contrib font-mono text-sm font-black text-primary">${((c.weight * c.health) / 100).toFixed(1)}%</span>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+        this.calculateTotalHealth();
+    }
+
+    addComponentRow() {
+        const container = document.getElementById('components-container');
+        if(!container) return;
+        
+        const newRow = document.createElement('div');
+        newRow.className = "component-row bg-[#1c2127] p-3 rounded-lg border border-[#233648] hover:border-primary/50 transition-colors animate-fade-in";
+        newRow.innerHTML = `
+            <div class="flex items-center gap-2 mb-3">
+                <span class="material-symbols-outlined text-[#92adc9] text-sm">settings</span>
+                <input type="text" class="comp-name flex-1 bg-transparent border-b border-transparent hover:border-[#324d67] focus:border-primary text-white text-xs px-1 outline-none font-bold" value="" placeholder="Ej: Batería">
+                <button onclick="this.closest('.component-row').remove(); window.invModule.calculateTotalHealth()" class="text-red-400 hover:bg-red-500/20 p-1 rounded transition-colors"><span class="material-symbols-outlined text-[14px]">delete</span></button>
+            </div>
+            <div class="flex items-center gap-4">
+                <div class="flex-1">
+                    <label class="text-[8px] text-[#92adc9] uppercase font-bold block mb-1">Peso en Unidad (%)</label>
+                    <div class="relative">
+                        <input type="number" class="comp-weight w-full bg-[#111a22] border border-[#324d67] text-white text-xs px-2 py-1.5 rounded outline-none focus:border-primary text-center" value="10" oninput="window.invModule.calculateTotalHealth()">
+                        <span class="absolute right-2 top-1.5 text-[9px] text-[#92adc9]">%</span>
+                    </div>
+                </div>
+                <div class="flex-1">
+                    <label class="text-[8px] text-[#92adc9] uppercase font-bold block mb-1">Salud Actual (%)</label>
+                    <div class="relative">
+                        <input type="number" class="comp-health w-full bg-[#111a22] border border-[#324d67] text-white text-xs px-2 py-1.5 rounded outline-none focus:border-primary text-center" value="100" oninput="window.invModule.calculateTotalHealth()">
+                        <span class="absolute right-2 top-1.5 text-[9px] text-[#92adc9]">%</span>
+                    </div>
+                </div>
+                <div class="w-16 text-right border-l border-[#324d67] pl-3">
+                    <label class="text-[8px] text-[#92adc9] uppercase font-bold block mb-1">Aporta</label>
+                    <span class="comp-contrib font-mono text-sm font-black text-primary">10.0%</span>
+                </div>
+            </div>
+        `;
+        container.appendChild(newRow);
+        
+        // Auto-scroll to bottom
+        container.scrollTop = container.scrollHeight;
+        this.calculateTotalHealth();
+    }
+
+    calculateTotalHealth() {
+        const rows = document.querySelectorAll('.component-row');
+        let totalWeight = 0;
+        let totalHealth = 0;
+        
+        rows.forEach(row => {
+            const w = parseFloat(row.querySelector('.comp-weight').value) || 0;
+            const h = parseFloat(row.querySelector('.comp-health').value) || 0;
+            const contrib = (w * h) / 100;
+            
+            row.querySelector('.comp-contrib').innerText = contrib.toFixed(1) + '%';
+            
+            totalWeight += w;
+            totalHealth += contrib;
+        });
+        
+        const badge = document.getElementById('overall-health-badge');
+        if (badge) {
+            let html = `${totalHealth.toFixed(1)}%`;
+            if (totalWeight !== 100) {
+                html += `<div class="text-[9px] text-red-500 uppercase tracking-widest mt-1">Suma Pesos: ${totalWeight}% (Ajustar a 100%)</div>`;
+                badge.className = "text-xl font-black font-mono text-right";
+            } else {
+                badge.className = `text-3xl font-black font-mono text-right ${totalHealth > 80 ? 'text-green-400' : (totalHealth > 50 ? 'text-yellow-400' : 'text-red-500')}`;
+            }
+            badge.innerHTML = html;
+        }
+    }
+
+    async saveComponentsHealth() {
+        const rows = document.querySelectorAll('.component-row');
+        const components = [];
+        let tw = 0;
+        rows.forEach(row => {
+            const n = row.querySelector('.comp-name').value;
+            const w = parseFloat(row.querySelector('.comp-weight').value) || 0;
+            const h = parseFloat(row.querySelector('.comp-health').value) || 0;
+            if(n) {
+                components.push({name: n, weight: w, health: h});
+                tw += w;
+            }
+        });
+
+        if (tw !== 100) {
+            if(!confirm(`⚠️ La suma de los pesos es ${tw}%, lo ideal para el algoritmo es 100%. ¿Guardar de todos modos?`)) return;
+        }
+
+        try {
+            const { error } = await supabase.from('vehicles').update({ components: components }).eq('id', this.selectedVehicle.id);
+            if (error) {
+                if (error.message.includes('column "components" of relation "vehicles" does not exist')) {
+                    alert('❌ IMPORTANTE: Falta crear la columna en Supabase.\nVe al SQL Editor y ejecuta:\nALTER TABLE public.vehicles ADD COLUMN components jsonb DEFAULT \'[]\'::jsonb;');
+                    return;
+                }
+                throw error;
+            }
+            this.selectedVehicle.components = components;
+            this.showToast('✅ Salud de componentes actualizada correctamente.');
+        } catch(e) {
+            alert('Error al guardar: ' + e.message);
+        }
+    }
+
+    // --- GALERÍA DE FOTOS DE VIAJES ---
     renderVehiclePhotosGallery() {
         if (!this.vehicleInspectionsPhotos || this.vehicleInspectionsPhotos.length === 0) {
             return `<div class="text-center py-10 text-slate-500"><span class="material-symbols-outlined text-4xl mb-2 opacity-50">no_photography</span><p>No hay fotos de viajes registradas para esta unidad.</p></div>`;
@@ -1068,9 +1290,27 @@ export class InventoryView {
         return 'transparent';
     }
 
-    // --- MÉTODOS AÑADIDOS PARA EVITAR ERRORES DE CONSOLA ---
+    // --- MÉTODOS AÑADIDOS PARA EVITAR ERRORES DE CONSOLA (Uncaught TypeError) ---
+    
+    // VISOR DE IMÁGENES GLOBAL
+    viewPhoto(url) {
+        const modalId = 'photo-viewer-modal-' + Date.now();
+        const modal = document.createElement('div');
+        modal.id = modalId;
+        modal.className = 'fixed inset-0 z-[200] flex items-center justify-center bg-black/95 p-4 animate-fade-in';
+        modal.innerHTML = `
+            <div class="relative max-w-4xl w-full flex flex-col items-center">
+                <button onclick="document.getElementById('${modalId}').remove()" class="absolute -top-12 right-0 bg-white/10 hover:bg-red-500 text-white p-2 rounded-full transition-colors flex items-center justify-center">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+                <img src="${url}" class="w-full max-h-[85vh] object-contain rounded-xl shadow-2xl border border-[#324d67]" />
+            </div>
+        `;
+        document.body.appendChild(modal);
+    }
+
     openDocumentUpload(vehicleId) {
-        alert("Módulo de subida de PDF en desarrollo.");
+        alert("El módulo para subir documentos (PDF/JPG) al expediente digital se activará en la siguiente fase.");
     }
 
     openVehicleEdit(vehicleId) {
@@ -1080,8 +1320,8 @@ export class InventoryView {
     async saveDriver() {
         const name = document.getElementById('new-driver-name').value;
         const email = document.getElementById('new-driver-email').value;
-        if (!name || !email) return alert("Nombre y correo electrónico obligatorios.");
-        alert("Los conductores deben crearse en el panel de Autenticación de Supabase.");
+        if (!name || !email) return alert("El nombre y el correo electrónico son obligatorios.");
+        alert("Por seguridad, los conductores deben crearse en el panel de Autenticación de Supabase.");
         document.getElementById('modal-add-driver').classList.add('hidden');
     }
 
