@@ -13,7 +13,16 @@ export class DriverView {
         this.selectedVehicleForRequest = null;
         this.profile = null;
         this.signaturePad = null;
-        this.accessCode = null; // Para almacenar el código generado
+        this.accessCode = null;
+        this.realtimeChannel = null;
+        this.updateInterval = null;
+        
+        // Variables para la ruta
+        this.routeStops = [];
+        this.isReturning = false;
+        this.driverMap = null;
+        this.myLocationMarker = null;
+        this.driverMarkers = [];
         
         // Sistema de logística completo
         this.tripLogistics = {
@@ -159,14 +168,8 @@ export class DriverView {
                                 
                                 <div>
                                     <label class="block text-xs font-bold text-[#92adc9] uppercase mb-2">Motivo del Viaje *</label>
-                                    <select id="solicitud-motivo" class="w-full bg-[#111a22] border border-[#233648] text-white p-3 rounded-xl">
-                                        <option value="">Seleccionar motivo...</option>
-                                        <option value="Entrega">Entrega de mercancía</option>
-                                        <option value="Recolección">Recolección</option>
-                                        <option value="Mantenimiento">Llevar a taller</option>
-                                        <option value="Traslado">Traslado interno</option>
-                                        <option value="Otro">Otro</option>
-                                    </select>
+                                    <input type="text" id="solicitud-motivo" class="w-full bg-[#111a22] border border-[#233648] text-white p-3 rounded-xl" 
+                                           placeholder="Ej: Entrega de mercancía, Reunión, etc.">
                                 </div>
                                 
                                 <div>
@@ -236,9 +239,10 @@ export class DriverView {
                         </div>
                     </section>
 
-                    <!-- PESTAÑA RUTA -->
+                    <!-- PESTAÑA RUTA - Panel de ruta con mapa -->
                     <section id="tab-ruta" class="tab-content hidden h-full flex flex-col">
                         <div class="p-5 space-y-4">
+                            <!-- Mensaje de espera cuando el viaje no ha iniciado -->
                             <div id="route-waiting-msg" class="bg-[#192633] border border-[#233648] rounded-2xl p-8 text-center">
                                 <span class="material-symbols-outlined text-5xl text-[#324d67] mb-3">gpp_maybe</span>
                                 <h3 class="text-white font-bold text-lg">Esperando Salida</h3>
@@ -248,53 +252,81 @@ export class DriverView {
                                 </div>
                             </div>
 
+                            <!-- Panel de viaje activo con mapa y controles -->
                             <div id="active-trip-panel" class="hidden space-y-4">
+                                <!-- Contenedor del mapa -->
+                                <div class="bg-[#192633] rounded-xl overflow-hidden border border-[#233648] flex flex-col shadow-lg">
+                                    <div id="driver-map" class="w-full h-48 z-0 relative bg-[#111a22]"></div>
+                                    
+                                    <!-- Controles de ruta -->
+                                    <div class="p-3 bg-[#111a22]">
+                                        <div class="flex justify-between items-center mb-2">
+                                            <p class="text-[10px] text-[#92adc9] uppercase font-bold flex items-center gap-1">
+                                                <span class="material-symbols-outlined text-[12px]">format_list_bulleted</span> Puntos de Ruta
+                                            </p>
+                                            <button onclick="window.conductorModule.toggleReturnTrip()" 
+                                                    id="btn-return-trip" 
+                                                    class="text-[9px] bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded font-bold uppercase transition-colors shadow-md">
+                                                Marcar Regreso
+                                            </button>
+                                        </div>
+                                        
+                                        <ul id="route-stops-list" class="space-y-2 text-xs text-white mb-3 max-h-32 overflow-y-auto custom-scrollbar">
+                                            <li class="text-slate-500 text-center py-2 text-[10px] border border-dashed border-[#324d67] rounded-lg">
+                                                Agrega puntos a tu ruta tocando el mapa
+                                            </li>
+                                        </ul>
+                                        
+                                        <button onclick="window.conductorModule.saveRoutePlan()" 
+                                                class="w-full py-2.5 bg-green-600 text-white rounded-lg text-xs uppercase font-black shadow-lg transition-colors hover:bg-green-500 flex justify-center items-center gap-2">
+                                            <span class="material-symbols-outlined text-[16px]">save</span> Guardar Ruta
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- Panel de estadísticas en vivo -->
                                 <div class="bg-[#192633] rounded-2xl p-5 border border-primary/30">
                                     <div class="grid grid-cols-2 gap-4 mb-4">
-                                        <div>
-                                            <p class="text-[10px] text-[#92adc9] uppercase mb-1">Km Salida</p>
-                                            <p id="exit-km-display" class="text-2xl font-black text-primary">0.0</p>
-                                            <input type="hidden" id="exit-km-input" value="0">
+                                        <div class="bg-[#111a22] p-3 rounded-xl shadow-inner">
+                                            <p class="text-[8px] text-[#92adc9] uppercase font-bold">Velocidad</p>
+                                            <p id="live-speed" class="text-2xl font-black text-primary">0</p>
+                                            <p class="text-[8px] text-[#92adc9]">km/h</p>
                                         </div>
-                                        <div>
-                                            <p class="text-[10px] text-[#92adc9] uppercase mb-1">Km Actual</p>
-                                            <p id="current-km-display" class="text-2xl font-black text-primary">0.0</p>
+                                        <div class="bg-[#111a22] p-3 rounded-xl shadow-inner">
+                                            <p class="text-[8px] text-[#92adc9] uppercase font-bold">Distancia</p>
+                                            <p id="live-distance" class="text-2xl font-black text-primary">0.0</p>
+                                            <p class="text-[8px] text-[#92adc9]">km</p>
                                         </div>
                                     </div>
-                                    
                                     <div class="space-y-3">
-                                        <div class="flex justify-between text-xs">
-                                            <span class="text-[#92adc9]">Velocidad</span>
-                                            <span id="live-speed" class="text-white font-bold">0 km/h</span>
+                                        <div class="flex justify-between text-xs bg-[#111a22] p-3 rounded-xl">
+                                            <span class="text-[#92adc9] font-bold">Combustible estimado</span>
+                                            <span id="live-fuel" class="text-white font-black">0.0 L</span>
                                         </div>
-                                        <div class="flex justify-between text-xs">
-                                            <span class="text-[#92adc9]">Distancia recorrida</span>
-                                            <span id="live-distance" class="text-white font-bold">0.0 km</span>
-                                        </div>
-                                        <div class="flex justify-between text-xs">
-                                            <span class="text-[#92adc9]">Combustible estimado</span>
-                                            <span id="live-fuel" class="text-white font-bold">0.0 L</span>
-                                        </div>
-                                        <div class="flex justify-between text-xs">
-                                            <span class="text-[#92adc9]">Tiempo transcurrido</span>
-                                            <span id="trip-duration" class="text-white font-bold">00:00:00</span>
+                                        <div class="flex justify-between text-xs bg-[#111a22] p-3 rounded-xl">
+                                            <span class="text-[#92adc9] font-bold">Tiempo transcurrido</span>
+                                            <span id="trip-duration" class="text-white font-black font-mono">00:00:00</span>
                                         </div>
                                     </div>
                                 </div>
 
+                                <!-- Notas del viaje -->
                                 <div class="bg-[#192633] rounded-xl p-4 border border-[#233648]">
-                                    <p class="text-[10px] text-[#92adc9] uppercase mb-2">Notas del viaje</p>
+                                    <p class="text-[10px] text-[#92adc9] uppercase mb-2 flex items-center gap-1 font-bold">
+                                        <span class="material-symbols-outlined text-sm">note_add</span> Notas del viaje
+                                    </p>
                                     <textarea id="trip-notes" rows="2" 
-                                              class="w-full bg-[#111a22] border border-[#233648] text-white p-3 rounded-xl text-sm"
-                                              placeholder="Agregar notas del viaje..."></textarea>
+                                              class="w-full bg-[#111a22] border border-[#233648] text-white p-3 rounded-xl text-sm focus:border-primary focus:outline-none"
+                                              placeholder="Ej. Tráfico pesado, pausa para comer..."></textarea>
                                     <button onclick="window.conductorModule.saveTripNotes()" 
-                                            class="mt-2 w-full py-2 bg-[#233648] text-white rounded-lg text-xs uppercase">
+                                            class="mt-3 w-full py-2 bg-[#233648] border border-[#324d67] text-white rounded-lg text-xs uppercase font-bold hover:bg-[#2d445a] transition-colors">
                                         Guardar nota
                                     </button>
                                 </div>
                             </div>
 
-                            <div class="bg-[#111a22] border border-[#233648] rounded-xl p-4">
+                            <!-- Indicador de estado GPS -->
+                            <div class="bg-[#111a22] border border-[#233648] rounded-xl p-4 shadow-lg">
                                 <div id="gps-status-indicator" class="text-center">
                                     <div class="flex items-center justify-center gap-2 text-slate-400">
                                         <span class="material-symbols-outlined">gps_fixed</span>
@@ -370,7 +402,6 @@ export class DriverView {
                                 </div>
                             </div>
 
-                            <!-- Fotos de recepción -->
                             <div id="reception-photo-container" class="hidden mb-4">
                                 <h4 class="text-slate-800 text-xs font-black uppercase mb-2">Foto de Recepción</h4>
                                 <img id="reception-photo-display" class="w-full rounded-xl border-2 border-primary/30 cursor-pointer" 
@@ -469,7 +500,6 @@ export class DriverView {
             this.userId = session.user.id;
             console.log('✅ Usuario autenticado:', this.userId);
             
-            // Verificar que el userId no sea null
             if (!this.userId) {
                 console.error('❌ userId es null después de la autenticación');
                 window.location.hash = '#login';
@@ -482,38 +512,56 @@ export class DriverView {
             
             this.startBackgroundSync();
 
-            // Configurar suscripción en tiempo real - IMPORTANTE para actualización automática
-            supabase.channel('driver_realtime_' + this.userId)
-                .on('postgres_changes', { 
-                    event: '*', 
-                    schema: 'public', 
-                    table: 'trips', 
-                    filter: `driver_id=eq.${this.userId}` 
-                }, async (payload) => {
-                    console.log('🔄 Cambio detectado en viaje:', payload);
-                    
-                    if (payload.new) {
-                        await this.handleTripUpdate(payload.new);
-                        
-                        // Mostrar código de acceso cuando el viaje está aprobado
-                        if (payload.new.status === 'driver_accepted' && payload.new.access_code) {
-                            this.showAccessCode(payload.new.access_code);
-                        }
-                    }
-                })
-                .subscribe();
-                
-            // Configurar actualización periódica (cada 5 segundos)
+            // Configurar suscripción en tiempo real
+            this.setupRealtimeSubscription();
+
+            // Configurar actualización periódica
             this.updateInterval = setInterval(async () => {
                 if (navigator.onLine) {
                     await this.loadDashboardState();
                 }
-            }, 5000);
+            }, 3000); // Actualizar cada 3 segundos
                 
         } catch (error) {
             console.error('❌ Error en onMount:', error);
             window.location.hash = '#login';
         }
+    }
+
+    setupRealtimeSubscription() {
+        if (this.realtimeChannel) {
+            supabase.removeChannel(this.realtimeChannel);
+        }
+
+        this.realtimeChannel = supabase
+            .channel('driver_realtime_' + this.userId)
+            .on('postgres_changes', { 
+                event: '*', 
+                schema: 'public', 
+                table: 'trips', 
+                filter: `driver_id=eq.${this.userId}` 
+            }, async (payload) => {
+                console.log('🔄 Cambio detectado en viaje:', payload);
+                
+                if (payload.new) {
+                    await this.handleTripUpdate(payload.new);
+                    
+                    // Mostrar código de acceso cuando el viaje está aprobado
+                    if (payload.new.status === 'driver_accepted' && payload.new.access_code) {
+                        this.showAccessCode(payload.new.access_code);
+                        this.showNotification('✅ Viaje aprobado', 'Tu código de acceso está listo', 'success');
+                    }
+                    
+                    // Iniciar seguimiento cuando el viaje está en progreso
+                    if (payload.new.status === 'in_progress') {
+                        this.startTracking();
+                        this.showNotification('🚗 Viaje iniciado', 'El guardia ha autorizado tu salida', 'success');
+                    }
+                }
+            })
+            .subscribe((status) => {
+                console.log('📡 Estado de suscripción:', status);
+            });
     }
 
     // ==================== SISTEMA DE NOTIFICACIONES ====================
@@ -605,12 +653,12 @@ export class DriverView {
         
         switch(updatedTrip.status) {
             case 'approved_for_taller':
-                this.showNotification('Solicitud aprobada', 'Dirígete a taller para la recepción inicial', 'success');
+                this.showNotification('✅ Solicitud aprobada', 'Dirígete a taller para la recepción inicial', 'success');
                 this.switchTab('taller-inicial');
                 break;
                 
             case 'driver_accepted':
-                this.showNotification('Recepción completada', 'Ya puedes pasar con el guardia para la salida', 'success');
+                this.showNotification('🔑 Recepción completada', 'Ya puedes pasar con el guardia para la salida', 'success');
                 if (updatedTrip.access_code) {
                     this.showAccessCode(updatedTrip.access_code);
                 }
@@ -618,21 +666,23 @@ export class DriverView {
                 
             case 'in_progress':
                 if (previousStatus !== 'in_progress') {
-                    this.showNotification('Viaje iniciado', 'El guardia ha autorizado tu salida', 'success');
+                    this.showNotification('🚗 Viaje iniciado', 'El guardia ha autorizado tu salida', 'success');
                     this.startTracking();
+                    this.switchTab('ruta');
                 }
                 break;
                 
             case 'returned':
-                this.showNotification('Viaje terminado', 'Dirígete a taller para la revisión final', 'warning');
+                this.showNotification('🏁 Viaje terminado', 'Dirígete a taller para la revisión final', 'warning');
                 this.stopTracking();
                 this.switchTab('taller-final');
                 this.cargarResumenViaje();
                 break;
                 
             case 'completed':
-                this.showNotification('Unidad liberada', 'El taller ha completado la revisión', 'success');
-                this.loadDashboardState();
+                this.showNotification('🎉 Unidad liberada', 'El taller ha completado la revisión', 'success');
+                this.currentTrip = null;
+                await this.loadDashboardState();
                 this.switchTab('unidad');
                 break;
         }
@@ -666,11 +716,21 @@ export class DriverView {
             }
         });
 
-        setInterval(() => {
-            if (this.currentTrip?.status === 'in_progress') {
-                this.saveTripNotes();
-            }
-        }, 30000);
+        // Cargar Leaflet si no está disponible
+        if (!window.L) {
+            const script = document.createElement('script');
+            script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+            script.integrity = 'sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=';
+            script.crossOrigin = '';
+            document.head.appendChild(script);
+
+            const link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+            link.integrity = 'sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=';
+            link.crossOrigin = '';
+            document.head.appendChild(link);
+        }
     }
 
     // ==================== LOGOUT ====================
@@ -687,15 +747,12 @@ export class DriverView {
                 clearInterval(this.updateInterval);
             }
             
+            if (this.realtimeChannel) {
+                supabase.removeChannel(this.realtimeChannel);
+            }
+            
             this.stopTracking();
             
-            if (this.currentTrip && this.currentTrip.status === 'in_progress') {
-                const shouldEndTrip = confirm('Tienes un viaje en progreso. ¿Quieres finalizarlo antes de salir?');
-                if (shouldEndTrip) {
-                    await this.endTrip();
-                }
-            }
-
             await supabase.auth.signOut();
 
         } catch (error) {
@@ -707,7 +764,7 @@ export class DriverView {
         }
     }
 
-    // ==================== GPS ====================
+    // ==================== GPS Y MAPA ====================
     
     startTracking() {
         if (!navigator.geolocation) {
@@ -824,11 +881,6 @@ export class DriverView {
             if (speedKmh > this.tripLogistics.maxSpeed) {
                 this.tripLogistics.maxSpeed = speedKmh;
             }
-
-            const totalHours = (now - this.tripLogistics.startTime) / 3600000;
-            if (totalHours > 0) {
-                this.tripLogistics.averageSpeed = this.tripLogistics.totalDistance / totalHours;
-            }
         }
 
         if (this.tripLogistics.startTime) {
@@ -847,6 +899,9 @@ export class DriverView {
         this.tripLogistics.lastPosition = { lat: latitude, lng: longitude, timestamp: now };
         this.tripLogistics.lastUpdateTime = now;
         this.tripLogistics.lastSpeed = speedKmh;
+
+        // Actualizar marcador en el mapa si existe
+        this.updateMapMarker(latitude, longitude);
 
         if (this.currentTrip?.status === 'in_progress') {
             const locationData = {
@@ -936,6 +991,240 @@ export class DriverView {
         }
     }
 
+    // ==================== FUNCIONES DEL MAPA ====================
+
+    async initDriverMap() {
+        if (this.driverMap || !window.L || !this.currentTrip) return;
+
+        try {
+            const L = window.L;
+            const center = this.tripLogistics.lastPosition 
+                ? [this.tripLogistics.lastPosition.lat, this.tripLogistics.lastPosition.lng] 
+                : [19.4326, -99.1332]; // Centro de México por defecto
+
+            this.driverMap = L.map('driver-map', { 
+                zoomControl: true, 
+                attributionControl: false 
+            }).setView(center, 13);
+
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { 
+                maxZoom: 19,
+                subdomains: 'abcd'
+            }).addTo(this.driverMap);
+
+            // Icono para el vehículo
+            const carIconHtml = `<div class="bg-[#10b981] w-4 h-4 rounded-full border-2 border-white shadow-[0_0_15px_#10b981] animate-pulse"></div>`;
+            const carIcon = L.divIcon({ 
+                className: 'local-car-marker', 
+                html: carIconHtml, 
+                iconSize: [16, 16], 
+                iconAnchor: [8, 8] 
+            });
+
+            if (this.tripLogistics.lastPosition) {
+                this.myLocationMarker = L.marker(
+                    [this.tripLogistics.lastPosition.lat, this.tripLogistics.lastPosition.lng], 
+                    { icon: carIcon }
+                ).addTo(this.driverMap);
+            }
+
+            // Evento click para agregar puntos de ruta
+            this.driverMap.on('click', (e) => {
+                this.addStopFromMap(e.latlng.lat, e.latlng.lng);
+            });
+
+            // Cargar puntos de ruta guardados
+            if (this.currentTrip?.request_details?.route_plan) {
+                this.routeStops = this.currentTrip.request_details.route_plan;
+                this.isReturning = this.currentTrip.request_details.is_returning || false;
+            }
+
+            this.renderRouteStops();
+            this.updateMapMarkers();
+            this.updateReturnButtonUI();
+
+            setTimeout(() => this.driverMap.invalidateSize(), 400);
+        } catch (e) {
+            console.error("Error iniciando mapa:", e);
+        }
+    }
+
+    updateMapMarker(lat, lng) {
+        if (this.myLocationMarker && this.driverMap) {
+            this.myLocationMarker.setLatLng([lat, lng]);
+            this.driverMap.panTo([lat, lng]);
+        }
+    }
+
+    updateMapMarkers() {
+        if (!this.driverMap || !window.L) return;
+
+        const L = window.L;
+        
+        // Limpiar marcadores antiguos
+        this.driverMarkers.forEach(m => this.driverMap.removeLayer(m));
+        this.driverMarkers = [];
+
+        // Agregar marcadores de los puntos de ruta
+        this.routeStops.forEach((stop, i) => {
+            const isReturn = stop.type === 'return';
+            const color = isReturn ? 'bg-purple-500' : 'bg-primary';
+            
+            const iconHtml = `<div class="${color} w-6 h-6 rounded-full border-2 border-white flex items-center justify-center text-[10px] text-white font-black shadow-lg">${i+1}</div>`;
+            const icon = L.divIcon({ 
+                className: 'custom-stop-marker', 
+                html: iconHtml, 
+                iconSize: [24, 24], 
+                iconAnchor: [12, 12] 
+            });
+            
+            const marker = L.marker([stop.lat, stop.lng], { icon }).addTo(this.driverMap);
+            marker.bindPopup(stop.name);
+            this.driverMarkers.push(marker);
+        });
+
+        // Ajustar vista para mostrar todos los marcadores
+        if (this.driverMarkers.length > 0) {
+            const group = new L.featureGroup(this.driverMarkers);
+            if (this.myLocationMarker) group.addLayer(this.myLocationMarker);
+            this.driverMap.fitBounds(group.getBounds(), { padding: [30, 30], maxZoom: 15 });
+        }
+    }
+
+    async addStopFromMap(lat, lng) {
+        this.showNotification('Agregando punto...', 'Extrayendo dirección', 'info');
+        
+        try {
+            const res = await fetch(
+                `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&accept-language=es`
+            );
+            const data = await res.json();
+            const name = data.display_name ? data.display_name.split(',')[0] : 'Punto en mapa';
+            
+            this.addRouteStop(lat, lng, name, 'stop');
+        } catch (e) {
+            this.addRouteStop(lat, lng, 'Ubicación manual', 'stop');
+        }
+    }
+
+    addRouteStop(lat, lng, name, type) {
+        this.routeStops.push({ 
+            id: 'stop_' + Date.now(), 
+            lat, 
+            lng, 
+            name, 
+            type, 
+            timestamp: new Date().toISOString() 
+        });
+        this.renderRouteStops();
+        this.updateMapMarkers();
+    }
+
+    removeRouteStop(index) {
+        if (this.routeStops[index].type === 'return') { 
+            this.isReturning = false; 
+            this.updateReturnButtonUI(); 
+        }
+        this.routeStops.splice(index, 1);
+        this.renderRouteStops();
+        this.updateMapMarkers();
+    }
+
+    toggleReturnTrip() {
+        this.isReturning = !this.isReturning;
+        
+        if (this.isReturning) {
+            // Coordenadas de la base (ajusta según tu ubicación)
+            this.addRouteStop(19.4326, -99.1332, 'Base Central', 'return');
+            this.showNotification('Regreso marcado', 'Ruta hacia la base añadida', 'success');
+        } else {
+            this.routeStops = this.routeStops.filter(s => s.type !== 'return');
+            this.renderRouteStops();
+            this.updateMapMarkers();
+        }
+        this.updateReturnButtonUI();
+    }
+
+    updateReturnButtonUI() {
+        const btn = document.getElementById('btn-return-trip');
+        if (!btn) return;
+        
+        if (this.isReturning) {
+            btn.classList.replace('bg-slate-700', 'bg-purple-600');
+            btn.classList.replace('hover:bg-slate-600', 'hover:bg-purple-500');
+            btn.innerHTML = '<span class="material-symbols-outlined text-[10px] align-middle mr-1">keyboard_return</span>Regreso Activo';
+        } else {
+            btn.classList.replace('bg-purple-600', 'bg-slate-700');
+            btn.classList.replace('hover:bg-purple-500', 'hover:bg-slate-600');
+            btn.innerHTML = 'Marcar Regreso';
+        }
+    }
+
+    renderRouteStops() {
+        const list = document.getElementById('route-stops-list');
+        if (!list) return;
+
+        if (this.routeStops.length === 0) {
+            list.innerHTML = '<li class="text-slate-500 text-center py-2 text-[10px] border border-dashed border-[#324d67] rounded-lg">Agrega puntos a tu ruta tocando el mapa</li>';
+            return;
+        }
+
+        list.innerHTML = this.routeStops.map((stop, index) => `
+            <li class="flex justify-between items-center bg-[#1c2127] p-2 rounded-lg border border-[#324d67] group">
+                <div class="flex items-center gap-3 overflow-hidden">
+                    <span class="w-5 h-5 rounded-full ${stop.type === 'return' ? 'bg-purple-500' : 'bg-primary'} text-[10px] flex items-center justify-center font-black text-white shrink-0 shadow">${index + 1}</span>
+                    <div class="flex flex-col overflow-hidden">
+                        <span class="truncate font-bold text-[11px]" title="${stop.name}">${stop.name}</span>
+                        <span class="text-[8px] text-[#92adc9]">${stop.type === 'return' ? 'Trayecto final' : 'Parada intermedia'}</span>
+                    </div>
+                </div>
+                <button onclick="window.conductorModule.removeRouteStop(${index})" class="text-slate-500 hover:text-red-500 p-1 shrink-0 bg-[#111a22] rounded-md border border-[#233648]">
+                    <span class="material-symbols-outlined text-[14px]">delete</span>
+                </button>
+            </li>
+        `).join('');
+    }
+
+    async saveRoutePlan() {
+        if (!this.currentTrip) return;
+
+        const btn = document.querySelector('[onclick="window.conductorModule.saveRoutePlan()"]');
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<span class="animate-spin inline-block mr-2 text-[16px]">⏳</span> GUARDANDO...';
+        }
+
+        try {
+            const currentDetails = this.currentTrip.request_details || {};
+            const newDetails = { 
+                ...currentDetails, 
+                route_plan: this.routeStops, 
+                is_returning: this.isReturning 
+            };
+
+            await this.updateTripInDatabase({ request_details: newDetails });
+            
+            this.showNotification('✅ Ruta Guardada', 'Se ha actualizado el plan de viaje', 'success');
+
+            if (btn) {
+                btn.classList.replace('bg-green-600', 'bg-emerald-500');
+                btn.innerHTML = '<span class="material-symbols-outlined text-[16px]">check_circle</span> RUTA CONFIRMADA';
+                
+                setTimeout(() => { 
+                    btn.disabled = false;
+                    btn.classList.replace('bg-emerald-500', 'bg-green-600');
+                    btn.innerHTML = '<span class="material-symbols-outlined text-[16px]">save</span> Guardar Ruta'; 
+                }, 2500);
+            }
+        } catch (e) {
+            this.showNotification('❌ Error', 'No se pudo guardar la ruta', 'error');
+            if (btn) { 
+                btn.disabled = false; 
+                btn.innerHTML = 'Guardar Ruta'; 
+            }
+        }
+    }
+
     // ==================== BASE DE DATOS ====================
     
     async sendLocationToDatabase(locationData) {
@@ -949,8 +1238,8 @@ export class DriverView {
                 speed: locationData.speed,
                 accuracy: locationData.accuracy,
                 total_distance: locationData.total_distance,
-                moving_time: locationData.moving_time,
-                idle_time: locationData.idle_time,
+                moving_time: locationData.movingTime,
+                idle_time: locationData.idleTime,
                 timestamp: locationData.timestamp
             });
 
@@ -1113,10 +1402,15 @@ export class DriverView {
         }, 500);
     }
 
-    // ==================== MÉTODO ENVIAR SOLICITUD CORREGIDO ====================
+    // ==================== MÉTODO ENVIAR SOLICITUD ====================
 
     async enviarSolicitud() {
-        // VERIFICACIÓN CRÍTICA: Asegurar que userId existe
+        // Verificar si ya hay un viaje activo
+        if (this.currentTrip) {
+            this.showNotification('❌ No disponible', 'Ya tienes un viaje en curso', 'error');
+            return;
+        }
+
         if (!this.userId) {
             console.error('❌ Error: userId es null');
             alert('Error de sesión. Por favor, recarga la página.');
@@ -1141,7 +1435,7 @@ export class DriverView {
         }
         
         if (!motivo) {
-            alert('Por favor selecciona el motivo del viaje');
+            alert('Por favor ingresa el motivo del viaje');
             document.getElementById('solicitud-motivo').focus();
             return;
         }
@@ -1160,11 +1454,11 @@ export class DriverView {
         }
 
         try {
-            // Generar código de acceso (6 caracteres alfanuméricos)
+            // Generar código de acceso
             const accessCode = Math.random().toString(36).substring(2, 8).toUpperCase();
             this.accessCode = accessCode;
             
-            // Crear objeto de solicitud - SOLO con las columnas que existen en la tabla
+            // Crear objeto de solicitud
             const newTrip = {
                 driver_id: this.userId,
                 vehicle_id: vehicleId,
@@ -1217,7 +1511,6 @@ export class DriverView {
         } catch (error) {
             console.error('❌ Error enviando solicitud:', error);
             
-            // Mostrar mensaje de error más específico
             let errorMessage = 'Error al enviar la solicitud';
             if (error.message) {
                 errorMessage += ': ' + error.message;
@@ -1305,7 +1598,7 @@ export class DriverView {
 
             if (error) throw error;
 
-            this.showNotification('Recepción confirmada', 'Ya puedes pasar con el guardia', 'success');
+            this.showNotification('✅ Recepción confirmada', 'Ya puedes pasar con el guardia', 'success');
             this.switchTab('unidad');
             
         } catch (error) {
@@ -1373,7 +1666,6 @@ export class DriverView {
                 const profileRole = document.getElementById('profile-role');
                 if (profileRole) profileRole.innerText = 'Conductor';
 
-                // Mostrar nombre del conductor en el formulario de solicitud
                 const conductorNombre = document.getElementById('conductor-nombre');
                 if (conductorNombre) conductorNombre.innerText = p.full_name || 'Conductor';
             }
@@ -1405,11 +1697,6 @@ export class DriverView {
             // Actualizar UI según el estado
             await this.updateUIByStatus(trip);
             
-            // Cargar unidades disponibles si no hay viaje
-            if (!trip) {
-                await this.loadAvailableUnitsForMainView();
-            }
-            
         } catch (error) {
             console.error('Error cargando dashboard:', error);
         }
@@ -1417,20 +1704,21 @@ export class DriverView {
 
     async updateUIByStatus(trip) {
         const statusMap = {
-            'requested': { text: 'Solicitud enviada', color: 'bg-yellow-500', tab: 'unidad' },
-            'approved_for_taller': { text: 'Dirígete a taller', color: 'bg-orange-500', tab: 'taller-inicial' },
-            'driver_accepted': { text: 'Listo para salida', color: 'bg-green-500', tab: 'unidad' },
-            'in_progress': { text: 'En ruta', color: 'bg-primary', tab: 'ruta' },
-            'returned': { text: 'Regresado - Ir a taller', color: 'bg-purple-500', tab: 'taller-final' },
-            'completed': { text: 'Viaje completado', color: 'bg-emerald-500', tab: 'unidad' }
+            'requested': { text: 'Solicitud enviada', color: 'bg-yellow-500' },
+            'approved_for_taller': { text: 'Dirígete a taller', color: 'bg-orange-500' },
+            'driver_accepted': { text: 'Listo para salida', color: 'bg-green-500' },
+            'in_progress': { text: 'En ruta', color: 'bg-primary' },
+            'returned': { text: 'Regresado - Ir a taller', color: 'bg-purple-500' },
+            'completed': { text: 'Viaje completado', color: 'bg-emerald-500' }
         };
 
         const titleUnits = document.querySelector('#tab-unidad h3');
         const unitsContent = document.getElementById('unidad-content');
         const noUnitsMsg = document.getElementById('no-units-message');
         const profileStatus = document.getElementById('profile-status');
+        const solicitudBtn = document.querySelector('[onclick="window.conductorModule.switchTab(\'solicitud\')"]');
 
-        if (trip && statusMap[trip.status]) {
+        if (trip && statusMap[trip.status] && trip.status !== 'completed') {
             const status = statusMap[trip.status];
             if (profileStatus) profileStatus.innerText = status.text;
             
@@ -1453,7 +1741,13 @@ export class DriverView {
             if (unitsContent) unitsContent.classList.add('hidden');
             if (noUnitsMsg) noUnitsMsg.classList.add('hidden');
             
-            // Mostrar código de acceso si el viaje está en estado driver_accepted
+            // Deshabilitar botón de solicitud si hay viaje activo
+            if (solicitudBtn) {
+                solicitudBtn.classList.add('opacity-50');
+                solicitudBtn.disabled = true;
+            }
+            
+            // Mostrar código de acceso
             if (trip.status === 'driver_accepted' && trip.access_code) {
                 this.showAccessCode(trip.access_code);
             }
@@ -1463,9 +1757,14 @@ export class DriverView {
                 if (tInfo) tInfo.innerText = `ECO-${trip.vehicles?.economic_number} - ${trip.vehicles?.plate}`;
             }
             
+            // Inicializar mapa si estamos en pestaña de ruta y viaje en progreso
             if (trip.status === 'in_progress' && this.activeTab === 'ruta') {
-                setTimeout(() => this.startTracking(), 500);
+                setTimeout(() => {
+                    this.initDriverMap();
+                    this.startTracking();
+                }, 500);
             }
+            
             if (trip.status !== 'in_progress') {
                 this.stopTracking();
             }
@@ -1474,7 +1773,6 @@ export class DriverView {
             const currentTripInfo = document.getElementById('current-trip-info');
             if (currentTripInfo) currentTripInfo.classList.add('hidden');
             
-            // Ocultar código de acceso
             const accessContainer = document.getElementById('access-code-container');
             if (accessContainer) accessContainer.classList.add('hidden');
             
@@ -1483,6 +1781,12 @@ export class DriverView {
             
             if (titleUnits) titleUnits.classList.remove('hidden');
             await this.loadAvailableUnitsForMainView();
+            
+            // Habilitar botón de solicitud
+            if (solicitudBtn) {
+                solicitudBtn.classList.remove('opacity-50');
+                solicitudBtn.disabled = false;
+            }
         }
     }
 
@@ -1502,11 +1806,10 @@ export class DriverView {
             notes: this.tripLogistics.notes
         });
         
-        // Limpiar el textarea después de guardar
         const notesEl = document.getElementById('trip-notes');
         if (notesEl) notesEl.value = '';
         
-        this.showNotification('Nota guardada', 'Se agregó al registro del viaje', 'success');
+        this.showNotification('✅ Nota guardada', 'Se agregó al registro del viaje', 'success');
     }
 
     async activateEmergency() {
@@ -1539,11 +1842,9 @@ export class DriverView {
 
             alert(`🚨 EMERGENCIA REGISTRADA\nCódigo: ${emergencyCode}\nMantén la calma, ayuda en camino.`);
             
-            // Cerrar modal
             const modal = document.getElementById('modal-emergency');
             if (modal) modal.classList.add('hidden');
             
-            // Limpiar textarea
             const descEl = document.getElementById('emergency-desc');
             if (descEl) descEl.value = '';
             
@@ -1556,6 +1857,12 @@ export class DriverView {
     // ==================== NAVEGACIÓN ====================
     
     switchTab(tabId) {
+        // Verificar si se puede acceder a la pestaña de solicitud
+        if (tabId === 'solicitud' && this.currentTrip) {
+            this.showNotification('❌ No disponible', 'Ya tienes un viaje en curso', 'error');
+            return;
+        }
+
         this.activeTab = tabId;
         
         document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
@@ -1578,8 +1885,22 @@ export class DriverView {
             this.loadDashboardState();
         }
 
-        if (tabId === 'ruta' && this.currentTrip?.status === 'in_progress') {
-            setTimeout(() => this.startTracking(), 500);
+        if (tabId === 'ruta') {
+            if (this.currentTrip?.status === 'in_progress') {
+                document.getElementById('route-waiting-msg')?.classList.add('hidden');
+                document.getElementById('active-trip-panel')?.classList.remove('hidden');
+                setTimeout(() => {
+                    this.initDriverMap();
+                    this.startTracking();
+                }, 300);
+            } else if (this.currentTrip?.status === 'driver_accepted') {
+                document.getElementById('route-waiting-msg')?.classList.remove('hidden');
+                document.getElementById('active-trip-panel')?.classList.add('hidden');
+                this.showNotification('⏳ Esperando', 'El guardia debe autorizar la salida', 'info');
+            } else {
+                document.getElementById('route-waiting-msg')?.classList.remove('hidden');
+                document.getElementById('active-trip-panel')?.classList.add('hidden');
+            }
         }
         
         if (tabId === 'perfil') {
@@ -1596,6 +1917,10 @@ export class DriverView {
         
         if (this.updateInterval) {
             clearInterval(this.updateInterval);
+        }
+        
+        if (this.realtimeChannel) {
+            supabase.removeChannel(this.realtimeChannel);
         }
         
         this.stopTracking();
