@@ -119,7 +119,7 @@ export class DriverView {
                     <section id="tab-unidad" class="tab-content block p-4 space-y-4">
                         <h3 class="text-white text-xs font-bold uppercase tracking-widest opacity-70 px-1">Unidades Disponibles</h3>
                         
-                        <div id="unidad-loader" class="flex justify-center py-10 hidden">
+                        <div id="unidad-loader" class="flex justify-center py-10">
                             <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
                         </div>
                         
@@ -442,7 +442,7 @@ export class DriverView {
                                     <span class="material-symbols-outlined text-sm text-primary">history</span> Último viaje
                                 </h4>
                                 <div id="last-trip-info" class="text-xs">
-                                    <div class="text-center py-4 text-slate-400" id="last-trip-loading">
+                                    <div class="text-center py-4 text-slate-400 hidden" id="last-trip-loading">
                                         <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-primary mx-auto mb-2"></div>
                                         <p>Cargando...</p>
                                     </div>
@@ -547,26 +547,23 @@ export class DriverView {
         `;
     }
 
-    // --- SOLICITAR MANTENER PANTALLA ENCENDIDA (SEGUNDO PLANO WEB) ---
+    // --- SOLICITAR MANTENER PANTALLA ENCENDIDA ---
     async requestWakeLock() {
         try {
             if ('wakeLock' in navigator && !this.wakeLock) {
                 this.wakeLock = await navigator.wakeLock.request('screen');
                 this.wakeLock.addEventListener('release', () => {
-                    console.log('Screen Wake Lock liberado.');
                     this.wakeLock = null;
                 });
-                console.log('✅ Screen Wake Lock activado (App protegida en 2do plano).');
             }
         } catch (err) {
-            console.error(`${err.name}, ${err.message} (Wake Lock falló)`);
+            console.error(`${err.name}, ${err.message}`);
         }
     }
 
     releaseWakeLock() {
         if (this.wakeLock !== null) {
-            this.wakeLock.release()
-                .then(() => { this.wakeLock = null; });
+            this.wakeLock.release().then(() => { this.wakeLock = null; });
         }
     }
 
@@ -696,7 +693,7 @@ export class DriverView {
     toggleReturnTrip() {
         this.isReturning = !this.isReturning;
         if (this.isReturning) {
-            this.addRouteStop(19.4683, -99.2360, 'C. Hormona 2, Naucalpan, 53489 Naucalpan de Juárez, Méx.', 'return');
+            this.addRouteStop(19.4683, -99.2360, 'C. Hormona 2, Naucalpan', 'return');
             this.showToast('Regreso marcado', 'Ruta hacia la base añadida', 'success');
         } else {
             this.routeStops = this.routeStops.filter(s => s.type !== 'return');
@@ -809,45 +806,86 @@ export class DriverView {
         }
     }
 
-    // ==================== RESTO DEL CÓDIGO ====================
+    // ==================== INICIALIZACIÓN PRINCIPAL Y BLINDAJE ====================
 
     async onMount() {
+        // Aseguramos mostrar el loader inicial globalmente
         this.showLoader();
         
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) {
-            window.location.hash = '#login';
-            return;
-        }
-        
-        this.userId = session.user.id;
-        
-        // Forzar inicio sin viaje fantasma
-        this.currentTrip = null; 
-
         try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) {
+                window.location.hash = '#login';
+                return;
+            }
+            
+            this.userId = session.user.id;
+            console.log('✅ Conductor autenticado:', this.userId);
+            
+            this.currentTrip = null; 
+
+            // Cargar datos concurrentemente, cada uno con su propio try/catch
             await Promise.all([
                 this.loadProfileData(),
                 this.loadDashboardState(),
                 this.loadLastTripStats()
             ]);
+            
         } catch (e) {
-            console.error("Error en inicialización:", e);
+            console.error("Error crítico en inicialización:", e);
+        } finally {
+            // SIEMPRE ejecutar esto al final, pase lo que pase
+            this.setupRealtimeSubscription();
+            this.setupPeriodicUpdates();
+            this.setupConnectionMonitor();
+            this.startBackgroundSync();
+            
+            this.switchTab('unidad'); 
+            this.hideLoader(); // APAGAR LOADER INICIAL
         }
-        
-        this.setupRealtimeSubscription();
-        this.setupPeriodicUpdates();
-        this.setupConnectionMonitor();
-        this.startBackgroundSync();
-        
-        this.switchTab('unidad'); // Asegurar que inicie en la pestaña correcta
-        this.hideLoader();
+    }
+
+    showLoader() { 
+        const loader = document.getElementById('unidad-loader'); 
+        if (loader) loader.classList.remove('hidden'); 
+    }
+    
+    hideLoader() { 
+        const loader = document.getElementById('unidad-loader'); 
+        if (loader) loader.classList.add('hidden'); 
+    }
+
+    async loadProfileData() {
+        if (!this.userId) return;
+        try {
+            const { data: p, error } = await supabase.from('profiles').select('*').eq('id', this.userId).single();
+            if (error) throw error;
+            if (p) {
+                document.getElementById('profile-name').innerText = p.full_name || 'Conductor';
+                if (p.photo_url) {
+                    document.getElementById('profile-avatar').style.backgroundImage = `url('${p.photo_url}')`;
+                    document.getElementById('card-photo').style.backgroundImage = `url('${p.photo_url}')`;
+                }
+                document.getElementById('card-full-name').innerText = p.full_name || 'Conductor';
+                document.getElementById('lic-number').innerText = p.license_number || 'No registrada';
+            }
+        } catch (error) {
+            console.error('Error cargando perfil:', error);
+            document.getElementById('profile-name').innerText = 'Conductor (Sin perfil)';
+            document.getElementById('card-full-name').innerText = 'Conductor';
+        }
     }
 
     async loadLastTripStats() {
         if (!this.userId) return;
 
+        const loading = document.getElementById('last-trip-loading');
+        const content = document.getElementById('last-trip-content');
+        
         try {
+            if (loading) loading.classList.remove('hidden');
+            if (content) content.classList.add('hidden');
+
             const { data: lastTrip, error: lastError } = await supabase
                 .from('trips')
                 .select(`created_at, completed_at, destination, exit_km, entry_km, vehicles:vehicle_id(plate, economic_number)`)
@@ -862,12 +900,6 @@ export class DriverView {
                 .select('id, entry_km, exit_km')
                 .eq('driver_id', this.userId)
                 .in('status', ['completed', 'closed']);
-
-            const loading = document.getElementById('last-trip-loading');
-            const content = document.getElementById('last-trip-content');
-            
-            if (loading) loading.classList.add('hidden');
-            if (content) content.classList.remove('hidden');
 
             if (lastTrip && !lastError) {
                 document.getElementById('last-trip-vehicle').innerText = `${lastTrip.vehicles?.plate || '---'} (ECO-${lastTrip.vehicles?.economic_number || '?'})`;
@@ -892,11 +924,118 @@ export class DriverView {
                 }, 0);
                 document.getElementById('total-km').innerText = Math.round(totalKm);
             }
-        } catch (error) { console.error('Error cargando estadísticas:', error); }
+        } catch (error) { 
+            console.error('Error cargando estadísticas:', error); 
+            if (content) content.innerHTML = `<p class="text-xs text-red-400 text-center py-4">Error al cargar historial</p>`;
+        } finally {
+            // Asegurarse de ocultar el loader pase lo que pase
+            if (loading) loading.classList.add('hidden');
+            if (content) content.classList.remove('hidden');
+        }
     }
 
-    showLoader() { const loader = document.getElementById('unidad-loader'); if (loader) loader.classList.remove('hidden'); }
-    hideLoader() { const loader = document.getElementById('unidad-loader'); if (loader) loader.classList.add('hidden'); }
+    async loadDashboardState() {
+        if (!this.userId) return;
+        try {
+            const { data: trips, error } = await supabase
+                .from('trips')
+                .select(`*, vehicles(*)`)
+                .eq('driver_id', this.userId)
+                .in('status', ['requested', 'approved_for_taller', 'driver_accepted', 'in_progress', 'awaiting_return_checklist', 'incident_report'])
+                .order('created_at', { ascending: false })
+                .limit(1);
+
+            if (error) throw error;
+            const trip = trips?.length > 0 ? trips[0] : null;
+            
+            this.currentTrip = trip;
+            await this.updateUIByStatus(trip);
+
+        } catch (error) { 
+            console.error('Error cargando estado del viaje:', error); 
+            // Si falla, limpiar UI para que no se quede bloqueada
+            await this.updateUIByStatus(null);
+        }
+    }
+
+    async loadAvailableUnits() {
+        const container = document.getElementById('unidad-content');
+        const noUnitsMsg = document.getElementById('no-units-message');
+        const loader = document.getElementById('unidad-loader');
+        
+        try {
+            // Mostrar loader de unidades temporalmente
+            if (loader) loader.classList.remove('hidden');
+            if (container) container.classList.add('hidden');
+            if (noUnitsMsg) noUnitsMsg.classList.add('hidden');
+
+            const { data: vehs, error } = await supabase.from('vehicles').select('*').eq('status', 'active');
+            if (error) throw error;
+            
+            if (!vehs || vehs.length === 0) {
+                if (noUnitsMsg) noUnitsMsg.classList.remove('hidden');
+            } else if (container) {
+                container.classList.remove('hidden');
+                container.innerHTML = vehs.map(v => `<div onclick="window.conductorModule.selectVehicleForRequest('${v.id}', '${v.plate}', '${v.model}', '${v.economic_number}')" class="bg-gradient-to-r from-[#192633] to-[#1a2533] p-4 rounded-xl border border-[#233648] flex justify-between items-center cursor-pointer hover:border-primary hover:scale-[1.02] transition-all active:scale-95"><div><p class="text-white font-black text-lg">${v.plate}</p><p class="text-[10px] text-[#92adc9] mt-1">${v.model} · ECO-${v.economic_number}</p></div><button class="bg-primary text-white text-[10px] font-black px-4 py-2 rounded-lg uppercase shadow-lg">Solicitar</button></div>`).join('');
+            }
+        } catch (error) { 
+            console.error('Error al cargar unidades:', error);
+            if (noUnitsMsg) {
+                noUnitsMsg.innerHTML = '<span class="material-symbols-outlined text-4xl mb-2 text-red-500">error</span><p class="text-sm">Error de conexión</p>';
+                noUnitsMsg.classList.remove('hidden');
+            }
+        } finally {
+            // Apagar siempre el loader
+            if (loader) loader.classList.add('hidden');
+        }
+    }
+
+    async updateUIByStatus(trip) {
+        const statusMap = { 
+            'requested': { text: 'Solicitud enviada', color: 'bg-yellow-500', tab: 'unidad' }, 
+            'approved_for_taller': { text: 'Dirígete a taller', color: 'bg-orange-500', tab: 'taller-inicial' }, 
+            'driver_accepted': { text: 'Listo para salir', color: 'bg-green-500', tab: 'unidad' }, 
+            'in_progress': { text: 'En ruta', color: 'bg-primary', tab: 'ruta' }, 
+            'awaiting_return_checklist': { text: 'Regresado - Ir a taller', color: 'bg-purple-500', tab: 'taller-final' }, 
+            'incident_report': { text: 'INCIDENCIA', color: 'bg-red-500', tab: 'unidad' } 
+        };
+
+        const titleUnits = document.querySelector('#tab-unidad h3');
+        const unitsContent = document.getElementById('unidad-content');
+        const noUnitsMsg = document.getElementById('no-units-message');
+
+        if (trip && statusMap[trip.status]) {
+            const status = statusMap[trip.status];
+            document.getElementById('profile-status').innerText = status.text;
+            const badge = document.getElementById('trip-status-badge');
+            if (badge) { 
+                badge.innerText = status.text; 
+                badge.className = `px-3 py-1 rounded-full text-[10px] font-bold uppercase ${status.color} text-white`; 
+            }
+            
+            document.getElementById('current-vehicle-plate').innerText = trip.vehicles?.plate || '--';
+            document.getElementById('current-vehicle-model').innerText = `${trip.vehicles?.model || ''} ECO-${trip.vehicles?.economic_number || ''}`;
+            
+            document.getElementById('current-trip-info')?.classList.remove('hidden');
+            if (titleUnits) titleUnits.classList.add('hidden');
+            if (unitsContent) unitsContent.classList.add('hidden');
+            if (noUnitsMsg) noUnitsMsg.classList.add('hidden');
+            
+            if (trip.status === 'approved_for_taller') document.getElementById('taller-vehicle-info').innerText = `ECO-${trip.vehicles?.economic_number} - ${trip.vehicles?.plate}`;
+            if (trip.status === 'in_progress' && this.activeTab === 'ruta') setTimeout(() => this.startTracking(), 500);
+            if (trip.status !== 'in_progress') this.stopTracking();
+            this.updateSpecificComponents(trip);
+            
+        } else {
+            // El viaje terminó (o es null), restauramos UI para solicitar otro
+            document.getElementById('current-trip-info')?.classList.add('hidden');
+            document.getElementById('profile-status').innerText = "Disponible";
+            this.stopTracking();
+            
+            if (titleUnits) titleUnits.classList.remove('hidden');
+            await this.loadAvailableUnits();
+        }
+    }
 
     setupConnectionMonitor() {
         const indicator = document.getElementById('connection-indicator');
@@ -925,7 +1064,6 @@ export class DriverView {
         }, 5000);
     }
 
-    // ✅ CORRECCIÓN FINAL REALTIME: Se trae el viaje completo con vehículos cuando hay cambios
     setupRealtimeSubscription() {
         if (this.realtimeChannel) supabase.removeChannel(this.realtimeChannel);
 
@@ -943,7 +1081,7 @@ export class DriverView {
                         this.switchTab('unidad');
                         this.showToast('✅ Viaje completado', 'Puedes solicitar una nueva unidad', 'success');
                     } else {
-                        // RE-FETCH FULL TRIP PARA EVITAR QUE SE BORRE EL VEHÍCULO EN PANTALLA
+                        // Garantiza que tengamos datos vehiculares anidados para la UI
                         const { data: fullTrip } = await supabase
                             .from('trips')
                             .select(`*, vehicles(*)`)
@@ -1367,7 +1505,6 @@ export class DriverView {
 
             this.showToast('Solicitud enviada', 'Espera la aprobación', 'success');
             
-            // Limpiar formulario para el siguiente viaje
             document.getElementById('solicitud-destino').value = '';
             document.getElementById('solicitud-motivo').value = '';
             document.getElementById('solicitud-jefe').value = '';
@@ -1399,10 +1536,7 @@ export class DriverView {
             
             if (!vehs || vehs.length === 0) {
                 if (noUnitsMsg) noUnitsMsg.classList.remove('hidden');
-                return;
-            }
-            
-            if (container) {
+            } else if (container) {
                 container.classList.remove('hidden');
                 container.innerHTML = vehs.map(v => `<div onclick="window.conductorModule.selectVehicleForRequest('${v.id}', '${v.plate}', '${v.model}', '${v.economic_number}')" class="bg-gradient-to-r from-[#192633] to-[#1a2533] p-4 rounded-xl border border-[#233648] flex justify-between items-center cursor-pointer hover:border-primary hover:scale-[1.02] transition-all active:scale-95"><div><p class="text-white font-black text-lg">${v.plate}</p><p class="text-[10px] text-[#92adc9] mt-1">${v.model} · ECO-${v.economic_number}</p></div><button class="bg-primary text-white text-[10px] font-black px-4 py-2 rounded-lg uppercase shadow-lg">Solicitar</button></div>`).join('');
             }
@@ -1480,18 +1614,25 @@ export class DriverView {
 
     async loadProfileData() {
         if (!this.userId) return;
-        const { data: p, error } = await supabase.from('profiles').select('*').eq('id', this.userId).single();
-        if (error) return;
-        if(p) {
-            document.getElementById('profile-name').innerText = p.full_name;
-            document.getElementById('profile-avatar').style.backgroundImage = `url('${p.photo_url || ''}')`;
-            document.getElementById('card-full-name').innerText = p.full_name;
-            document.getElementById('card-photo').style.backgroundImage = `url('${p.photo_url || ''}')`;
-            document.getElementById('lic-number').innerText = p.license_number || 'No registrada';
+        try {
+            const { data: p, error } = await supabase.from('profiles').select('*').eq('id', this.userId).single();
+            if (error) throw error;
+            if (p) {
+                document.getElementById('profile-name').innerText = p.full_name || 'Conductor';
+                if (p.photo_url) {
+                    document.getElementById('profile-avatar').style.backgroundImage = `url('${p.photo_url}')`;
+                    document.getElementById('card-photo').style.backgroundImage = `url('${p.photo_url}')`;
+                }
+                document.getElementById('card-full-name').innerText = p.full_name || 'Conductor';
+                document.getElementById('lic-number').innerText = p.license_number || 'No registrada';
+            }
+        } catch (error) {
+            console.error('Error cargando perfil:', error);
+            document.getElementById('profile-name').innerText = 'Conductor';
+            document.getElementById('card-full-name').innerText = 'Conductor';
         }
     }
 
-    // ✅ ACTUALIZACIÓN INCONDICIONAL DEL DASHBOARD AL CARGAR
     async loadDashboardState() {
         if (!this.userId) return;
         try {
@@ -1509,7 +1650,10 @@ export class DriverView {
             this.currentTrip = trip;
             await this.updateUIByStatus(trip);
 
-        } catch (error) { console.error('Error cargando estado:', error); }
+        } catch (error) { 
+            console.error('Error cargando estado:', error); 
+            await this.updateUIByStatus(null);
+        }
     }
 
     async updateUIByStatus(trip) {
@@ -1549,7 +1693,6 @@ export class DriverView {
             this.updateSpecificComponents(trip);
             
         } else {
-            // No hay viaje: Mostrar unidades
             document.getElementById('current-trip-info')?.classList.add('hidden');
             document.getElementById('profile-status').innerText = "Disponible";
             this.stopTracking();
