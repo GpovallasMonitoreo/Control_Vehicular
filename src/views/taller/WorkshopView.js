@@ -9,6 +9,8 @@ export class WorkshopView {
         this.deliveryPhotos = [];
         this.driverPhoto = null;
         this.html5QrCode = null;
+        this.currentCameraStream = null;
+        this.currentPhotoCallback = null;
         this.checklistItems = {
             liquid: false,
             oil: false,
@@ -24,7 +26,7 @@ export class WorkshopView {
         return `
         <div class="flex flex-col h-full gap-6 animate-fade-in max-w-[1600px] mx-auto pb-10">
             
-            <!-- Header del Taller -->
+            <!-- Header -->
             <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div class="flex flex-col gap-1">
                     <h1 class="text-white text-3xl font-black leading-tight flex items-center gap-3">
@@ -41,7 +43,7 @@ export class WorkshopView {
                 </div>
             </div>
 
-            <!-- Pestañas de navegación -->
+            <!-- Pestañas -->
             <div class="flex border-b border-[#324d67] overflow-x-auto custom-scrollbar shrink-0">
                 <button onclick="window.workshopView.switchMode('scanner')" id="tab-scanner" class="px-6 py-3 text-primary border-b-2 border-primary font-bold text-sm transition-colors whitespace-nowrap flex items-center gap-2">
                     <span class="material-symbols-outlined text-[18px]">qr_code_scanner</span> Escáner
@@ -110,13 +112,13 @@ export class WorkshopView {
                                     </div>
                                 </div>
 
-                                <!-- Tipo de recepción (inicial o final) -->
+                                <!-- Tipo de recepción -->
                                 <div id="reception-type-container" class="bg-[#111a22] p-4 rounded-lg border border-[#324d67] hidden">
                                     <p class="text-xs text-[#92adc9] mb-2">Tipo de recepción:</p>
                                     <div id="reception-type-badge" class="text-sm font-bold"></div>
                                 </div>
 
-                                <!-- Botón de acción según el tipo -->
+                                <!-- Botón de acción -->
                                 <button id="btn-start-process" onclick="window.workshopView.startProcess()" 
                                         class="w-full py-4 bg-primary text-white font-bold rounded-xl hidden">
                                     INICIAR PROCESO
@@ -126,7 +128,7 @@ export class WorkshopView {
                     </div>
                 </div>
 
-                <!-- MODO PROCESO DE TALLER -->
+                <!-- MODO PROCESO -->
                 <div id="mode-process" class="hidden animate-fade-in overflow-y-auto custom-scrollbar pb-6 pr-2 h-full">
                     <div class="bg-[#1c2127] border border-[#324d67] rounded-xl p-6 shadow-lg">
                         <!-- Cabecera dinámica -->
@@ -157,6 +159,28 @@ export class WorkshopView {
                             <button id="btn-complete-process" onclick="window.workshopView.completeProcess()" 
                                     class="flex-1 py-3 bg-green-600 text-white font-bold rounded-xl hover:bg-green-500 transition-colors shadow-lg disabled:opacity-50 disabled:cursor-not-allowed" disabled>
                                 COMPLETAR PROCESO
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MODAL DE CÁMARA -->
+                <div id="camera-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-sm p-4">
+                    <div class="bg-[#1c2127] w-full max-w-2xl rounded-2xl border border-[#324d67] shadow-2xl overflow-hidden">
+                        <div class="p-4 border-b border-[#324d67] bg-[#151b23] flex justify-between items-center">
+                            <h3 class="text-white font-bold" id="camera-modal-title">Tomar Foto</h3>
+                            <button onclick="window.workshopView.closeCamera()" class="text-slate-400 hover:text-white">
+                                <span class="material-symbols-outlined">close</span>
+                            </button>
+                        </div>
+                        <div class="p-4">
+                            <video id="camera-preview" autoplay playsinline class="w-full rounded-lg bg-black aspect-video"></video>
+                            <canvas id="camera-canvas" class="hidden"></canvas>
+                        </div>
+                        <div class="p-4 border-t border-[#324d67] flex justify-end gap-3">
+                            <button onclick="window.workshopView.closeCamera()" class="px-6 py-2 bg-slate-700 text-white rounded-lg">Cancelar</button>
+                            <button onclick="window.workshopView.capturePhoto()" class="px-6 py-2 bg-primary text-white rounded-lg flex items-center gap-2">
+                                <span class="material-symbols-outlined">photo_camera</span> Capturar
                             </button>
                         </div>
                     </div>
@@ -240,9 +264,121 @@ export class WorkshopView {
 
         if (mode === 'scanner') {
             setTimeout(() => this.initScanner(), 100);
+        } else {
+            this.stopCamera();
         }
     }
 
+    // ========== MÉTODOS DE CÁMARA ==========
+    async openCamera(callback, title = "Tomar Foto") {
+        this.currentPhotoCallback = callback;
+        
+        const modal = document.getElementById('camera-modal');
+        const titleEl = document.getElementById('camera-modal-title');
+        const video = document.getElementById('camera-preview');
+        
+        if (titleEl) titleEl.innerText = title;
+        if (modal) modal.classList.remove('hidden');
+
+        try {
+            if (this.currentCameraStream) {
+                this.currentCameraStream.getTracks().forEach(track => track.stop());
+            }
+
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: "environment" }, 
+                audio: false 
+            });
+            
+            this.currentCameraStream = stream;
+            video.srcObject = stream;
+            await video.play();
+        } catch (error) {
+            console.error('Error al acceder a la cámara:', error);
+            alert('No se pudo acceder a la cámara. Asegúrate de tener permisos.');
+            this.closeCamera();
+        }
+    }
+
+    closeCamera() {
+        if (this.currentCameraStream) {
+            this.currentCameraStream.getTracks().forEach(track => track.stop());
+            this.currentCameraStream = null;
+        }
+
+        const modal = document.getElementById('camera-modal');
+        if (modal) modal.classList.add('hidden');
+
+        const video = document.getElementById('camera-preview');
+        if (video) video.srcObject = null;
+
+        this.currentPhotoCallback = null;
+    }
+
+    capturePhoto() {
+        const video = document.getElementById('camera-preview');
+        const canvas = document.getElementById('camera-canvas');
+        
+        if (!video || !canvas || !this.currentPhotoCallback) return;
+
+        // Configurar canvas al tamaño del video
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+
+        // Dibujar el frame actual del video en el canvas
+        const context = canvas.getContext('2d');
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        // Convertir a base64 (JPEG de buena calidad)
+        const photoData = canvas.toDataURL('image/jpeg', 0.9);
+
+        // Ejecutar el callback con la foto
+        this.currentPhotoCallback(photoData);
+
+        // Cerrar la cámara
+        this.closeCamera();
+    }
+
+    // ========== MÉTODOS DE FOTOS ==========
+    takePhoto(position) {
+        this.openCamera(
+            (photoData) => {
+                this.receptionPhotos.push({ position, url: photoData });
+                this.updatePhotosPreview();
+                this.validateInitialProcess();
+            },
+            `Foto: ${position}`
+        );
+    }
+
+    takeDriverPhoto() {
+        this.openCamera(
+            (photoData) => {
+                this.driverPhoto = photoData;
+                const preview = document.getElementById('driver-photo-preview');
+                const img = document.getElementById('driver-photo-img');
+                if (preview && img) {
+                    img.src = photoData;
+                    preview.classList.remove('hidden');
+                }
+                this.validateInitialProcess();
+            },
+            "Foto del Conductor"
+        );
+    }
+
+    takeDeliveryPhoto(position) {
+        this.openCamera(
+            (photoData) => {
+                this.deliveryPhotos.push({ position, url: photoData });
+                this.updateDeliveryPhotosPreview();
+                this.validateFinalProcess();
+            },
+            `Foto de Entrega: ${position}`
+        );
+    }
+
+    // ========== RESTO DE MÉTODOS (sin cambios) ==========
     async loadVehicleByEcoOrPlate() {
         const input = document.getElementById('manual-vehicle-input');
         if (!input.value.trim()) {
@@ -579,31 +715,6 @@ export class WorkshopView {
         this.validateFinalProcess();
     }
 
-    takePhoto(position) {
-        const photoUrl = `https://via.placeholder.com/150?text=${position}`;
-        this.receptionPhotos.push({ position, url: photoUrl });
-        this.updatePhotosPreview();
-        this.validateInitialProcess();
-    }
-
-    takeDriverPhoto() {
-        this.driverPhoto = `https://via.placeholder.com/150?text=driver`;
-        const preview = document.getElementById('driver-photo-preview');
-        const img = document.getElementById('driver-photo-img');
-        if (preview && img) {
-            img.src = this.driverPhoto;
-            preview.classList.remove('hidden');
-        }
-        this.validateInitialProcess();
-    }
-
-    takeDeliveryPhoto(position) {
-        const photoUrl = `https://via.placeholder.com/150?text=delivery-${position}`;
-        this.deliveryPhotos.push({ position, url: photoUrl });
-        this.updateDeliveryPhotosPreview();
-        this.validateFinalProcess();
-    }
-
     updatePhotosPreview() {
         const preview = document.getElementById('photos-preview');
         if (!preview) return;
@@ -781,6 +892,14 @@ export class WorkshopView {
 
         this.switchMode('scanner');
         setTimeout(() => this.initScanner(), 100);
+        this.stopCamera();
+    }
+
+    stopCamera() {
+        if (this.currentCameraStream) {
+            this.currentCameraStream.getTracks().forEach(track => track.stop());
+            this.currentCameraStream = null;
+        }
     }
 
     async loadPendingLists() {
