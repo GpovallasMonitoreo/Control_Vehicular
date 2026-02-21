@@ -25,6 +25,9 @@ import { IncidentsView } from './views/shared/IncidentsView.js';
 // Vistas Conductor
 import { DriverView } from './views/driver/DriverView.js';
 
+// Vistas Taller
+import { WorkshopView } from './views/taller/WorkshopView.js';
+
 export class Router {
     constructor() {
         console.log("✅ Router inicializado");
@@ -32,7 +35,7 @@ export class Router {
         this.layout = new Layout();
         this.isHandlingRoute = false;
 
-        // MAPEO DE RUTAS - SOLO CON LAS VISTAS QUE EXISTEN
+        // MAPEO DE RUTAS - VERSIÓN COMPLETA CON WORKSHOPVIEW
         this.routes = {
             // Auth
             '': LoginView,
@@ -54,12 +57,13 @@ export class Router {
             '#tracking': TrackingView,
             
             // ============================================
-            // TALLER - Usando las vistas de admin que ya existen
+            // TALLER - AHORA USA LA VISTA COMPLETA DE TALLER
             // ============================================
-            '#taller-dashboard': MaintenanceView,      // Panel del taller (usa MaintenanceView)
+            '#taller-dashboard': WorkshopView,        // Panel del taller con flujo completo
             '#taller-inventory': InventoryView,        // Inventario del taller
             '#taller-stock': InventoryStockView,       // Stock de refacciones
             '#taller-reports': ReportsView,            // Reportes del taller
+            '#taller-workshop': WorkshopView,          // Alias para acceso directo al taller
             
             // ============================================
             // VIGILANCIA
@@ -175,7 +179,7 @@ export class Router {
             ],
             'taller': [
                 '#taller-dashboard', '#taller-inventory', '#taller-stock', 
-                '#taller-reports', '#incident'
+                '#taller-reports', '#taller-workshop', '#incident'
             ],
             'guard': [
                 '#scanner', '#incident'
