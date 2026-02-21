@@ -4,8 +4,8 @@ export class ScannerView {
     constructor() {
         this.html5QrCode = null;
         this.isProcessing = false;
-        this.pendingTrip = null; // Memoria para el Paso 1 (Vehículo detectado)
-        this.currentAction = null; // 'exit', 'entry', 'workshop_entry', 'workshop_exit'
+        this.pendingTrip = null;
+        this.currentAction = null;
         window.scannerView = this;
     }
 
@@ -40,7 +40,7 @@ export class ScannerView {
                         <div class="text-center p-6">
                             <span class="material-symbols-outlined text-5xl text-emerald-400 mb-2">directions_car</span>
                             <h3 class="text-white font-black text-xl uppercase tracking-widest">Unidad Detectada</h3>
-                            <p class="text-[#92adc9] text-xs mt-2" id="step-1-message">Ahora ingresa el código del conductor o de emergencia</p>
+                            <p class="text-[#92adc9] text-xs mt-2" id="step-1-message">Ahora ingresa el código del conductor</p>
                             <button onclick="window.scannerView.resetScan()" class="mt-4 bg-red-600/20 text-red-500 text-xs px-4 py-2 rounded-lg border border-red-500/30">Cancelar</button>
                         </div>
                      </div>
@@ -171,21 +171,21 @@ export class ScannerView {
     async handleStepOne(rawCode) {
         const cleanCode = rawCode.trim();
 
-        // Si ya tenemos un viaje pendiente, ignorar (esperando código manual)
+        // Si ya tenemos un viaje pendiente, ignorar
         if (this.pendingTrip) {
             this.isProcessing = false;
             return;
         }
 
         try {
-            // Validamos que el código escaneado sea un UUID (Formato de ID de Supabase)
+            // Validar si es UUID (ID de vehículo) o código de 6 dígitos
             const isUUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(cleanCode);
             
             if (!isUUID) {
-                // Podría ser un código de emergencia numérico
-                if (/^\d{6}$/.test(cleanCode)) {
-                    // Es un código de 6 dígitos - buscar viaje con ese código de emergencia
-                    await this.handleEmergencyCode(cleanCode);
+                // Podría ser código de acceso (6 dígitos) o código de emergencia
+                if (/^[A-Z0-9]{6}$/.test(cleanCode)) {
+                    // Es un código de 6 dígitos - verificar si es de acceso o emergencia
+                    await this.handleCodeInput(cleanCode);
                     return;
                 }
                 throw new Error("Código no válido. Escanea el QR de la unidad o ingresa código de 6 dígitos.");
@@ -196,7 +196,7 @@ export class ScannerView {
                 .from('trips')
                 .select('*, profiles:driver_id(*), vehicles:vehicle_id(*)')
                 .eq('vehicle_id', cleanCode)
-                .neq('status', 'closed')
+                .in('status', ['driver_accepted', 'in_progress', 'awaiting_return_checklist'])
                 .maybeSingle();
 
             if (error) throw error;
@@ -207,18 +207,17 @@ export class ScannerView {
             let actionMessage = '';
 
             switch(trip.status) {
-                case 'pretrip_completed':
                 case 'driver_accepted':
                     action = 'exit';
-                    actionMessage = 'Salida autorizada';
+                    actionMessage = 'Salida autorizada - Ingrese código de acceso';
                     break;
                 case 'in_progress':
                     action = 'entry';
-                    actionMessage = 'Retorno a base';
+                    actionMessage = 'Retorno a base - Ingrese kilometraje';
                     break;
-                case 'workshop_delivered':
-                    action = 'workshop_complete';
-                    actionMessage = 'Unidad lista para salir de taller';
+                case 'awaiting_return_checklist':
+                    action = 'workshop_return';
+                    actionMessage = 'Unidad lista para revisión final';
                     break;
                 default:
                     throw new Error(`Estado no válido para acceso: ${trip.status}`);
@@ -242,28 +241,47 @@ export class ScannerView {
         }
     }
 
-    // Manejar código de emergencia (6 dígitos)
-    async handleEmergencyCode(code) {
+    // Manejar código de 6 dígitos (acceso o emergencia)
+    async handleCodeInput(code) {
         try {
-            const { data: trip, error } = await supabase
+            // Primero buscar como código de acceso
+            let { data: trip, error } = await supabase
+                .from('trips')
+                .select('*, profiles:driver_id(*), vehicles:vehicle_id(*)')
+                .eq('access_code', code)
+                .eq('status', 'driver_accepted')
+                .maybeSingle();
+
+            if (trip) {
+                // Es código de acceso para salida
+                this.pendingTrip = trip;
+                this.currentAction = 'exit';
+                
+                document.getElementById('step-1-blocker').classList.remove('hidden');
+                document.getElementById('step-1-message').innerText = 'Código válido - Autorizar salida';
+                this.renderFinalConfirmation(trip, 'exit');
+                return;
+            }
+
+            // Si no, buscar como código de emergencia
+            const { data: emergencyTrip } = await supabase
                 .from('trips')
                 .select('*, profiles:driver_id(*), vehicles:vehicle_id(*)')
                 .eq('emergency_code', code)
                 .gt('emergency_expiry', new Date().toISOString())
                 .maybeSingle();
 
-            if (error) throw error;
-            if (!trip) throw new Error("Código de emergencia inválido o expirado");
+            if (emergencyTrip) {
+                this.pendingTrip = emergencyTrip;
+                this.currentAction = 'emergency_exit';
+                
+                document.getElementById('step-1-blocker').classList.remove('hidden');
+                document.getElementById('step-1-message').innerText = 'Acceso de emergencia';
+                this.renderEmergencyConfirmation(emergencyTrip);
+                return;
+            }
 
-            // Código válido - permitir acceso inmediato (salida)
-            this.pendingTrip = trip;
-            this.currentAction = 'emergency_exit';
-            
-            if(navigator.vibrate) navigator.vibrate([200]);
-            
-            document.getElementById('step-1-blocker').classList.remove('hidden');
-            document.getElementById('step-1-message').innerText = 'Acceso de emergencia';
-            this.renderEmergencyConfirmation(trip);
+            throw new Error("Código inválido o expirado");
 
         } catch (e) {
             this.renderError(e.message);
@@ -271,79 +289,105 @@ export class ScannerView {
         }
     }
 
-    // PASO 2: SOLICITAR CÓDIGO AL CONDUCTOR
+    // PASO 2: SOLICITAR DATOS ADICIONALES
     renderStepTwoUI(trip, action) {
         const area = document.getElementById('result-area');
-        const isExit = action === 'exit';
-        const isEntry = action === 'entry';
-        const isWorkshop = action === 'workshop_complete';
         
-        let title = '';
-        let description = '';
-        let buttonColor = '';
-        
-        if (isExit) {
-            title = 'SALIDA DE VEHÍCULO';
-            description = 'Verificar checklist y autorizar salida';
-            buttonColor = 'emerald-600';
-        } else if (isEntry) {
-            title = 'RETORNO DE VEHÍCULO';
-            description = 'Verificar estado y registrar entrada';
-            buttonColor = 'blue-600';
-        } else if (isWorkshop) {
-            title = 'SALIDA DE TALLER';
-            description = 'Unidad reparada, autorizar salida';
-            buttonColor = 'purple-600';
-        }
-
-        area.innerHTML = `
-            <div class="w-full h-full flex flex-col animate-fade-in-up">
-                <div class="bg-primary/10 border border-primary/30 rounded-2xl p-4 mb-4 shadow-inner text-left">
-                    <div class="flex justify-between items-start">
-                        <div>
-                            <p class="text-[10px] text-primary font-black uppercase tracking-widest mb-1">Unidad Identificada</p>
-                            <h2 class="text-3xl font-black text-white leading-none">ECO-${trip.vehicles?.economic_number}</h2>
-                            <p class="text-white font-mono mt-1 text-sm">${trip.vehicles?.plate}</p>
+        if (action === 'exit') {
+            // Para salida, pedir código de acceso (aunque ya lo tenga, lo pedimos por seguridad)
+            area.innerHTML = `
+                <div class="w-full h-full flex flex-col animate-fade-in-up">
+                    <div class="bg-primary/10 border border-primary/30 rounded-2xl p-4 mb-4 shadow-inner text-left">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <p class="text-[10px] text-primary font-black uppercase tracking-widest mb-1">Unidad Identificada</p>
+                                <h2 class="text-3xl font-black text-white leading-none">ECO-${trip.vehicles?.economic_number}</h2>
+                                <p class="text-white font-mono mt-1 text-sm">${trip.vehicles?.plate}</p>
+                            </div>
+                            <span class="bg-emerald-500/20 text-emerald-400 text-[10px] px-3 py-1 rounded-full border border-emerald-500/30 font-bold">
+                                SALIDA
+                            </span>
                         </div>
-                        <span class="bg-${buttonColor.split('-')[0]}-500/20 text-${buttonColor.split('-')[0]}-400 text-[10px] px-3 py-1 rounded-full border border-${buttonColor.split('-')[0]}-500/30 font-bold">
-                            ${title}
-                        </span>
+                        <div class="mt-3 pt-3 border-t border-[#324d67]">
+                            <p class="text-xs text-[#92adc9]">Conductor: <span class="text-white font-bold">${trip.profiles?.full_name}</span></p>
+                        </div>
                     </div>
-                    <div class="mt-3 pt-3 border-t border-[#324d67]">
-                        <p class="text-xs text-[#92adc9]">Conductor: <span class="text-white font-bold">${trip.profiles?.full_name}</span></p>
+
+                    <div class="flex-1 flex flex-col items-center justify-center">
+                        <span class="material-symbols-outlined text-6xl text-[#92adc9] mb-4">password</span>
+                        <h3 class="text-xl font-black text-white mb-2 uppercase">Ingrese Código de Acceso</h3>
+                        <p class="text-[#92adc9] text-xs mb-6 text-center">Verificar código proporcionado por el conductor</p>
+                        
+                        <input id="driver-code-input" type="text" maxlength="6" autocomplete="off" 
+                               class="w-full max-w-[250px] bg-[#111a22] border-2 border-[#324d67] text-white font-black rounded-xl p-4 text-center tracking-[12px] text-3xl font-mono uppercase mb-4 focus:border-emerald-500 outline-none transition-colors" 
+                               placeholder="••••••">
+                        
+                        <button id="btn-verify-code" 
+                                class="w-full max-w-[250px] py-4 rounded-xl font-black text-white bg-emerald-600 hover:bg-emerald-500 shadow-lg transition-all uppercase tracking-widest">
+                            Verificar Código
+                        </button>
                     </div>
                 </div>
+            `;
+            
+            document.getElementById('btn-verify-code').onclick = () => {
+                const inputCode = document.getElementById('driver-code-input').value.trim().toUpperCase();
+                if (inputCode === trip.access_code) {
+                    this.renderFinalConfirmation(trip, 'exit');
+                } else {
+                    alert('Código incorrecto');
+                }
+            };
+            
+        } else if (action === 'entry') {
+            // Para entrada, pedir kilometraje
+            area.innerHTML = `
+                <div class="w-full h-full flex flex-col animate-fade-in-up">
+                    <div class="bg-primary/10 border border-primary/30 rounded-2xl p-4 mb-4 shadow-inner text-left">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <p class="text-[10px] text-primary font-black uppercase tracking-widest mb-1">Unidad Identificada</p>
+                                <h2 class="text-3xl font-black text-white leading-none">ECO-${trip.vehicles?.economic_number}</h2>
+                                <p class="text-white font-mono mt-1 text-sm">${trip.vehicles?.plate}</p>
+                            </div>
+                            <span class="bg-blue-500/20 text-blue-400 text-[10px] px-3 py-1 rounded-full border border-blue-500/30 font-bold">
+                                RETORNO
+                            </span>
+                        </div>
+                        <div class="mt-3 pt-3 border-t border-[#324d67]">
+                            <p class="text-xs text-[#92adc9]">Conductor: <span class="text-white font-bold">${trip.profiles?.full_name}</span></p>
+                        </div>
+                    </div>
 
-                <div class="flex-1 flex flex-col items-center justify-center">
-                    <span class="material-symbols-outlined text-6xl text-[#92adc9] mb-4">password</span>
-                    <h3 class="text-xl font-black text-white mb-2 uppercase">Ingrese Código de Autorización</h3>
-                    <p class="text-[#92adc9] text-xs mb-6 text-center">${description}</p>
-                    
-                    <input id="driver-code-input" type="text" maxlength="6" autocomplete="off" 
-                           class="w-full max-w-[250px] bg-[#111a22] border-2 border-[#324d67] text-white font-black rounded-xl p-4 text-center tracking-[12px] text-3xl font-mono uppercase mb-4 focus:border-${buttonColor.split('-')[0]}-500 outline-none transition-colors" 
-                           placeholder="•••••">
-                    
-                    <button id="btn-verify-code" 
-                            class="w-full max-w-[250px] py-4 rounded-xl font-black text-white bg-${buttonColor} hover:bg-${buttonColor.replace('600', '500')} shadow-lg transition-all uppercase tracking-widest">
-                        Verificar Código
-                    </button>
-                    
-                    ${isWorkshop ? `
-                        <p class="text-[10px] text-purple-400 mt-4">La unidad ha sido reparada y está lista para salir</p>
-                    ` : ''}
+                    <div class="flex-1 flex flex-col items-center justify-center">
+                        <span class="material-symbols-outlined text-6xl text-[#92adc9] mb-4">speed</span>
+                        <h3 class="text-xl font-black text-white mb-2 uppercase">Kilometraje de Retorno</h3>
+                        <p class="text-[#92adc9] text-xs mb-6 text-center">Ingrese el kilometraje actual del vehículo</p>
+                        
+                        <input id="return-km-input" type="number" autocomplete="off" 
+                               class="w-full max-w-[250px] bg-[#111a22] border-2 border-[#324d67] text-white font-black rounded-xl p-4 text-center text-2xl mb-4 focus:border-blue-500 outline-none transition-colors" 
+                               placeholder="0">
+                        
+                        <button id="btn-register-entry" 
+                                class="w-full max-w-[250px] py-4 rounded-xl font-black text-white bg-blue-600 hover:bg-blue-500 shadow-lg transition-all uppercase tracking-widest">
+                            Registrar Retorno
+                        </button>
+                    </div>
                 </div>
-            </div>
-        `;
-
-        setTimeout(() => document.getElementById('driver-code-input').focus(), 100);
-
-        document.getElementById('btn-verify-code').onclick = () => {
-            const inputCode = document.getElementById('driver-code-input').value.trim().toUpperCase();
-            this.handleStepTwo(inputCode);
-        };
+            `;
+            
+            document.getElementById('btn-register-entry').onclick = () => {
+                const km = document.getElementById('return-km-input').value;
+                if (km && !isNaN(km) && parseInt(km) > 0) {
+                    this.registerEntry(trip, parseInt(km));
+                } else {
+                    alert('Ingrese un kilometraje válido');
+                }
+            };
+        }
     }
 
-    // Confirmación para código de emergencia (sin necesidad de código secundario)
+    // Confirmación para código de emergencia
     renderEmergencyConfirmation(trip) {
         const area = document.getElementById('result-area');
         
@@ -379,84 +423,30 @@ export class ScannerView {
             </div>
         `;
 
-        document.getElementById('btn-gate-action').onclick = () => this.executeGateRegistration(trip, 'emergency');
-    }
-
-    // VERIFICACIÓN DE CÓDIGO
-    handleStepTwo(inputCode) {
-        if (!inputCode) return;
-
-        // Validar código del conductor
-        const isDriverCode = this.pendingTrip.access_code === inputCode;
-        
-        // También podría ser código de emergencia (por si acaso)
-        const isEmergencyCode = this.pendingTrip.emergency_code === inputCode;
-
-        if (isDriverCode || isEmergencyCode) {
-            this.renderFinalConfirmation(this.pendingTrip, this.currentAction);
-        } else {
-            document.getElementById('driver-code-input').classList.add('border-red-500', 'animate-shake');
-            document.getElementById('driver-code-input').value = "";
-            if(navigator.vibrate) navigator.vibrate([200, 100, 200]);
-            
-            setTimeout(() => {
-                document.getElementById('driver-code-input').classList.remove('border-red-500', 'animate-shake');
-            }, 500);
-            
-            alert("CÓDIGO INCORRECTO. Verifique con el conductor.");
-        }
+        document.getElementById('btn-gate-action').onclick = () => this.registerExit(trip, 'emergency');
     }
 
     renderFinalConfirmation(trip, action) {
-        let title = '';
-        let icon = '';
-        let buttonText = '';
-        let buttonColor = '';
+        const area = document.getElementById('result-area');
+        const isExit = action === 'exit';
         
-        switch(action) {
-            case 'exit':
-                title = 'SALIDA AUTORIZADA';
-                icon = 'exit_to_app';
-                buttonText = 'ABRIR BARRERA (SALIDA)';
-                buttonColor = 'emerald-600';
-                break;
-            case 'entry':
-                title = 'RETORNO REGISTRADO';
-                icon = 'home';
-                buttonText = 'ABRIR BARRERA (ENTRADA)';
-                buttonColor = 'blue-600';
-                break;
-            case 'workshop_complete':
-                title = 'SALIDA DE TALLER';
-                icon = 'engineering';
-                buttonText = 'AUTORIZAR SALIDA DE TALLER';
-                buttonColor = 'purple-600';
-                break;
-            case 'emergency_exit':
-                title = 'ACCESO DE EMERGENCIA';
-                icon = 'emergency';
-                buttonText = 'ABRIR BARRERA (EMERGENCIA)';
-                buttonColor = 'orange-600';
-                break;
-        }
-        
-        document.getElementById('result-area').innerHTML = `
+        area.innerHTML = `
             <div class="w-full h-full flex flex-col animate-fade-in">
                 <div class="flex items-center justify-between mb-6">
                     <div class="text-left">
-                        <span class="bg-${buttonColor.split('-')[0]}-500/20 text-${buttonColor.split('-')[0]}-400 text-[10px] px-2 py-1 rounded font-black uppercase tracking-widest">Coincidencia Exacta</span>
-                        <h2 class="text-3xl font-black text-white mt-2 uppercase tracking-tighter">${title}</h2>
+                        <span class="bg-emerald-500/20 text-emerald-400 text-[10px] px-2 py-1 rounded font-black uppercase tracking-widest">Coincidencia Exacta</span>
+                        <h2 class="text-3xl font-black text-white mt-2 uppercase tracking-tighter">${isExit ? 'SALIDA AUTORIZADA' : 'RETORNO REGISTRADO'}</h2>
                     </div>
-                    <span class="material-symbols-outlined text-5xl text-${buttonColor.split('-')[0]}-400">gpp_good</span>
+                    <span class="material-symbols-outlined text-5xl text-emerald-400">gpp_good</span>
                 </div>
 
-                <div class="bg-[#111a22] border-2 border-${buttonColor.split('-')[0]}-500/50 rounded-3xl p-6 shadow-2xl relative overflow-hidden">
+                <div class="bg-[#111a22] border-2 border-emerald-500/50 rounded-3xl p-6 shadow-2xl relative overflow-hidden">
                     <div class="flex items-center gap-6 relative z-10">
                         <div class="size-20 rounded-2xl bg-slate-700 bg-cover bg-center border-2 border-white/20 shadow-lg" style="background-image: url('${trip.profiles?.photo_url || ''}')"></div>
                         <div class="text-left flex-1">
                             <p class="text-[#92adc9] text-[10px] font-black uppercase tracking-widest">Conductor</p>
                             <h3 class="text-white text-lg font-bold">${trip.profiles?.full_name || 'Desconocido'}</h3>
-                            <p class="text-${buttonColor.split('-')[0]}-400 font-mono text-xs mt-1 flex items-center gap-1">
+                            <p class="text-emerald-400 font-mono text-xs mt-1 flex items-center gap-1">
                                 <span class="material-symbols-outlined text-[12px]">check_circle</span> Verificado
                             </p>
                         </div>
@@ -464,14 +454,22 @@ export class ScannerView {
                 </div>
 
                 <div class="mt-auto pt-8">
-                    <button id="btn-gate-action" class="w-full py-6 rounded-2xl font-black text-xl bg-${buttonColor} text-white shadow-[0_0_30px_rgba(16,185,129,0.2)] hover:scale-[1.02] active:scale-95 transition-all uppercase tracking-widest">
-                        ${buttonText}
+                    <button id="btn-gate-action" class="w-full py-6 rounded-2xl font-black text-xl bg-emerald-600 text-white shadow-[0_0_30px_rgba(16,185,129,0.3)] hover:scale-[1.02] active:scale-95 transition-all uppercase tracking-widest">
+                        ${isExit ? 'ABRIR BARRERA (SALIDA)' : 'ABRIR BARRERA (ENTRADA)'}
                     </button>
                 </div>
             </div>
         `;
 
-        document.getElementById('btn-gate-action').onclick = () => this.executeGateRegistration(trip, action);
+        document.getElementById('btn-gate-action').onclick = () => {
+            if (isExit) {
+                this.registerExit(trip);
+            } else {
+                // Para entrada, ya registramos antes
+                alert('Barrera abierta');
+                this.resetScan();
+            }
+        };
     }
 
     renderError(msg) {
@@ -490,49 +488,22 @@ export class ScannerView {
         if(navigator.vibrate) navigator.vibrate([200, 100, 200]);
     }
 
-    async executeGateRegistration(trip, action) {
+    async registerExit(trip, type = 'normal') {
         const btn = document.getElementById('btn-gate-action');
-        btn.innerText = "Procesando..."; 
-        btn.disabled = true;
+        if (btn) {
+            btn.innerText = "Procesando..."; 
+            btn.disabled = true;
+        }
 
-        let updates = {};
-        let newStatus = trip.status;
+        const updates = { 
+            status: 'in_progress',
+            exit_gate_time: new Date().toISOString(),
+            start_time: new Date().toISOString(),
+            exit_km: trip.vehicles?.current_km || 0
+        };
 
-        switch(action) {
-            case 'exit':
-                updates = { 
-                    status: 'in_progress',
-                    exit_gate_time: new Date().toISOString()
-                };
-                newStatus = 'in_progress';
-                break;
-            case 'entry':
-                updates = { 
-                    status: 'workshop_delivered',
-                    entry_gate_time: new Date().toISOString(),
-                    delivery_details: {
-                        km: trip.current_km || 0,
-                        time: new Date().toISOString()
-                    }
-                };
-                newStatus = 'workshop_delivered';
-                break;
-            case 'workshop_complete':
-                updates = { 
-                    status: 'completed',
-                    entry_gate_time: new Date().toISOString(),
-                    completed_at: new Date().toISOString()
-                };
-                newStatus = 'completed';
-                break;
-            case 'emergency_exit':
-                updates = { 
-                    status: 'in_progress',
-                    exit_gate_time: new Date().toISOString(),
-                    emergency_used_at: new Date().toISOString()
-                };
-                newStatus = 'in_progress';
-                break;
+        if (type === 'emergency') {
+            updates.emergency_used_at = new Date().toISOString();
         }
 
         const { error } = await supabase
@@ -541,27 +512,53 @@ export class ScannerView {
             .eq('id', trip.id);
 
         if (error) {
-            alert("Error de red: " + error.message);
-            btn.disabled = false;
-            btn.innerText = "REINTENTAR";
+            alert("Error: " + error.message);
+            if (btn) {
+                btn.disabled = false;
+                btn.innerText = "REINTENTAR";
+            }
         } else {
             this.resetScan();
-            
-            // Mostrar confirmación
             document.getElementById('result-area').innerHTML = `
                 <div class="flex flex-col items-center animate-fade-in">
                     <div class="size-32 rounded-full bg-emerald-500 flex items-center justify-center text-white shadow-[0_0_50px_rgba(16,185,129,0.5)] mb-6">
                         <span class="material-symbols-outlined text-7xl animate-bounce">check_circle</span>
                     </div>
-                    <h2 class="text-3xl font-black text-white uppercase tracking-tighter">¡COMPLETADO!</h2>
-                    <p class="text-emerald-400 font-bold uppercase tracking-widest mt-2">Acción registrada exitosamente</p>
+                    <h2 class="text-3xl font-black text-white uppercase tracking-tighter">¡SALIDA REGISTRADA!</h2>
+                    <p class="text-emerald-400 font-bold uppercase tracking-widest mt-2">Viaje iniciado correctamente</p>
                 </div>
             `;
-            
-            // Recargar códigos de emergencia
             this.loadEmergencyCodes();
-            
             setTimeout(() => { this.resetScan(); }, 3000);
+        }
+    }
+
+    async registerEntry(trip, km) {
+        const btn = document.getElementById('btn-register-entry');
+        if (btn) {
+            btn.innerText = "Procesando..."; 
+            btn.disabled = true;
+        }
+
+        const { error } = await supabase
+            .from('trips')
+            .update({
+                status: 'awaiting_return_checklist',
+                entry_gate_time: new Date().toISOString(),
+                entry_km: km,
+                entry_time: new Date().toISOString()
+            })
+            .eq('id', trip.id);
+
+        if (error) {
+            alert("Error: " + error.message);
+            if (btn) {
+                btn.disabled = false;
+                btn.innerText = "REINTENTAR";
+            }
+        } else {
+            this.renderFinalConfirmation(trip, 'entry');
+            this.loadEmergencyCodes();
         }
     }
 }
