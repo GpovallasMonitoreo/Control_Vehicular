@@ -119,7 +119,7 @@ export class DriverView {
                     <section id="tab-unidad" class="tab-content block p-4 space-y-4">
                         <h3 class="text-white text-xs font-bold uppercase tracking-widest opacity-70 px-1">Unidades Disponibles</h3>
                         
-                        <div id="unidad-loader" class="flex justify-center py-10">
+                        <div id="unidad-loader" class="flex justify-center py-10 hidden">
                             <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
                         </div>
                         
@@ -547,7 +547,6 @@ export class DriverView {
         `;
     }
 
-    // --- SOLICITAR MANTENER PANTALLA ENCENDIDA ---
     async requestWakeLock() {
         try {
             if ('wakeLock' in navigator && !this.wakeLock) {
@@ -567,7 +566,6 @@ export class DriverView {
         }
     }
 
-    // ==================== LÓGICA DE MAPA Y RUTAS ====================
     async initDriverMap() {
         if (this.driverMap || !window.L) return;
         
@@ -577,14 +575,8 @@ export class DriverView {
                 ? [this.tripLogistics.lastPosition.lat, this.tripLogistics.lastPosition.lng] 
                 : [19.4683, -99.2360]; 
                 
-            this.driverMap = L.map('driver-map', {
-                zoomControl: false,
-                attributionControl: false
-            }).setView(center, 13);
-            
-            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-                maxZoom: 19
-            }).addTo(this.driverMap);
+            this.driverMap = L.map('driver-map', { zoomControl: false, attributionControl: false }).setView(center, 13);
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(this.driverMap);
             
             const carIconHtml = `<div class="bg-[#10b981] w-4 h-4 rounded-full border-2 border-white shadow-[0_0_15px_#10b981] animate-pulse"></div>`;
             const carIcon = L.divIcon({ className: 'local-car-marker', html: carIconHtml, iconSize: [16, 16], iconAnchor: [8, 8] });
@@ -593,9 +585,7 @@ export class DriverView {
                 this.myLocationMarker = L.marker([this.tripLogistics.lastPosition.lat, this.tripLogistics.lastPosition.lng], { icon: carIcon }).addTo(this.driverMap);
             }
 
-            this.driverMap.on('click', (e) => {
-                this.addStopFromMap(e.latlng.lat, e.latlng.lng);
-            });
+            this.driverMap.on('click', (e) => { this.addStopFromMap(e.latlng.lat, e.latlng.lng); });
             
             if (this.currentTrip?.request_details?.route_plan) {
                 this.routeStops = this.currentTrip.request_details.route_plan;
@@ -606,9 +596,7 @@ export class DriverView {
                 
                 if (destLat !== 0 && destLon !== 0) {
                     const destName = this.currentTrip.destination || 'Destino Inicial';
-                    this.routeStops = [{
-                        id: 'stop_auto', lat: destLat, lng: destLon, name: destName, type: 'stop', timestamp: new Date().toISOString()
-                    }];
+                    this.routeStops = [{ id: 'stop_auto', lat: destLat, lng: destLon, name: destName, type: 'stop', timestamp: new Date().toISOString() }];
                     this.saveRoutePlanSilently(); 
                 }
             }
@@ -618,7 +606,6 @@ export class DriverView {
             this.updateReturnButtonUI();
 
             setTimeout(() => this.driverMap.invalidateSize(), 400);
-            
         } catch (e) {
             console.error("Error iniciando mapa:", e);
         }
@@ -627,37 +614,25 @@ export class DriverView {
     async saveRoutePlanSilently() {
         if (!this.currentTrip) return;
         const currentDetails = this.currentTrip.request_details || {};
-        await this.updateTripInDatabase({ 
-            request_details: { ...currentDetails, route_plan: this.routeStops, is_returning: this.isReturning } 
-        });
+        await this.updateTripInDatabase({ request_details: { ...currentDetails, route_plan: this.routeStops, is_returning: this.isReturning } });
     }
 
     async searchAddress() {
         const input = document.getElementById('route-search-input');
         const query = input.value;
         if (!query) return;
-        
         this.showToast('Buscando...', 'Consultando mapa', 'info');
-        
         try {
             const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1&accept-language=es`);
             const data = await res.json();
-            
             if (data && data.length > 0) {
-                const lat = parseFloat(data[0].lat);
-                const lon = parseFloat(data[0].lon);
+                const lat = parseFloat(data[0].lat); const lon = parseFloat(data[0].lon);
                 const shortName = data[0].display_name.split(',')[0]; 
-                
                 this.addRouteStop(lat, lon, shortName, 'stop');
                 if (this.driverMap) this.driverMap.flyTo([lat, lon], 15);
                 input.value = '';
-            } else {
-                this.showToast('No encontrado', 'Intenta con otra dirección', 'warning');
-            }
-        } catch (e) {
-            console.error('Error buscando:', e);
-            this.showToast('Error', 'Fallo en la búsqueda de mapa', 'error');
-        }
+            } else { this.showToast('No encontrado', 'Intenta con otra dirección', 'warning'); }
+        } catch (e) { this.showToast('Error', 'Fallo en la búsqueda de mapa', 'error'); }
     }
 
     async addStopFromMap(lat, lng) {
@@ -667,27 +642,18 @@ export class DriverView {
             const data = await res.json();
             const name = data.display_name ? data.display_name.split(',')[0] : 'Punto en mapa';
             this.addRouteStop(lat, lng, name, 'stop');
-        } catch (e) {
-            this.addRouteStop(lat, lng, 'Ubicación manual', 'stop');
-        }
+        } catch (e) { this.addRouteStop(lat, lng, 'Ubicación manual', 'stop'); }
     }
 
     addRouteStop(lat, lng, name, type) {
-        this.routeStops.push({ 
-            id: 'stop_' + Date.now(), lat, lng, name, type, timestamp: new Date().toISOString() 
-        });
-        this.renderRouteStops();
-        this.updateMapMarkers();
+        this.routeStops.push({ id: 'stop_' + Date.now(), lat, lng, name, type, timestamp: new Date().toISOString() });
+        this.renderRouteStops(); this.updateMapMarkers();
     }
 
     removeRouteStop(index) {
-        if (this.routeStops[index].type === 'return') {
-            this.isReturning = false;
-            this.updateReturnButtonUI();
-        }
+        if (this.routeStops[index].type === 'return') { this.isReturning = false; this.updateReturnButtonUI(); }
         this.routeStops.splice(index, 1);
-        this.renderRouteStops();
-        this.updateMapMarkers();
+        this.renderRouteStops(); this.updateMapMarkers();
     }
 
     toggleReturnTrip() {
@@ -697,8 +663,7 @@ export class DriverView {
             this.showToast('Regreso marcado', 'Ruta hacia la base añadida', 'success');
         } else {
             this.routeStops = this.routeStops.filter(s => s.type !== 'return');
-            this.renderRouteStops();
-            this.updateMapMarkers();
+            this.renderRouteStops(); this.updateMapMarkers();
         }
         this.updateReturnButtonUI();
     }
@@ -707,12 +672,10 @@ export class DriverView {
         const btn = document.getElementById('btn-return-trip');
         if (!btn) return;
         if (this.isReturning) {
-            btn.classList.replace('bg-slate-700', 'bg-purple-600');
-            btn.classList.replace('hover:bg-slate-600', 'hover:bg-purple-500');
+            btn.classList.replace('bg-slate-700', 'bg-purple-600'); btn.classList.replace('hover:bg-slate-600', 'hover:bg-purple-500');
             btn.innerHTML = '<span class="material-symbols-outlined text-[10px] align-middle mr-1">keyboard_return</span>Regreso Activo';
         } else {
-            btn.classList.replace('bg-purple-600', 'bg-slate-700');
-            btn.classList.replace('hover:bg-purple-500', 'hover:bg-slate-600');
+            btn.classList.replace('bg-purple-600', 'bg-slate-700'); btn.classList.replace('hover:bg-purple-500', 'hover:bg-slate-600');
             btn.innerHTML = 'Marcar Regreso';
         }
     }
@@ -720,15 +683,12 @@ export class DriverView {
     updateMapMarkers() {
         if (!this.driverMap || !window.L) return;
         const L = window.L;
-        
         this.driverMarkers.forEach(m => this.driverMap.removeLayer(m));
         this.driverMarkers = [];
-        
         this.routeStops.forEach((stop, i) => {
             const isReturn = stop.type === 'return';
             const color = isReturn ? 'bg-purple-500' : 'bg-primary';
             const iconHtml = `<div class="${color} w-6 h-6 rounded-full border-2 border-white flex items-center justify-center text-[10px] text-white font-black shadow-lg">${i+1}</div>`;
-            
             const icon = L.divIcon({ className: 'custom-stop-marker', html: iconHtml, iconSize: [24, 24], iconAnchor: [12, 12] });
             const marker = L.marker([stop.lat, stop.lng], { icon }).addTo(this.driverMap);
             this.driverMarkers.push(marker);
@@ -736,9 +696,7 @@ export class DriverView {
         
         if (this.driverMarkers.length > 0) {
             const group = new L.featureGroup(this.driverMarkers);
-            if (this.myLocationMarker) {
-                group.addLayer(this.myLocationMarker);
-            }
+            if (this.myLocationMarker) group.addLayer(this.myLocationMarker);
             this.driverMap.fitBounds(group.getBounds(), { padding: [30, 30], maxZoom: 15 });
         }
     }
@@ -746,12 +704,10 @@ export class DriverView {
     renderRouteStops() {
         const list = document.getElementById('route-stops-list');
         if (!list) return;
-        
         if (this.routeStops.length === 0) {
             list.innerHTML = '<li class="text-slate-500 text-center py-2 text-[10px] border border-dashed border-[#324d67] rounded-lg">Busca o toca el mapa para agregar destinos</li>';
             return;
         }
-        
         list.innerHTML = this.routeStops.map((stop, index) => `
             <li class="flex justify-between items-center bg-[#1c2127] p-2 rounded-lg border border-[#324d67] group">
                 <div class="flex items-center gap-3 overflow-hidden">
@@ -771,24 +727,15 @@ export class DriverView {
     async saveRoutePlan() {
         if (!this.currentTrip) return;
         const btn = document.querySelector('[onclick="window.conductorModule.saveRoutePlan()"]');
-        
-        if (btn) {
-            btn.disabled = true;
-            btn.innerHTML = '<span class="animate-spin inline-block mr-2 text-[16px]">hourglass_empty</span> GUARDANDO...';
-        }
+        if(btn){ btn.disabled = true; btn.innerHTML = '<span class="animate-spin inline-block mr-2 text-[16px]">hourglass_empty</span> GUARDANDO...'; }
         
         try {
             const currentDetails = this.currentTrip.request_details || {};
-            const newDetails = {
-                ...currentDetails,
-                route_plan: this.routeStops,
-                is_returning: this.isReturning
-            };
-            
+            const newDetails = { ...currentDetails, route_plan: this.routeStops, is_returning: this.isReturning };
             await this.updateTripInDatabase({ request_details: newDetails });
             this.showToast('Ruta Guardada', 'Se ha actualizado el plan de viaje para torre de control', 'success');
             
-            if (btn) {
+            if(btn){
                 btn.classList.replace('bg-green-600', 'bg-emerald-500');
                 btn.innerHTML = '<span class="material-symbols-outlined text-[16px]">check_circle</span> RUTA CONFIRMADA';
                 setTimeout(() => { 
@@ -799,49 +746,40 @@ export class DriverView {
             }
         } catch (e) {
             this.showToast('Error', 'No se pudo guardar la ruta', 'error');
-            if (btn) {
-                btn.disabled = false;
-                btn.innerHTML = 'Guardar Ruta';
-            }
+            if(btn) { btn.disabled = false; btn.innerHTML = 'Guardar Ruta'; }
         }
     }
 
-    // ==================== INICIALIZACIÓN PRINCIPAL Y BLINDAJE ====================
+    // ==================== INICIO BLINDADO ====================
 
     async onMount() {
-        // Aseguramos mostrar el loader inicial globalmente
         this.showLoader();
         
         try {
             const { data: { session } } = await supabase.auth.getSession();
-            if (!session) {
+            if (!session || !session.user) {
                 window.location.hash = '#login';
                 return;
             }
             
             this.userId = session.user.id;
-            console.log('✅ Conductor autenticado:', this.userId);
-            
             this.currentTrip = null; 
 
-            // Cargar datos concurrentemente, cada uno con su propio try/catch
-            await Promise.all([
-                this.loadProfileData(),
-                this.loadDashboardState(),
-                this.loadLastTripStats()
-            ]);
+            // Cargas independientes con catch individual
+            await this.loadProfileData().catch(e => console.error(e));
+            await this.loadDashboardState().catch(e => console.error(e));
+            await this.loadLastTripStats().catch(e => console.error(e));
             
         } catch (e) {
             console.error("Error crítico en inicialización:", e);
         } finally {
-            // SIEMPRE ejecutar esto al final, pase lo que pase
             this.setupRealtimeSubscription();
             this.setupPeriodicUpdates();
             this.setupConnectionMonitor();
             this.startBackgroundSync();
             
             this.switchTab('unidad'); 
-            this.hideLoader(); // APAGAR LOADER INICIAL
+            this.hideLoader();
         }
     }
 
@@ -859,20 +797,28 @@ export class DriverView {
         if (!this.userId) return;
         try {
             const { data: p, error } = await supabase.from('profiles').select('*').eq('id', this.userId).single();
-            if (error) throw error;
+            if (error && error.code !== 'PGRST116') throw error; // Ignorar error si no tiene perfil aún
+            
             if (p) {
-                document.getElementById('profile-name').innerText = p.full_name || 'Conductor';
+                const profileName = document.getElementById('profile-name');
+                const cardName = document.getElementById('card-full-name');
+                const licNumber = document.getElementById('lic-number');
+                const avatar = document.getElementById('profile-avatar');
+                const cardPhoto = document.getElementById('card-photo');
+
+                if (profileName) profileName.innerText = p.full_name || 'Conductor';
+                if (cardName) cardName.innerText = p.full_name || 'Conductor';
+                if (licNumber) licNumber.innerText = p.license_number || 'No registrada';
+                
                 if (p.photo_url) {
-                    document.getElementById('profile-avatar').style.backgroundImage = `url('${p.photo_url}')`;
-                    document.getElementById('card-photo').style.backgroundImage = `url('${p.photo_url}')`;
+                    if (avatar) avatar.style.backgroundImage = `url('${p.photo_url}')`;
+                    if (cardPhoto) cardPhoto.style.backgroundImage = `url('${p.photo_url}')`;
                 }
-                document.getElementById('card-full-name').innerText = p.full_name || 'Conductor';
-                document.getElementById('lic-number').innerText = p.license_number || 'No registrada';
             }
         } catch (error) {
             console.error('Error cargando perfil:', error);
-            document.getElementById('profile-name').innerText = 'Conductor (Sin perfil)';
-            document.getElementById('card-full-name').innerText = 'Conductor';
+            const profileName = document.getElementById('profile-name');
+            if (profileName) profileName.innerText = 'Conductor (Sin perfil)';
         }
     }
 
@@ -902,33 +848,41 @@ export class DriverView {
                 .in('status', ['completed', 'closed']);
 
             if (lastTrip && !lastError) {
-                document.getElementById('last-trip-vehicle').innerText = `${lastTrip.vehicles?.plate || '---'} (ECO-${lastTrip.vehicles?.economic_number || '?'})`;
-                document.getElementById('last-trip-date').innerText = lastTrip.completed_at ? new Date(lastTrip.completed_at).toLocaleDateString() : 'N/A';
+                const elVehicle = document.getElementById('last-trip-vehicle');
+                const elDate = document.getElementById('last-trip-date');
+                const elDist = document.getElementById('last-trip-distance');
+                const elDest = document.getElementById('last-trip-destination');
+
+                if (elVehicle) elVehicle.innerText = `${lastTrip.vehicles?.plate || '---'} (ECO-${lastTrip.vehicles?.economic_number || '?'})`;
+                if (elDate) elDate.innerText = lastTrip.completed_at ? new Date(lastTrip.completed_at).toLocaleDateString() : 'N/A';
                 
                 const exitKm = lastTrip.exit_km || 0;
                 const entryKm = lastTrip.entry_km || 0;
                 const distancia = Math.max(0, entryKm - exitKm);
                 
-                document.getElementById('last-trip-distance').innerText = `${Math.round(distancia)} km`;
-                document.getElementById('last-trip-destination').innerText = lastTrip.destination || 'No especificado';
+                if (elDist) elDist.innerText = `${Math.round(distancia)} km`;
+                if (elDest) elDest.innerText = lastTrip.destination || 'No especificado';
             } else {
                 if (content) content.innerHTML = `<div class="text-center py-4 text-slate-400"><span class="material-symbols-outlined text-3xl mb-2">history</span><p class="text-xs">No hay viajes completados</p></div>`;
             }
 
             if (stats && !statsError) {
-                document.getElementById('total-trips').innerText = stats.length;
-                const totalKm = stats.reduce((sum, t) => {
-                    const e = t.entry_km || 0;
-                    const x = t.exit_km || 0;
-                    return sum + Math.max(0, e - x);
-                }, 0);
-                document.getElementById('total-km').innerText = Math.round(totalKm);
+                const elTrips = document.getElementById('total-trips');
+                const elKm = document.getElementById('total-km');
+                
+                if (elTrips) elTrips.innerText = stats.length;
+                if (elKm) {
+                    const totalKm = stats.reduce((sum, t) => {
+                        const e = t.entry_km || 0;
+                        const x = t.exit_km || 0;
+                        return sum + Math.max(0, e - x);
+                    }, 0);
+                    elKm.innerText = Math.round(totalKm);
+                }
             }
         } catch (error) { 
             console.error('Error cargando estadísticas:', error); 
-            if (content) content.innerHTML = `<p class="text-xs text-red-400 text-center py-4">Error al cargar historial</p>`;
         } finally {
-            // Asegurarse de ocultar el loader pase lo que pase
             if (loading) loading.classList.add('hidden');
             if (content) content.classList.remove('hidden');
         }
@@ -953,7 +907,6 @@ export class DriverView {
 
         } catch (error) { 
             console.error('Error cargando estado del viaje:', error); 
-            // Si falla, limpiar UI para que no se quede bloqueada
             await this.updateUIByStatus(null);
         }
     }
@@ -964,7 +917,6 @@ export class DriverView {
         const loader = document.getElementById('unidad-loader');
         
         try {
-            // Mostrar loader de unidades temporalmente
             if (loader) loader.classList.remove('hidden');
             if (container) container.classList.add('hidden');
             if (noUnitsMsg) noUnitsMsg.classList.add('hidden');
@@ -985,7 +937,6 @@ export class DriverView {
                 noUnitsMsg.classList.remove('hidden');
             }
         } finally {
-            // Apagar siempre el loader
             if (loader) loader.classList.add('hidden');
         }
     }
@@ -1006,30 +957,39 @@ export class DriverView {
 
         if (trip && statusMap[trip.status]) {
             const status = statusMap[trip.status];
-            document.getElementById('profile-status').innerText = status.text;
+            const pStatus = document.getElementById('profile-status');
+            if (pStatus) pStatus.innerText = status.text;
+            
             const badge = document.getElementById('trip-status-badge');
             if (badge) { 
                 badge.innerText = status.text; 
                 badge.className = `px-3 py-1 rounded-full text-[10px] font-bold uppercase ${status.color} text-white`; 
             }
             
-            document.getElementById('current-vehicle-plate').innerText = trip.vehicles?.plate || '--';
-            document.getElementById('current-vehicle-model').innerText = `${trip.vehicles?.model || ''} ECO-${trip.vehicles?.economic_number || ''}`;
+            const pPlate = document.getElementById('current-vehicle-plate');
+            if (pPlate) pPlate.innerText = trip.vehicles?.plate || '--';
+            
+            const pModel = document.getElementById('current-vehicle-model');
+            if (pModel) pModel.innerText = `${trip.vehicles?.model || ''} ECO-${trip.vehicles?.economic_number || ''}`;
             
             document.getElementById('current-trip-info')?.classList.remove('hidden');
             if (titleUnits) titleUnits.classList.add('hidden');
             if (unitsContent) unitsContent.classList.add('hidden');
             if (noUnitsMsg) noUnitsMsg.classList.add('hidden');
             
-            if (trip.status === 'approved_for_taller') document.getElementById('taller-vehicle-info').innerText = `ECO-${trip.vehicles?.economic_number} - ${trip.vehicles?.plate}`;
+            if (trip.status === 'approved_for_taller') {
+                const tInfo = document.getElementById('taller-vehicle-info');
+                if (tInfo) tInfo.innerText = `ECO-${trip.vehicles?.economic_number} - ${trip.vehicles?.plate}`;
+            }
+            
             if (trip.status === 'in_progress' && this.activeTab === 'ruta') setTimeout(() => this.startTracking(), 500);
             if (trip.status !== 'in_progress') this.stopTracking();
             this.updateSpecificComponents(trip);
             
         } else {
-            // El viaje terminó (o es null), restauramos UI para solicitar otro
             document.getElementById('current-trip-info')?.classList.add('hidden');
-            document.getElementById('profile-status').innerText = "Disponible";
+            const pStatus = document.getElementById('profile-status');
+            if (pStatus) pStatus.innerText = "Disponible";
             this.stopTracking();
             
             if (titleUnits) titleUnits.classList.remove('hidden');
@@ -1042,15 +1002,15 @@ export class DriverView {
         const status = document.getElementById('profile-status');
         
         window.addEventListener('online', () => {
-            indicator.innerHTML = `<span class="animate-ping absolute h-full w-full rounded-full bg-green-400 opacity-75"></span><span class="relative rounded-full h-2 w-2 bg-green-500"></span>`;
-            status.innerText = 'Conectado';
+            if (indicator) indicator.innerHTML = `<span class="animate-ping absolute h-full w-full rounded-full bg-green-400 opacity-75"></span><span class="relative rounded-full h-2 w-2 bg-green-500"></span>`;
+            if (status) status.innerText = 'Conectado';
             this.showToast('Conexión restaurada', 'Los datos se están sincronizando', 'success');
             this.syncPendingLocations();
         });
         
         window.addEventListener('offline', () => {
-            indicator.innerHTML = `<span class="relative rounded-full h-2 w-2 bg-yellow-500"></span>`;
-            status.innerText = 'Sin conexión';
+            if (indicator) indicator.innerHTML = `<span class="relative rounded-full h-2 w-2 bg-yellow-500"></span>`;
+            if (status) status.innerText = 'Sin conexión';
             this.showToast('Sin conexión', 'Los datos se guardarán localmente', 'warning');
         });
     }
@@ -1076,18 +1036,14 @@ export class DriverView {
                     if (newStatus === 'completed' || newStatus === 'closed') {
                         this.currentTrip = null;
                         this.selectedVehicleForRequest = null;
+                        this.routeStops = [];
+                        this.isReturning = false;
                         await this.updateUIByStatus(null);
                         await this.loadLastTripStats();
                         this.switchTab('unidad');
                         this.showToast('✅ Viaje completado', 'Puedes solicitar una nueva unidad', 'success');
                     } else {
-                        // Garantiza que tengamos datos vehiculares anidados para la UI
-                        const { data: fullTrip } = await supabase
-                            .from('trips')
-                            .select(`*, vehicles(*)`)
-                            .eq('id', payload.new.id)
-                            .single();
-
+                        const { data: fullTrip } = await supabase.from('trips').select(`*, vehicles(*)`).eq('id', payload.new.id).single();
                         if (fullTrip) {
                             const oldStatus = this.currentTrip?.status;
                             this.currentTrip = fullTrip;
@@ -1122,13 +1078,18 @@ export class DriverView {
     showToast(title, message, type = 'info') {
         const toast = document.getElementById('notification-toast');
         const icon = document.getElementById('toast-icon');
+        const titleEl = document.getElementById('toast-title');
+        const msgEl = document.getElementById('toast-message');
+        
+        if (!toast || !icon || !titleEl || !msgEl) return;
+        
         const colors = { info: 'text-primary', success: 'text-green-500', warning: 'text-yellow-500', error: 'text-red-500' };
         const icons = { info: 'info', success: 'check_circle', warning: 'warning', error: 'error' };
         
-        icon.className = colors[type];
-        icon.innerHTML = `<span class="material-symbols-outlined">${icons[type]}</span>`;
-        document.getElementById('toast-title').innerText = title;
-        document.getElementById('toast-message').innerText = message;
+        icon.className = colors[type] || colors.info;
+        icon.innerHTML = `<span class="material-symbols-outlined">${icons[type] || icons.info}</span>`;
+        titleEl.innerText = title;
+        msgEl.innerText = message;
         
         toast.classList.remove('hidden');
         if (navigator.vibrate) navigator.vibrate(type === 'error' ? [200, 100, 200] : 100);
@@ -1160,7 +1121,14 @@ export class DriverView {
     updateSpecificComponents(trip) {
         if (trip.workshop_reception_photos?.length > 0) this.renderReceptionPhotos(trip.workshop_reception_photos);
         if (trip.workshop_return_photos?.length > 0) this.renderReturnPhotos(trip.workshop_return_photos);
-        if (trip.status === 'driver_accepted' && trip.access_code) this.showAccessCode(trip.access_code); else document.getElementById('access-code-banner')?.classList.add('hidden');
+        
+        const banner = document.getElementById('access-code-banner');
+        if (trip.status === 'driver_accepted' && trip.access_code) {
+            this.showAccessCode(trip.access_code);
+        } else if (banner) {
+            banner.classList.add('hidden');
+        }
+        
         if (trip.status === 'incident_report') this.showIncidentBanner(trip); else this.hideIncidentBanner();
         this.updateProgressBars(trip);
     }
@@ -1181,8 +1149,9 @@ export class DriverView {
 
     showAccessCode(code) {
         const banner = document.getElementById('access-code-banner');
-        if (banner) {
-            document.getElementById('access-code-display').innerText = code;
+        const display = document.getElementById('access-code-display');
+        if (banner && display) {
+            display.innerText = code;
             banner.classList.remove('hidden');
             setTimeout(() => banner.classList.add('opacity-50'), 120000);
         }
@@ -1195,7 +1164,7 @@ export class DriverView {
         if (gallery && grid) {
             gallery.classList.remove('hidden');
             grid.innerHTML = photos.map(p => `<div class="relative group cursor-pointer" onclick="window.conductorModule.viewPhoto('${p.url}')"><img src="${p.url}" class="w-full h-16 object-cover rounded-lg border border-primary/50" /><div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-lg"><span class="material-symbols-outlined text-white text-sm">zoom_in</span></div></div>`).join('');
-            if (photos.length >= 6) document.getElementById('taller-complete-message')?.classList.remove('hidden');
+            if (photos.length >= 6 && completeMsg) completeMsg.classList.remove('hidden');
         }
     }
 
@@ -1215,352 +1184,16 @@ export class DriverView {
         document.body.appendChild(modal);
     }
 
-    getCurrentLocationForDestination() {
-        if (!navigator.geolocation) return alert("El dispositivo no tiene GPS");
-        const btn = event.currentTarget;
-        btn.innerHTML = '<span class="material-symbols-outlined text-sm animate-spin">progress_activity</span>';
-        btn.disabled = true;
-
-        navigator.geolocation.getCurrentPosition(
-            async (pos) => {
-                const { latitude, longitude } = pos.coords;
-                try {
-                    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&accept-language=es`);
-                    const data = await res.json();
-                    document.getElementById('solicitud-destino').value = data.display_name || `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
-                } catch {
-                    document.getElementById('solicitud-destino').value = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
-                }
-                document.getElementById('destination-coords').classList.remove('hidden');
-                document.getElementById('dest-lat').innerText = latitude.toFixed(6);
-                document.getElementById('dest-lon').innerText = longitude.toFixed(6);
-                btn.innerHTML = '<span class="material-symbols-outlined text-sm">my_location</span>';
-                btn.disabled = false;
-            },
-            (err) => { alert('Error GPS: ' + err.message); btn.innerHTML = '<span class="material-symbols-outlined text-sm">my_location</span>'; btn.disabled = false; },
-            { enableHighAccuracy: true, timeout: 10000 }
-        );
-    }
-
-    startBackgroundSync() {
-        this.backgroundSyncInterval = setInterval(() => {
-            if (this.pendingLocations.length > 0 && navigator.onLine) this.syncPendingLocations();
-        }, 30000);
-    }
-
-    async syncPendingLocations() {
-        if (this.pendingLocations.length === 0 || !this.currentTrip) return;
-        const locations = [...this.pendingLocations];
-        this.pendingLocations = [];
-        
-        try {
-            const dataToInsert = locations.map(loc => ({
-                trip_id: this.currentTrip.id, lat: Number(loc.lat), lng: Number(loc.lng),
-                speed: Math.min(999, Math.round(loc.speed || 0)),
-                accuracy: loc.accuracy ? Number(loc.accuracy.toFixed(2)) : null,
-                timestamp: loc.timestamp
-            }));
-            const { error } = await supabase.from('trip_locations').insert(dataToInsert);
-            if (error) {
-                if (error.code === '23503' || error.code === '22003') console.warn('Error de datos, descartando');
-                else this.pendingLocations = [...locations, ...this.pendingLocations];
-            }
-        } catch (error) {
-            if (navigator.onLine) this.pendingLocations = [...locations, ...this.pendingLocations];
-        }
-    }
-
-    startTracking() {
-        if (!navigator.geolocation) return alert("El dispositivo no tiene GPS");
-
-        if (this.watchPositionId) navigator.geolocation.clearWatch(this.watchPositionId);
-        
-        this.requestWakeLock();
-
-        document.getElementById('route-waiting-msg')?.classList.add('hidden');
-        document.getElementById('active-trip-panel')?.classList.remove('hidden');
-        document.getElementById('gps-status-indicator').innerHTML = `
-            <div class="flex items-center justify-center gap-2 text-yellow-400">
-                <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-yellow-400"></div>
-                <span class="text-xs font-bold">Buscando señal GPS...</span>
-            </div>
-        `;
-
-        navigator.geolocation.getCurrentPosition(
-            (pos) => {
-                this.handleFirstPosition(pos);
-                this.watchPositionId = navigator.geolocation.watchPosition(
-                    (position) => this.handlePositionUpdate(position),
-                    (error) => this.handleGPSError(error),
-                    { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000, distanceFilter: 5 }
-                );
-                this.forceUpdateInterval = setInterval(() => {
-                    if (this.currentTrip?.status === 'in_progress') this.updateDisplayStats();
-                }, 2000);
-            },
-            (err) => { this.handleGPSError(err); setTimeout(() => this.startTrackingWithFallback(), 5000); },
-            { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 }
-        );
-    }
-
-    startTrackingWithFallback() {
-        navigator.geolocation.getCurrentPosition(
-            (pos) => {
-                this.handleFirstPosition(pos);
-                this.watchPositionId = navigator.geolocation.watchPosition(
-                    (position) => this.handlePositionUpdate(position),
-                    (error) => this.handleGPSError(error),
-                    { enableHighAccuracy: false, timeout: 15000, maximumAge: 30000 }
-                );
-            },
-            (err) => {
-                this.handleGPSError(err);
-                document.getElementById('gps-status-indicator').innerHTML = `
-                    <div class="flex flex-col items-center gap-2">
-                        <div class="flex items-center gap-1 text-red-400">
-                            <span class="material-symbols-outlined text-sm">gps_off</span>
-                            <span class="text-xs">No se puede obtener ubicación</span>
-                        </div>
-                        <button onclick="window.conductorModule.startTracking()" class="text-[10px] bg-primary/20 text-primary px-3 py-1 rounded-full">Reintentar</button>
-                    </div>
-                `;
-            }
-        );
-    }
-
-    handleFirstPosition(pos) {
-        const { latitude, longitude, speed } = pos.coords;
-        
-        if (!this.tripLogistics.startTime && this.currentTrip?.status === 'in_progress') {
-            this.tripLogistics.startTime = new Date();
-            this.tripLogistics.lastPosition = { lat: latitude, lng: longitude };
-            this.updateTripInDatabase({
-                start_time: this.tripLogistics.startTime.toISOString(),
-                exit_km: this.currentTrip.vehicles?.current_km || 0
-            });
-        }
-
-        const speedKmh = Math.min(999, Math.round((speed || 0) * 3.6));
-        document.getElementById('gps-status-indicator').innerHTML = `<div class="flex items-center justify-center gap-2 text-emerald-400"><div class="relative"><div class="w-2 h-2 rounded-full bg-emerald-400 animate-ping absolute"></div><div class="w-2 h-2 rounded-full bg-emerald-400 relative"></div></div><span class="text-xs font-bold ml-4">GPS Activo - ${speedKmh} km/h</span></div>`;
-        document.getElementById('live-speed').innerText = speedKmh;
-        
-        if (this.driverMap) {
-            this.driverMap.setView([latitude, longitude], 15);
-        }
-    }
-
-    handlePositionUpdate(pos) {
-        const { latitude, longitude, speed, accuracy } = pos.coords;
-        const now = new Date();
-        const currentTime = Date.now();
-        const speedKmh = Math.min(999, Math.round((speed || 0) * 3.6));
-
-        document.getElementById('live-speed').innerText = speedKmh;
-
-        if (this.myLocationMarker) {
-            this.myLocationMarker.setLatLng([latitude, longitude]);
-        } else if (this.driverMap && window.L) {
-            const carIconHtml = `<div class="bg-[#10b981] w-4 h-4 rounded-full border-2 border-white shadow-[0_0_15px_#10b981] animate-pulse"></div>`;
-            const carIcon = window.L.divIcon({ className: 'local-car-marker', html: carIconHtml, iconSize: [16, 16], iconAnchor: [8, 8] });
-            this.myLocationMarker = window.L.marker([latitude, longitude], { icon: carIcon }).addTo(this.driverMap);
-        }
-
-        if (this.tripLogistics.lastPosition) {
-            const distance = this.calculateDistance(this.tripLogistics.lastPosition.lat, this.tripLogistics.lastPosition.lng, latitude, longitude);
-            if (distance > 0.01) {
-                this.tripLogistics.totalDistance += distance;
-                const fuel = (this.tripLogistics.totalDistance / 8).toFixed(1);
-                document.getElementById('live-distance').innerText = this.tripLogistics.totalDistance.toFixed(1);
-                document.getElementById('live-fuel').innerText = fuel;
-                document.getElementById('resumen-distancia').innerText = Math.round(this.tripLogistics.totalDistance) + ' km';
-                document.getElementById('resumen-combustible').innerText = fuel + ' L';
-            }
-        }
-
-        this.tripLogistics.lastPosition = { lat: latitude, lng: longitude };
-        this.tripLogistics.lastUpdateTime = now;
-
-        document.getElementById('gps-status-indicator').innerHTML = `<div class="flex items-center justify-center gap-2 text-emerald-400"><div class="relative"><div class="w-2 h-2 rounded-full bg-emerald-400 animate-ping absolute"></div><div class="w-2 h-2 rounded-full bg-emerald-400 relative"></div></div><span class="text-xs font-bold ml-4">${speedKmh} km/h · ${accuracy?.toFixed(0) || '?'}m</span></div>`;
-
-        let shouldBroadcast = false;
-        if (!this.lastBroadcastPos) {
-            shouldBroadcast = true;
-        } else {
-            const timeDiff = currentTime - this.lastBroadcastTime;
-            const distDiff = this.calculateDistance(this.lastBroadcastPos.lat, this.lastBroadcastPos.lng, latitude, longitude) * 1000;
-            if (timeDiff > 15000 || distDiff > 15) {
-                shouldBroadcast = true;
-            }
-        }
-
-        if (shouldBroadcast && this.currentTrip?.status === 'in_progress') {
-            if (this.broadcastChannel) {
-                this.broadcastChannel.send({
-                    type: 'broadcast',
-                    event: 'location_update',
-                    payload: { trip_id: this.currentTrip.id, lat: latitude, lng: longitude, speed: speedKmh, timestamp: now.toISOString() }
-                });
-            }
-            this.lastBroadcastTime = currentTime;
-            this.lastBroadcastPos = { lat: latitude, lng: longitude };
-
-            this.pendingLocations.push({ lat: latitude, lng: longitude, speed: speedKmh, accuracy: accuracy, timestamp: now.toISOString() });
-            
-            if (this.pendingLocations.length >= 20) {
-                this.syncPendingLocations();
-            }
-        }
-    }
-
-    updateDisplayStats() {
-        if (!this.currentTrip || this.currentTrip.status !== 'in_progress') return;
-        if (this.tripLogistics.startTime) {
-            const now = new Date();
-            const duration = Math.floor((now - this.tripLogistics.startTime) / 1000);
-            const hours = Math.floor(duration / 3600);
-            const minutes = Math.floor((duration % 3600) / 60);
-            const seconds = duration % 60;
-            document.getElementById('trip-duration').innerText = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-        }
-    }
-
-    calculateDistance(lat1, lon1, lat2, lon2) {
-        const R = 6371; const dLat = this.deg2rad(lat2 - lat1); const dLon = this.deg2rad(lon2 - lon1);
-        const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(this.deg2rad(lat1)) * Math.cos(this.deg2rad(lat2)) * Math.sin(dLon/2) * Math.sin(dLon/2);
-        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    }
-    deg2rad(deg) { return deg * (Math.PI/180); }
-
-    handleGPSError(err) {
-        const gpsIndicator = document.getElementById('gps-status-indicator');
-        let errorMsg = 'Error de GPS';
-        if (err.code === 1) errorMsg = 'Permiso denegado';
-        if (err.code === 2) errorMsg = 'Señal no disponible';
-        if (err.code === 3) errorMsg = 'Timeout';
-        gpsIndicator.innerHTML = `<div class="flex flex-col items-center gap-2"><div class="flex items-center gap-1 text-red-400"><span class="material-symbols-outlined text-sm">gps_off</span><span class="text-xs">${errorMsg}</span></div><button onclick="window.conductorModule.startTracking()" class="text-[10px] bg-primary/20 text-primary px-3 py-1 rounded-full">Reintentar</button></div>`;
-    }
-
-    stopTracking() {
-        if (this.watchPositionId) {
-            navigator.geolocation.clearWatch(this.watchPositionId);
-            this.watchPositionId = null;
-        }
-        if (this.forceUpdateInterval) {
-            clearInterval(this.forceUpdateInterval);
-            this.forceUpdateInterval = null;
-        }
-        this.releaseWakeLock();
-        
-        const gpsIndicator = document.getElementById('gps-status-indicator');
-        if (gpsIndicator) gpsIndicator.innerHTML = `<div class="flex items-center justify-center gap-2 text-slate-400"><span class="material-symbols-outlined">gps_fixed</span><span class="text-xs font-bold">GPS Detenido</span></div>`;
-    }
-
-    async updateTripInDatabase(updates) {
-        if (!this.currentTrip) return;
-        try {
-            const { error } = await supabase.from('trips').update(updates).eq('id', this.currentTrip.id);
-            if (error) console.error('Error:', error);
-        } catch (error) { console.error('Error:', error); }
-    }
-
-    async enviarSolicitud() {
-        if (!this.selectedVehicleForRequest) { this.switchTab('unidad'); return; }
-        const destino = document.getElementById('solicitud-destino')?.value;
-        const motivo = document.getElementById('solicitud-motivo')?.value;
-        const jefe = document.getElementById('solicitud-jefe')?.value;
-        const departamento = document.getElementById('solicitud-departamento')?.value;
-        
-        if (!destino || !motivo || !jefe || !departamento) { this.showToast('Campos incompletos', 'Completa todos los campos', 'warning'); return; }
-
-        const btn = document.querySelector('[onclick="window.conductorModule.enviarSolicitud()"]');
-        if (btn) { btn.disabled = true; btn.innerHTML = '<span class="animate-spin inline-block mr-2">⌛</span> ENVIANDO...'; }
-
-        try {
-            const destLat = document.getElementById('dest-lat')?.innerText;
-            const destLon = document.getElementById('dest-lon')?.innerText;
-
-            const parsedLat = parseFloat(destLat);
-            const parsedLon = parseFloat(destLon);
-            const hasValidCoords = parsedLat !== 0 && parsedLon !== 0 && !isNaN(parsedLat) && !isNaN(parsedLon);
-
-            const { error } = await supabase.from('trips').insert({ 
-                driver_id: this.userId, 
-                vehicle_id: this.selectedVehicleForRequest.id, 
-                status: 'requested', 
-                destination: destino, 
-                motivo: motivo, 
-                supervisor: jefe, 
-                departamento: departamento,
-                request_details: {
-                    destination: destino,
-                    motivo: motivo,
-                    jefe_inmediato: jefe,
-                    departamento: departamento,
-                    requested_at: new Date().toISOString(),
-                    destination_coords: hasValidCoords ? { lat: parsedLat, lon: parsedLon } : null
-                }
-            });
-
-            if (error) throw error;
-
-            this.showToast('Solicitud enviada', 'Espera la aprobación', 'success');
-            
-            document.getElementById('solicitud-destino').value = '';
-            document.getElementById('solicitud-motivo').value = '';
-            document.getElementById('solicitud-jefe').value = '';
-            document.getElementById('solicitud-departamento').value = '';
-            
-            this.selectedVehicleForRequest = null;
-            await this.loadDashboardState();
-            this.switchTab('unidad');
-
-        } catch (error) {
-            this.showToast('Error', error.message || 'Ocurrió un problema', 'error');
-        } finally {
-            if (btn) { btn.disabled = false; btn.innerHTML = 'ENVIAR SOLICITUD'; }
-        }
-    }
-
-    async loadAvailableUnits() {
-        const container = document.getElementById('unidad-content');
-        const noUnitsMsg = document.getElementById('no-units-message');
-        const loader = document.getElementById('unidad-loader');
-        
-        try {
-            if (loader) loader.classList.remove('hidden');
-            if (container) container.classList.add('hidden');
-            if (noUnitsMsg) noUnitsMsg.classList.add('hidden');
-
-            const { data: vehs, error } = await supabase.from('vehicles').select('*').eq('status', 'active');
-            if (error) throw error;
-            
-            if (!vehs || vehs.length === 0) {
-                if (noUnitsMsg) noUnitsMsg.classList.remove('hidden');
-            } else if (container) {
-                container.classList.remove('hidden');
-                container.innerHTML = vehs.map(v => `<div onclick="window.conductorModule.selectVehicleForRequest('${v.id}', '${v.plate}', '${v.model}', '${v.economic_number}')" class="bg-gradient-to-r from-[#192633] to-[#1a2533] p-4 rounded-xl border border-[#233648] flex justify-between items-center cursor-pointer hover:border-primary hover:scale-[1.02] transition-all active:scale-95"><div><p class="text-white font-black text-lg">${v.plate}</p><p class="text-[10px] text-[#92adc9] mt-1">${v.model} · ECO-${v.economic_number}</p></div><button class="bg-primary text-white text-[10px] font-black px-4 py-2 rounded-lg uppercase shadow-lg">Solicitar</button></div>`).join('');
-            }
-        } catch (error) { 
-            console.error('Error al cargar unidades:', error);
-            if (noUnitsMsg) {
-                noUnitsMsg.innerHTML = '<span class="material-symbols-outlined text-4xl mb-2 text-red-500">error</span><p class="text-sm">Error de conexión</p>';
-                noUnitsMsg.classList.remove('hidden');
-            }
-        } finally {
-            if (loader) loader.classList.add('hidden');
-        }
-    }
-
     async loadLastChecklist(vehicleId) {
         if (!vehicleId) return;
         try {
-            const { data: lastTrip, error } = await supabase.from('trips').select('workshop_checklist, completed_at').eq('vehicle_id', vehicleId).eq('status', 'completed').order('completed_at', { ascending: false }).limit(1).maybeSingle();
+            const { data: lastTrip, error } = await supabase.from('trips').select('workshop_return_checklist, completed_at').eq('vehicle_id', vehicleId).in('status', ['completed', 'closed']).order('completed_at', { ascending: false }).limit(1).maybeSingle();
             const container = document.getElementById('last-checklist-container');
             const content = document.getElementById('last-checklist-content');
             if (!container || !content) return;
-            if (error || !lastTrip?.workshop_checklist) { container.classList.add('hidden'); return; }
+            if (error || !lastTrip?.workshop_return_checklist) { container.classList.add('hidden'); return; }
             container.classList.remove('hidden');
-            const check = lastTrip.workshop_checklist;
+            const check = lastTrip.workshop_return_checklist || {};
             const items = [{ label: 'Líquido', value: check.liquid }, { label: 'Aceite', value: check.oil }, { label: 'Anticongelante', value: check.coolant }, { label: 'Luces', value: check.lights }, { label: 'Llantas', value: check.tires }];
             content.innerHTML = `<div class="grid grid-cols-2 gap-2">${items.map(item => `<span class="text-${item.value ? 'green' : 'red'}-400 text-[10px] flex items-center gap-1"><span class="material-symbols-outlined text-xs">${item.value ? 'check_circle' : 'cancel'}</span>${item.label}</span>`).join('')}</div><p class="text-[8px] text-[#92adc9] mt-2">${lastTrip.completed_at ? new Date(lastTrip.completed_at).toLocaleDateString() : ''}</p>`;
         } catch (error) { document.getElementById('last-checklist-container')?.classList.add('hidden'); }
@@ -1576,130 +1209,6 @@ export class DriverView {
             if (display) display.innerHTML = `${plate} · ${model}<br><span class="text-primary text-sm">ECO-${eco}</span>`;
             this.loadLastChecklist(vehicleId);
         }, 100);
-    }
-
-    async confirmarLiberacionTaller() {
-        const btn = document.querySelector('#conductor-confirmacion-container button');
-        if (btn) { btn.disabled = true; btn.innerHTML = '<span class="animate-spin inline-block mr-2">⌛</span> CONFIRMANDO...'; }
-        
-        try {
-            const vehicleId = this.currentTrip?.vehicle_id;
-
-            const { error } = await supabase.from('trips')
-                .update({ driver_confirmed_at: new Date().toISOString(), completed_at: new Date().toISOString(), status: 'completed' })
-                .eq('id', this.currentTrip.id);
-                
-            if (error) throw error;
-
-            this.showToast('¡Unidad liberada!', 'Puedes solicitar una nueva unidad', 'success');
-            
-            if (vehicleId) {
-                await supabase.from('vehicles').update({ status: 'active' }).eq('id', vehicleId);
-            }
-            
-            this.currentTrip = null; 
-            this.selectedVehicleForRequest = null;
-            
-            await this.updateUIByStatus(null);
-            await this.loadDashboardState(); 
-            await this.loadLastTripStats(); 
-            this.switchTab('unidad');
-
-        } catch (error) {
-            this.showToast('Error', error.message || 'Fallo de conexión', 'error');
-        } finally {
-            if (btn) { btn.disabled = false; btn.innerHTML = 'CONFIRMAR LIBERACIÓN'; }
-        }
-    }
-
-    async loadProfileData() {
-        if (!this.userId) return;
-        try {
-            const { data: p, error } = await supabase.from('profiles').select('*').eq('id', this.userId).single();
-            if (error) throw error;
-            if (p) {
-                document.getElementById('profile-name').innerText = p.full_name || 'Conductor';
-                if (p.photo_url) {
-                    document.getElementById('profile-avatar').style.backgroundImage = `url('${p.photo_url}')`;
-                    document.getElementById('card-photo').style.backgroundImage = `url('${p.photo_url}')`;
-                }
-                document.getElementById('card-full-name').innerText = p.full_name || 'Conductor';
-                document.getElementById('lic-number').innerText = p.license_number || 'No registrada';
-            }
-        } catch (error) {
-            console.error('Error cargando perfil:', error);
-            document.getElementById('profile-name').innerText = 'Conductor';
-            document.getElementById('card-full-name').innerText = 'Conductor';
-        }
-    }
-
-    async loadDashboardState() {
-        if (!this.userId) return;
-        try {
-            const { data: trips, error } = await supabase
-                .from('trips')
-                .select(`*, vehicles(*)`)
-                .eq('driver_id', this.userId)
-                .in('status', ['requested', 'approved_for_taller', 'driver_accepted', 'in_progress', 'awaiting_return_checklist', 'incident_report'])
-                .order('created_at', { ascending: false })
-                .limit(1);
-
-            if (error) throw error;
-            const trip = trips?.length > 0 ? trips[0] : null;
-            
-            this.currentTrip = trip;
-            await this.updateUIByStatus(trip);
-
-        } catch (error) { 
-            console.error('Error cargando estado:', error); 
-            await this.updateUIByStatus(null);
-        }
-    }
-
-    async updateUIByStatus(trip) {
-        const statusMap = { 
-            'requested': { text: 'Solicitud enviada', color: 'bg-yellow-500', tab: 'unidad' }, 
-            'approved_for_taller': { text: 'Dirígete a taller', color: 'bg-orange-500', tab: 'taller-inicial' }, 
-            'driver_accepted': { text: 'Listo para salir', color: 'bg-green-500', tab: 'unidad' }, 
-            'in_progress': { text: 'En ruta', color: 'bg-primary', tab: 'ruta' }, 
-            'awaiting_return_checklist': { text: 'Regresado - Ir a taller', color: 'bg-purple-500', tab: 'taller-final' }, 
-            'incident_report': { text: 'INCIDENCIA', color: 'bg-red-500', tab: 'unidad' } 
-        };
-
-        const titleUnits = document.querySelector('#tab-unidad h3');
-        const unitsContent = document.getElementById('unidad-content');
-        const noUnitsMsg = document.getElementById('no-units-message');
-
-        if (trip && statusMap[trip.status]) {
-            const status = statusMap[trip.status];
-            document.getElementById('profile-status').innerText = status.text;
-            const badge = document.getElementById('trip-status-badge');
-            if (badge) { 
-                badge.innerText = status.text; 
-                badge.className = `px-3 py-1 rounded-full text-[10px] font-bold uppercase ${status.color} text-white`; 
-            }
-            
-            document.getElementById('current-vehicle-plate').innerText = trip.vehicles?.plate || '--';
-            document.getElementById('current-vehicle-model').innerText = `${trip.vehicles?.model || ''} ECO-${trip.vehicles?.economic_number || ''}`;
-            
-            document.getElementById('current-trip-info')?.classList.remove('hidden');
-            if (titleUnits) titleUnits.classList.add('hidden');
-            if (unitsContent) unitsContent.classList.add('hidden');
-            if (noUnitsMsg) noUnitsMsg.classList.add('hidden');
-            
-            if (trip.status === 'approved_for_taller') document.getElementById('taller-vehicle-info').innerText = `ECO-${trip.vehicles?.economic_number} - ${trip.vehicles?.plate}`;
-            if (trip.status === 'in_progress' && this.activeTab === 'ruta') setTimeout(() => this.startTracking(), 500);
-            if (trip.status !== 'in_progress') this.stopTracking();
-            this.updateSpecificComponents(trip);
-            
-        } else {
-            document.getElementById('current-trip-info')?.classList.add('hidden');
-            document.getElementById('profile-status').innerText = "Disponible";
-            this.stopTracking();
-            
-            if (titleUnits) titleUnits.classList.remove('hidden');
-            await this.loadAvailableUnits();
-        }
     }
 
     async saveTripNotes() {
