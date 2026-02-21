@@ -66,6 +66,7 @@ export class TrackingView {
                     motivo,
                     start_time,
                     exit_km,
+                    request_details,
                     profiles:driver_id (
                         id,
                         full_name, 
@@ -132,19 +133,12 @@ export class TrackingView {
     }
 
     setupRealtimeSubscription() {
-        // Escuchar nuevas ubicaciones en tiempo real
+        // Escuchar nuevas ubicaciones en tiempo real vía Broadcast y cambios en DB
         this.realtimeChannel = supabase
             .channel('tracking_realtime')
-            .on('postgres_changes', 
-                { 
-                    event: 'INSERT', 
-                    schema: 'public', 
-                    table: 'trip_locations' 
-                }, 
-                payload => {
-                    this.handleIncomingLocation(payload.new);
-                }
-            )
+            .on('broadcast', { event: 'location_update' }, payload => {
+                this.handleIncomingLocation(payload.payload);
+            })
             .on('postgres_changes',
                 {
                     event: 'UPDATE',
@@ -157,7 +151,7 @@ export class TrackingView {
                 }
             )
             .subscribe((status) => {
-                console.log('📡 Tracking Realtime:', status);
+                console.log('📡 Tracking Realtime (Broadcast + DB):', status);
             });
     }
 
@@ -170,7 +164,7 @@ export class TrackingView {
 
     handleIncomingLocation(newLoc) {
         // Verificar si el viaje sigue activo
-        const tripExists = this.activeTrips.some(t => t.id === newLoc.trip_id);
+        const tripExists = this.activeTrips.some(t => String(t.id) === String(newLoc.trip_id));
         if (!tripExists) return;
 
         // Actualizar ubicación
@@ -193,7 +187,7 @@ export class TrackingView {
     handleTripUpdate(updatedTrip) {
         // Si el viaje ya no está activo, removerlo
         if (!['in_progress', 'driver_accepted', 'approved_for_taller'].includes(updatedTrip.status)) {
-            this.activeTrips = this.activeTrips.filter(t => t.id !== updatedTrip.id);
+            this.activeTrips = this.activeTrips.filter(t => String(t.id) !== String(updatedTrip.id));
             
             // Remover marcador del mapa
             if (this.markers[updatedTrip.id]) {
@@ -207,11 +201,12 @@ export class TrackingView {
             }
         } else {
             // Actualizar información del viaje
-            const index = this.activeTrips.findIndex(t => t.id === updatedTrip.id);
+            const index = this.activeTrips.findIndex(t => String(t.id) === String(updatedTrip.id));
             if (index >= 0) {
-                this.activeTrips[index] = updatedTrip;
+                // Conservar las relaciones anidadas
+                this.activeTrips[index] = { ...this.activeTrips[index], ...updatedTrip };
             } else {
-                this.activeTrips.push(updatedTrip);
+                this.loadActiveTrips(); // Recargar completo si es un viaje nuevo para traer relaciones
             }
         }
         
@@ -223,7 +218,7 @@ export class TrackingView {
 
     updateSingleMarker(tripId) {
         const L = window.L;
-        const trip = this.activeTrips.find(t => t.id === tripId);
+        const trip = this.activeTrips.find(t => String(t.id) === String(tripId));
         const loc = this.vehicleLocations[tripId];
         
         if (!trip || !loc) return;
@@ -296,7 +291,7 @@ export class TrackingView {
     // --- CÁLCULO DE RUTA, DISTANCIA Y TIEMPO ---
     async drawRouteAndCalculateETA(tripId) {
         const L = window.L;
-        const trip = this.activeTrips.find(t => t.id === tripId);
+        const trip = this.activeTrips.find(t => String(t.id) === String(tripId));
         const loc = this.vehicleLocations[tripId];
 
         // Limpiar capas anteriores
@@ -351,7 +346,7 @@ export class TrackingView {
     }
 
     updateRoutePanel(tripId) {
-        const trip = this.activeTrips.find(t => t.id === tripId);
+        const trip = this.activeTrips.find(t => String(t.id) === String(tripId));
         const loc = this.vehicleLocations[tripId];
         
         if (trip) {
@@ -467,7 +462,7 @@ export class TrackingView {
     }
 
     showRoutePanel(id) {
-        const trip = this.activeTrips.find(t => t.id === id);
+        const trip = this.activeTrips.find(t => String(t.id) === String(id));
         const panel = document.getElementById('route-panel');
         
         panel.classList.remove('opacity-0', 'pointer-events-none', 'translate-y-10');
