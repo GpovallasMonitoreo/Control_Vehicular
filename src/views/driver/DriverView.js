@@ -51,7 +51,7 @@ export class DriverView {
         
         window.conductorModule = this;
         
-        // Recuperador de segundo plano: Si el usuario minimizó la app y vuelve, forzar sync
+        // Recuperador de segundo plano
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible' && this.currentTrip?.status === 'in_progress') {
                 this.requestWakeLock();
@@ -600,6 +600,7 @@ export class DriverView {
                 this.addStopFromMap(e.latlng.lat, e.latlng.lng);
             });
             
+            // Auto-cargar destino si no hay ruta planeada aún (Ignorar 0,0)
             if (this.currentTrip?.request_details?.route_plan) {
                 this.routeStops = this.currentTrip.request_details.route_plan;
                 this.isReturning = this.currentTrip.request_details.is_returning || false;
@@ -828,15 +829,17 @@ export class DriverView {
 
     async loadLastTripStats() {
         try {
+            // Buscamos el viaje más reciente que esté finalizado
             const { data: lastTrip, error: lastError } = await supabase
                 .from('trips')
                 .select(`created_at, completed_at, destination, exit_km, entry_km, vehicles:vehicle_id(plate, economic_number)`)
                 .eq('driver_id', this.userId)
-                .in('status', ['completed', 'closed'])
+                .in('status', ['completed', 'closed']) // Filtro estricto
                 .order('completed_at', { ascending: false })
                 .limit(1)
                 .maybeSingle();
 
+            // Obtenemos todos los completados para sumar el kilometraje total
             const { data: stats, error: statsError } = await supabase
                 .from('trips')
                 .select('id, entry_km, exit_km')
@@ -852,9 +855,11 @@ export class DriverView {
             if (lastTrip && !lastError) {
                 document.getElementById('last-trip-vehicle').innerText = `${lastTrip.vehicles?.plate || '---'} (ECO-${lastTrip.vehicles?.economic_number || '?'})`;
                 document.getElementById('last-trip-date').innerText = lastTrip.completed_at ? new Date(lastTrip.completed_at).toLocaleDateString() : 'N/A';
+                
                 const exitKm = lastTrip.exit_km || 0;
                 const entryKm = lastTrip.entry_km || 0;
-                const distancia = Math.max(0, entryKm - exitKm);
+                const distancia = Math.max(0, entryKm - exitKm); // Evita números negativos
+                
                 document.getElementById('last-trip-distance').innerText = `${Math.round(distancia)} km`;
                 document.getElementById('last-trip-destination').innerText = lastTrip.destination || 'No especificado';
             } else {
@@ -913,20 +918,23 @@ export class DriverView {
                     const oldStatus = this.currentTrip?.status;
                     const newStatus = payload.new.status;
                     this.currentTrip = payload.new;
-                    await this.updateUIByStatus(payload.new);
-                    if (oldStatus && oldStatus !== newStatus) this.handleStatusChange(newStatus, payload.new);
-                    this.updateSpecificComponents(payload.new);
-                    if (newStatus === 'in_progress' && this.activeTab === 'ruta') this.startTracking();
                     
                     if (newStatus === 'completed') {
+                        // Limpiar y resetear la UI a disponible de inmediato
                         this.currentTrip = null;
                         this.selectedVehicleForRequest = null;
+                        await this.updateUIByStatus(null);
                         await this.loadLastTripStats();
-                        await this.loadAvailableUnits();
                         this.switchTab('unidad');
                         this.showToast('✅ Viaje completado', 'Puedes solicitar una nueva unidad', 'success');
+                    } else {
+                        // Seguir el flujo normal
+                        await this.updateUIByStatus(payload.new);
+                        if (oldStatus && oldStatus !== newStatus) this.handleStatusChange(newStatus, payload.new);
+                        this.updateSpecificComponents(payload.new);
+                        if (newStatus === 'in_progress' && this.activeTab === 'ruta') this.startTracking();
+                        if (newStatus === 'incident_report') this.showIncidentBanner(payload.new); else this.hideIncidentBanner();
                     }
-                    if (newStatus === 'incident_report') this.showIncidentBanner(payload.new); else this.hideIncidentBanner();
                 }
             }).subscribe();
 
@@ -1388,12 +1396,30 @@ export class DriverView {
 
     async confirmarLiberacionTaller() {
         const btn = document.querySelector('#conductor-confirmacion-container button');
-        btn.disabled = true; btn.innerHTML = '<span class="animate-spin inline-block mr-2">⌛</span> CONFIRMANDO...';
-        const { error } = await supabase.from('trips').update({ driver_confirmed_at: new Date().toISOString(), completed_at: new Date().toISOString(), status: 'completed' }).eq('id', this.currentTrip.id);
-        if (error) { this.showToast('Error', error.message, 'error'); } else {
+        btn.disabled = true; 
+        btn.innerHTML = '<span class="animate-spin inline-block mr-2">⌛</span> CONFIRMANDO...';
+        
+        const { error } = await supabase.from('trips')
+            .update({ driver_confirmed_at: new Date().toISOString(), completed_at: new Date().toISOString(), status: 'completed' })
+            .eq('id', this.currentTrip.id);
+            
+        if (error) { 
+            this.showToast('Error', error.message, 'error'); 
+            btn.disabled = false;
+            btn.innerHTML = 'CONFIRMAR LIBERACIÓN';
+        } else {
             this.showToast('¡Unidad liberada!', 'Puedes solicitar una nueva unidad', 'success');
-            this.currentTrip = null; this.selectedVehicleForRequest = null;
-            await this.loadDashboardState(); await this.loadLastTripStats(); await this.loadAvailableUnits();
+            
+            // Limpiar memoria
+            this.currentTrip = null; 
+            this.selectedVehicleForRequest = null;
+            
+            // Forzar UI a modo "Disponible"
+            await this.updateUIByStatus(null);
+            
+            // Recargar datos
+            await this.loadDashboardState(); 
+            await this.loadLastTripStats(); 
             this.switchTab('unidad');
         }
     }
@@ -1414,6 +1440,7 @@ export class DriverView {
     async loadDashboardState() {
         if (!this.userId) return;
         try {
+            // ✅ CORRECCIÓN: Solo buscar viajes con estados realmente activos
             const { data: trips, error } = await supabase
                 .from('trips')
                 .select(`*, vehicles(*)`)
@@ -1429,11 +1456,18 @@ export class DriverView {
                 this.currentTrip = trip;
                 await this.updateUIByStatus(trip);
             }
-            if (!trip) await this.loadAvailableUnits();
-        } catch (error) { console.error('Error:', error); }
+            
+            // Si no hay viaje activo, cargamos las unidades disponibles
+            if (!trip) {
+                await this.loadAvailableUnits();
+            }
+        } catch (error) { 
+            console.error('Error cargando estado:', error); 
+        }
     }
 
     async updateUIByStatus(trip) {
+        // ✅ CORRECCIÓN: Eliminamos 'completed' de esta lista para que caiga en el "else" (Disponible)
         const statusMap = { 
             'requested': { text: 'Solicitud enviada', color: 'bg-yellow-500', tab: 'unidad' }, 
             'approved_for_taller': { text: 'Dirígete a taller', color: 'bg-orange-500', tab: 'taller-inicial' }, 
@@ -1443,24 +1477,43 @@ export class DriverView {
             'incident_report': { text: 'INCIDENCIA', color: 'bg-red-500', tab: 'unidad' } 
         };
 
+        const titleUnits = document.querySelector('#tab-unidad h3');
+        const unitsContent = document.getElementById('unidad-content');
+
         if (trip && statusMap[trip.status]) {
+            // ✅ ESTADO: EN VIAJE
             const status = statusMap[trip.status];
             document.getElementById('profile-status').innerText = status.text;
             const badge = document.getElementById('trip-status-badge');
-            if (badge) { badge.innerText = status.text; badge.className = `px-3 py-1 rounded-full text-[10px] font-bold uppercase ${status.color} text-white`; }
+            if (badge) { 
+                badge.innerText = status.text; 
+                badge.className = `px-3 py-1 rounded-full text-[10px] font-bold uppercase ${status.color} text-white`; 
+            }
             
-            document.getElementById('current-vehicle-plate').innerText = trip.vehicles?.plate || '--';
-            document.getElementById('current-vehicle-model').innerText = `${trip.vehicles?.model || ''} ECO-${trip.vehicles?.economic_number || ''}`;
+            const plateEl = document.getElementById('current-vehicle-plate');
+            const modelEl = document.getElementById('current-vehicle-model');
+            if (plateEl) plateEl.innerText = trip.vehicles?.plate || '--';
+            if (modelEl) modelEl.innerText = `${trip.vehicles?.model || ''} ECO-${trip.vehicles?.economic_number || ''}`;
+            
+            // Mostrar la info del viaje y ocultar las unidades disponibles para no saturar
             document.getElementById('current-trip-info')?.classList.remove('hidden');
+            if (titleUnits) titleUnits.classList.add('hidden');
+            if (unitsContent) unitsContent.classList.add('hidden');
             
             if (trip.status === 'approved_for_taller') document.getElementById('taller-vehicle-info').innerText = `ECO-${trip.vehicles?.economic_number} - ${trip.vehicles?.plate}`;
             if (trip.status === 'in_progress' && this.activeTab === 'ruta') setTimeout(() => this.startTracking(), 500);
             if (trip.status !== 'in_progress') this.stopTracking();
             this.updateSpecificComponents(trip);
+            
         } else {
+            // ✅ ESTADO: DISPONIBLE (Viaje terminado)
             document.getElementById('current-trip-info')?.classList.add('hidden');
             document.getElementById('profile-status').innerText = "Disponible";
             this.stopTracking();
+            
+            // Volver a mostrar el título y cargar la lista de unidades
+            if (titleUnits) titleUnits.classList.remove('hidden');
+            this.loadAvailableUnits();
         }
     }
 
