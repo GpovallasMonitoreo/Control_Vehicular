@@ -538,10 +538,8 @@ export class DriverView {
                 </div>
                 
                 <style>
-                    /* Ajustes para el mapa dentro del contenedor móvil */
                     .leaflet-container { z-index: 0 !important; font-family: 'Inter', sans-serif; }
                     .custom-stop-marker { filter: drop-shadow(0 4px 6px rgba(0,0,0,0.5)); }
-                    /* Animación para mi auto local */
                     .local-car-marker { filter: drop-shadow(0 0 10px #10b981); transition: transform 1s ease-in-out; }
                 </style>
             </div>
@@ -602,7 +600,6 @@ export class DriverView {
                 this.addStopFromMap(e.latlng.lat, e.latlng.lng);
             });
             
-            // Auto-cargar destino si no hay ruta planeada aún (Ignorar 0,0)
             if (this.currentTrip?.request_details?.route_plan) {
                 this.routeStops = this.currentTrip.request_details.route_plan;
                 this.isReturning = this.currentTrip.request_details.is_returning || false;
@@ -610,6 +607,7 @@ export class DriverView {
                 const destLat = this.currentTrip.request_details.destination_coords.lat;
                 const destLon = this.currentTrip.request_details.destination_coords.lon;
                 
+                // Evitar punto en "Isla Nula"
                 if (destLat !== 0 && destLon !== 0) {
                     const destName = this.currentTrip.destination || 'Destino Inicial';
                     this.routeStops = [{
@@ -834,7 +832,7 @@ export class DriverView {
                 .from('trips')
                 .select(`created_at, completed_at, destination, exit_km, entry_km, vehicles:vehicle_id(plate, economic_number)`)
                 .eq('driver_id', this.userId)
-                .eq('status', 'completed')
+                .in('status', ['completed', 'closed'])
                 .order('completed_at', { ascending: false })
                 .limit(1)
                 .maybeSingle();
@@ -843,7 +841,7 @@ export class DriverView {
                 .from('trips')
                 .select('id, entry_km, exit_km')
                 .eq('driver_id', this.userId)
-                .eq('status', 'completed');
+                .in('status', ['completed', 'closed']);
 
             const loading = document.getElementById('last-trip-loading');
             const content = document.getElementById('last-trip-content');
@@ -854,7 +852,9 @@ export class DriverView {
             if (lastTrip && !lastError) {
                 document.getElementById('last-trip-vehicle').innerText = `${lastTrip.vehicles?.plate || '---'} (ECO-${lastTrip.vehicles?.economic_number || '?'})`;
                 document.getElementById('last-trip-date').innerText = lastTrip.completed_at ? new Date(lastTrip.completed_at).toLocaleDateString() : 'N/A';
-                const distancia = (lastTrip.entry_km - lastTrip.exit_km) || 0;
+                const exitKm = lastTrip.exit_km || 0;
+                const entryKm = lastTrip.entry_km || 0;
+                const distancia = Math.max(0, entryKm - exitKm);
                 document.getElementById('last-trip-distance').innerText = `${Math.round(distancia)} km`;
                 document.getElementById('last-trip-destination').innerText = lastTrip.destination || 'No especificado';
             } else {
@@ -863,7 +863,11 @@ export class DriverView {
 
             if (stats && !statsError) {
                 document.getElementById('total-trips').innerText = stats.length;
-                const totalKm = stats.reduce((sum, t) => sum + ((t.entry_km - t.exit_km) || 0), 0);
+                const totalKm = stats.reduce((sum, t) => {
+                    const e = t.entry_km || 0;
+                    const x = t.exit_km || 0;
+                    return sum + Math.max(0, e - x);
+                }, 0);
                 document.getElementById('total-km').innerText = Math.round(totalKm);
             }
         } catch (error) { console.error('Error cargando estadísticas:', error); }
@@ -1303,7 +1307,6 @@ export class DriverView {
         const destLat = document.getElementById('dest-lat')?.innerText;
         const destLon = document.getElementById('dest-lon')?.innerText;
 
-        // ✅ CORRECCIÓN ISLA NULA: Validar que no mande el 0,0 al servidor
         const parsedLat = parseFloat(destLat);
         const parsedLon = parseFloat(destLon);
         const hasValidCoords = parsedLat !== 0 && parsedLon !== 0 && !isNaN(parsedLat) && !isNaN(parsedLon);
@@ -1411,9 +1414,17 @@ export class DriverView {
     async loadDashboardState() {
         if (!this.userId) return;
         try {
-            const { data: trips, error } = await supabase.from('trips').select(`*, vehicles(*)`).eq('driver_id', this.userId).neq('status', 'closed').order('created_at', { ascending: false }).limit(1);
+            const { data: trips, error } = await supabase
+                .from('trips')
+                .select(`*, vehicles(*)`)
+                .eq('driver_id', this.userId)
+                .in('status', ['requested', 'approved_for_taller', 'driver_accepted', 'in_progress', 'awaiting_return_checklist', 'incident_report'])
+                .order('created_at', { ascending: false })
+                .limit(1);
+
             if (error) throw error;
             const trip = trips?.length > 0 ? trips[0] : null;
+            
             if (JSON.stringify(this.currentTrip) !== JSON.stringify(trip)) {
                 this.currentTrip = trip;
                 await this.updateUIByStatus(trip);
@@ -1423,7 +1434,15 @@ export class DriverView {
     }
 
     async updateUIByStatus(trip) {
-        const statusMap = { 'requested': { text: 'Solicitud enviada', color: 'bg-yellow-500', tab: 'unidad' }, 'approved_for_taller': { text: 'Dirígete a taller', color: 'bg-orange-500', tab: 'taller-inicial' }, 'driver_accepted': { text: 'Listo para salir', color: 'bg-green-500', tab: 'unidad' }, 'in_progress': { text: 'En ruta', color: 'bg-primary', tab: 'ruta' }, 'awaiting_return_checklist': { text: 'Regresado - Ir a taller', color: 'bg-purple-500', tab: 'taller-final' }, 'incident_report': { text: 'INCIDENCIA', color: 'bg-red-500', tab: 'unidad' }, 'completed': { text: 'Viaje completado', color: 'bg-emerald-500', tab: 'unidad' } };
+        const statusMap = { 
+            'requested': { text: 'Solicitud enviada', color: 'bg-yellow-500', tab: 'unidad' }, 
+            'approved_for_taller': { text: 'Dirígete a taller', color: 'bg-orange-500', tab: 'taller-inicial' }, 
+            'driver_accepted': { text: 'Listo para salir', color: 'bg-green-500', tab: 'unidad' }, 
+            'in_progress': { text: 'En ruta', color: 'bg-primary', tab: 'ruta' }, 
+            'awaiting_return_checklist': { text: 'Regresado - Ir a taller', color: 'bg-purple-500', tab: 'taller-final' }, 
+            'incident_report': { text: 'INCIDENCIA', color: 'bg-red-500', tab: 'unidad' } 
+        };
+
         if (trip && statusMap[trip.status]) {
             const status = statusMap[trip.status];
             document.getElementById('profile-status').innerText = status.text;
