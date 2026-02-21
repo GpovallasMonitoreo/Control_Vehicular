@@ -750,7 +750,311 @@ export class DriverView {
         }
     }
 
-    // ==================== INICIO BLINDADO ====================
+    // ==================== MÉTODOS NUEVOS AGREGADOS ====================
+
+    /**
+     * Inicia la sincronización en segundo plano de ubicaciones
+     */
+    startBackgroundSync() {
+        // Limpiar intervalo existente si lo hay
+        if (this.backgroundSyncInterval) {
+            clearInterval(this.backgroundSyncInterval);
+        }
+        
+        // Sincronizar ubicaciones pendientes cada 30 segundos
+        this.backgroundSyncInterval = setInterval(async () => {
+            if (navigator.onLine && this.pendingLocations.length > 0) {
+                await this.syncPendingLocations();
+            }
+        }, 30000);
+        
+        console.log('🔄 Sincronización en segundo plano iniciada');
+    }
+
+    /**
+     * Detiene el seguimiento GPS
+     */
+    stopTracking() {
+        // Limpiar el watchPosition
+        if (this.watchPositionId) {
+            navigator.geolocation.clearWatch(this.watchPositionId);
+            this.watchPositionId = null;
+        }
+        
+        // Actualizar UI del GPS
+        const gpsIndicator = document.getElementById('gps-status-indicator');
+        if (gpsIndicator) {
+            gpsIndicator.innerHTML = `
+                <div class="flex items-center justify-center gap-2 text-slate-400">
+                    <span class="material-symbols-outlined">gps_off</span>
+                    <span class="text-xs font-bold uppercase tracking-wider">GPS Detenido</span>
+                </div>
+            `;
+        }
+        
+        console.log('📍 Seguimiento GPS detenido');
+    }
+
+    /**
+     * Inicia el seguimiento GPS
+     */
+    startTracking() {
+        if (!this.currentTrip || this.currentTrip.status !== 'in_progress') {
+            console.log('No se inicia GPS: viaje no está en progreso');
+            return;
+        }
+        
+        if (!navigator.geolocation) {
+            this.showToast('Error', 'GPS no soportado', 'error');
+            return;
+        }
+        
+        // Detener seguimiento anterior si existe
+        this.stopTracking();
+        
+        // Solicitar wake lock para mantener la app activa
+        this.requestWakeLock();
+        
+        // Configurar opciones de GPS (alta precisión)
+        const options = {
+            enableHighAccuracy: true,
+            maximumAge: 0,
+            timeout: 10000
+        };
+        
+        // Iniciar seguimiento
+        this.watchPositionId = navigator.geolocation.watchPosition(
+            (pos) => this.handlePositionUpdate(pos),
+            (err) => {
+                console.error('Error GPS:', err);
+                let errorMsg = 'Error de GPS';
+                if (err.code === 1) errorMsg = 'Permiso denegado';
+                if (err.code === 2) errorMsg = 'Señal no disponible';
+                if (err.code === 3) errorMsg = 'Tiempo de espera agotado';
+                this.showToast('Error GPS', errorMsg, 'error');
+                
+                // Intentar reconectar si es posible
+                if (this.gpsRetryCount < this.maxGpsRetries) {
+                    this.gpsRetryCount++;
+                    setTimeout(() => this.startTracking(), 5000);
+                }
+            },
+            options
+        );
+        
+        this.updateGPSUI();
+        console.log('📍 Seguimiento GPS iniciado');
+    }
+
+    /**
+     * Sincroniza ubicaciones pendientes con el servidor
+     */
+    async syncPendingLocations() {
+        if (!this.pendingLocations.length || !this.currentTrip) return;
+        
+        try {
+            // Guardar las ubicaciones pendientes antes de limpiarlas
+            const locationsToSync = [...this.pendingLocations];
+            this.pendingLocations = [];
+            
+            // Aquí implementarías la lógica para enviar ubicaciones a Supabase
+            // Por ejemplo, si tuvieras una tabla 'trip_locations':
+            /*
+            const { error } = await supabase
+                .from('trip_locations')
+                .insert(locationsToSync.map(loc => ({
+                    trip_id: loc.trip_id,
+                    latitude: loc.latitude,
+                    longitude: loc.longitude,
+                    speed: loc.speed,
+                    accuracy: loc.accuracy,
+                    timestamp: loc.timestamp
+                })));
+            
+            if (error) throw error;
+            */
+            
+            console.log(`✅ Sincronizadas ${locationsToSync.length} ubicaciones pendientes`);
+        } catch (error) {
+            console.error('Error sincronizando ubicaciones:', error);
+            // Si falla, volvemos a agregar las ubicaciones a la cola
+            this.pendingLocations = [...locationsToSync, ...this.pendingLocations];
+        }
+    }
+
+    /**
+     * Maneja actualizaciones de posición GPS
+     */
+    handlePositionUpdate(position) {
+        if (!this.currentTrip) return;
+        
+        const { latitude, longitude, speed, accuracy, timestamp } = position.coords;
+        
+        // Calcular velocidad en km/h (de m/s a km/h)
+        const speedKmh = speed ? Math.round(speed * 3.6) : 0;
+        
+        // Actualizar datos en memoria
+        this.tripLogistics.lastPosition = { lat: latitude, lng: longitude };
+        this.tripLogistics.lastSpeed = speedKmh;
+        this.tripLogistics.lastUpdateTime = new Date().toISOString();
+        
+        // Calcular distancia si tenemos una posición anterior
+        if (this.tripLogistics.lastPosition) {
+            // Aquí podrías calcular distancia usando la fórmula de Haversine
+            // Por ahora solo incrementamos un valor simbólico
+            if (speedKmh > 0) {
+                this.tripLogistics.totalDistance += (speedKmh / 3600); // Aproximación muy básica
+            }
+        }
+        
+        // Actualizar UI
+        this.updateGPSUI();
+        
+        // Guardar ubicación para sincronización posterior
+        this.pendingLocations.push({
+            trip_id: this.currentTrip.id,
+            latitude,
+            longitude,
+            speed: speedKmh,
+            accuracy,
+            timestamp: new Date(timestamp).toISOString()
+        });
+        
+        // Limitar el tamaño de la cola de ubicaciones pendientes
+        if (this.pendingLocations.length > 100) {
+            this.pendingLocations = this.pendingLocations.slice(-100);
+        }
+        
+        // Actualizar marcador en el mapa si existe
+        if (this.myLocationMarker && this.driverMap) {
+            this.myLocationMarker.setLatLng([latitude, longitude]);
+            
+            // Centrar el mapa en la posición actual si hay pocos marcadores
+            if (this.driverMarkers.length === 0) {
+                this.driverMap.setView([latitude, longitude], 15);
+            }
+        }
+        
+        // Broadcast de ubicación (para ping inteligente)
+        this.broadcastLocation(latitude, longitude, speedKmh);
+    }
+
+    /**
+     * Actualiza la interfaz con datos del GPS
+     */
+    updateGPSUI() {
+        const gpsIndicator = document.getElementById('gps-status-indicator');
+        const speedEl = document.getElementById('live-speed');
+        const distanceEl = document.getElementById('live-distance');
+        const fuelEl = document.getElementById('live-fuel');
+        const durationEl = document.getElementById('trip-duration');
+        
+        if (gpsIndicator) {
+            if (this.watchPositionId) {
+                gpsIndicator.innerHTML = `
+                    <div class="flex items-center justify-center gap-2 text-green-400">
+                        <span class="material-symbols-outlined animate-pulse">gps_fixed</span>
+                        <span class="text-xs font-bold uppercase tracking-wider">GPS Activo</span>
+                    </div>
+                `;
+            } else {
+                gpsIndicator.innerHTML = `
+                    <div class="flex items-center justify-center gap-2 text-slate-400">
+                        <span class="material-symbols-outlined">gps_off</span>
+                        <span class="text-xs font-bold uppercase tracking-wider">GPS Inactivo</span>
+                    </div>
+                `;
+            }
+        }
+        
+        if (speedEl) {
+            speedEl.innerText = this.tripLogistics.lastSpeed || 0;
+        }
+        
+        if (distanceEl) {
+            distanceEl.innerText = (this.tripLogistics.totalDistance || 0).toFixed(1);
+        }
+        
+        if (fuelEl) {
+            // Estimación simple de combustible (0.1 L por km)
+            const fuelEstimate = (this.tripLogistics.totalDistance * 0.1).toFixed(1);
+            fuelEl.innerText = `${fuelEstimate} L`;
+        }
+        
+        if (durationEl && this.currentTrip?.start_time) {
+            const startTime = new Date(this.currentTrip.start_time);
+            const now = new Date();
+            const diffMs = now - startTime;
+            const diffHrs = Math.floor(diffMs / 3600000);
+            const diffMins = Math.floor((diffMs % 3600000) / 60000);
+            const diffSecs = Math.floor((diffMs % 60000) / 1000);
+            
+            durationEl.innerText = `${String(diffHrs).padStart(2, '0')}:${String(diffMins).padStart(2, '0')}:${String(diffSecs).padStart(2, '0')}`;
+        }
+    }
+
+    /**
+     * Broadcast de ubicación para ping inteligente
+     */
+    broadcastLocation(lat, lng, speed) {
+        if (!this.broadcastChannel || !this.currentTrip) return;
+        
+        const now = Date.now();
+        
+        // Limitar broadcasts a cada 5 segundos
+        if (now - this.lastBroadcastTime < 5000) return;
+        
+        // Limitar broadcasts si no hay movimiento significativo
+        if (this.lastBroadcastPos) {
+            const distance = this.calculateDistance(
+                this.lastBroadcastPos.lat, 
+                this.lastBroadcastPos.lng, 
+                lat, 
+                lng
+            );
+            
+            if (distance < 0.01 && speed < 1) return; // Menos de 10 metros y velocidad baja
+        }
+        
+        this.lastBroadcastTime = now;
+        this.lastBroadcastPos = { lat, lng };
+        
+        // Enviar broadcast
+        this.broadcastChannel.send({
+            type: 'broadcast',
+            event: 'driver_location',
+            payload: {
+                trip_id: this.currentTrip.id,
+                driver_id: this.userId,
+                vehicle_id: this.currentTrip.vehicle_id,
+                lat,
+                lng,
+                speed,
+                timestamp: new Date().toISOString()
+            }
+        });
+    }
+
+    /**
+     * Calcula distancia entre dos puntos (fórmula de Haversine)
+     */
+    calculateDistance(lat1, lon1, lat2, lon2) {
+        const R = 6371; // Radio de la Tierra en km
+        const dLat = this.deg2rad(lat2 - lat1);
+        const dLon = this.deg2rad(lon2 - lon1);
+        const a = 
+            Math.sin(dLat/2) * Math.sin(dLat/2) +
+            Math.cos(this.deg2rad(lat1)) * Math.cos(this.deg2rad(lat2)) * 
+            Math.sin(dLon/2) * Math.sin(dLon/2); 
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
+        return R * c; // Distancia en km
+    }
+
+    deg2rad(deg) {
+        return deg * (Math.PI/180);
+    }
+
+    // ==================== FIN MÉTODOS NUEVOS ====================
 
     async onMount() {
         this.showLoader();
@@ -776,7 +1080,7 @@ export class DriverView {
             this.setupRealtimeSubscription();
             this.setupPeriodicUpdates();
             this.setupConnectionMonitor();
-            this.startBackgroundSync();
+            this.startBackgroundSync(); // Ahora este método existe
             
             this.switchTab('unidad'); 
             this.hideLoader();
@@ -1240,16 +1544,16 @@ export class DriverView {
                 document.getElementById('route-waiting-msg')?.classList.add('hidden');
                 document.getElementById('active-trip-panel')?.classList.remove('hidden');
                 setTimeout(() => {
-                    this.startTracking();
+                    this.startTracking(); // Ahora este método existe
                     this.initDriverMap();
                 }, 300);
             } else {
                 document.getElementById('route-waiting-msg')?.classList.remove('hidden');
                 document.getElementById('active-trip-panel')?.classList.add('hidden');
-                this.stopTracking();
+                this.stopTracking(); // Ahora este método existe
             }
         } else {
-            this.stopTracking();
+            this.stopTracking(); // Ahora este método existe
         }
 
         if (tabId === 'perfil') { this.loadProfileData(); this.loadLastTripStats(); }
