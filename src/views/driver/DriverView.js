@@ -1030,51 +1030,66 @@ export class DriverView {
         `).join('');
     }
 
+    // ==================== FUNCIÓN CORREGIDA ====================
     async loadLastChecklist(vehicleId) {
         if (!vehicleId) return;
         
-        const { data: lastTrip } = await supabase
-            .from('trips')
-            .select('workshop_checklist, completed_at')
-            .eq('vehicle_id', vehicleId)
-            .eq('status', 'completed')
-            .order('completed_at', { ascending: false })
-            .limit(1)
-            .single();
+        try {
+            const { data: lastTrip, error } = await supabase
+                .from('trips')
+                .select('workshop_checklist, completed_at')
+                .eq('vehicle_id', vehicleId)
+                .eq('status', 'completed')
+                .order('completed_at', { ascending: false })
+                .limit(1)
+                .maybeSingle(); // CAMBIADO DE single() a maybeSingle()
 
-        const container = document.getElementById('last-checklist-container');
-        const content = document.getElementById('last-checklist-content');
-        
-        if (!lastTrip?.workshop_checklist) {
-            container.classList.add('hidden');
-            return;
-        }
+            const container = document.getElementById('last-checklist-container');
+            const content = document.getElementById('last-checklist-content');
+            
+            if (!container || !content) return;
 
-        container.classList.remove('hidden');
-        const check = lastTrip.workshop_checklist;
-        
-        content.innerHTML = `
-            <div class="space-y-2">
-                <div class="grid grid-cols-2 gap-2">
-                    <span class="text-green-400 text-xs flex items-center gap-1">
-                        <span class="material-symbols-outlined text-sm">${check.liquid ? 'check_circle' : 'cancel'}</span> Líquido
-                    </span>
-                    <span class="text-green-400 text-xs flex items-center gap-1">
-                        <span class="material-symbols-outlined text-sm">${check.oil ? 'check_circle' : 'cancel'}</span> Aceite
-                    </span>
-                    <span class="text-green-400 text-xs flex items-center gap-1">
-                        <span class="material-symbols-outlined text-sm">${check.coolant ? 'check_circle' : 'cancel'}</span> Anticongelante
-                    </span>
-                    <span class="text-green-400 text-xs flex items-center gap-1">
-                        <span class="material-symbols-outlined text-sm">${check.lights ? 'check_circle' : 'cancel'}</span> Luces
-                    </span>
-                    <span class="text-green-400 text-xs flex items-center gap-1">
-                        <span class="material-symbols-outlined text-sm">${check.tires ? 'check_circle' : 'cancel'}</span> Llantas
-                    </span>
+            if (error) {
+                console.error('Error cargando checklist:', error);
+                container.classList.add('hidden');
+                return;
+            }
+
+            if (!lastTrip?.workshop_checklist) {
+                container.classList.add('hidden');
+                return;
+            }
+
+            container.classList.remove('hidden');
+            const check = lastTrip.workshop_checklist;
+            
+            content.innerHTML = `
+                <div class="space-y-2">
+                    <div class="grid grid-cols-2 gap-2">
+                        <span class="text-green-400 text-xs flex items-center gap-1">
+                            <span class="material-symbols-outlined text-sm">${check.liquid ? 'check_circle' : 'cancel'}</span> Líquido
+                        </span>
+                        <span class="text-green-400 text-xs flex items-center gap-1">
+                            <span class="material-symbols-outlined text-sm">${check.oil ? 'check_circle' : 'cancel'}</span> Aceite
+                        </span>
+                        <span class="text-green-400 text-xs flex items-center gap-1">
+                            <span class="material-symbols-outlined text-sm">${check.coolant ? 'check_circle' : 'cancel'}</span> Anticongelante
+                        </span>
+                        <span class="text-green-400 text-xs flex items-center gap-1">
+                            <span class="material-symbols-outlined text-sm">${check.lights ? 'check_circle' : 'cancel'}</span> Luces
+                        </span>
+                        <span class="text-green-400 text-xs flex items-center gap-1">
+                            <span class="material-symbols-outlined text-sm">${check.tires ? 'check_circle' : 'cancel'}</span> Llantas
+                        </span>
+                    </div>
+                    <p class="text-[10px] text-[#92adc9] mt-2">Fecha: ${lastTrip.completed_at ? new Date(lastTrip.completed_at).toLocaleDateString() : 'N/A'}</p>
                 </div>
-                <p class="text-[10px] text-[#92adc9] mt-2">Fecha: ${new Date(lastTrip.completed_at).toLocaleDateString()}</p>
-            </div>
-        `;
+            `;
+        } catch (error) {
+            console.error('Error en loadLastChecklist:', error);
+            const container = document.getElementById('last-checklist-container');
+            if (container) container.classList.add('hidden');
+        }
     }
 
     selectVehicleForRequest(vehicleId, plate, model, eco) {
