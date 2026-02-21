@@ -33,51 +33,63 @@ export class ScannerView {
                 </div>
             </div>
 
-            <div class="flex-1 p-6 overflow-y-auto w-full max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8 h-full">
-                
-                <div class="flex flex-col gap-4 relative">
-                     <div id="step-1-blocker" class="hidden absolute inset-0 z-20 bg-[#0d141c]/90 backdrop-blur-sm rounded-3xl flex items-center justify-center border-2 border-emerald-500/50">
-                        <div class="text-center p-6">
-                            <span class="material-symbols-outlined text-5xl text-emerald-400 mb-2">directions_car</span>
-                            <h3 class="text-white font-black text-xl uppercase tracking-widest">Unidad Detectada</h3>
-                            <p class="text-[#92adc9] text-xs mt-2" id="step-1-message">Ahora ingresa el código del conductor</p>
-                            <button onclick="window.scannerView.resetScan()" class="mt-4 bg-red-600/20 text-red-500 text-xs px-4 py-2 rounded-lg border border-red-500/30">Cancelar</button>
-                        </div>
-                     </div>
-
-                     <div class="bg-black rounded-3xl overflow-hidden border-4 border-[#324d67] shadow-2xl relative aspect-square flex flex-col group">
-                        <div id="reader" class="w-full flex-1 bg-black min-h-[300px]"></div>
-                        <div class="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black via-black/90 to-transparent p-4 text-center z-10">
-                            <p class="text-white text-xs font-bold flex items-center justify-center gap-2 uppercase tracking-tighter">
-                                <span class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span> ESCANEAR QR DE UNIDAD
-                            </p>
-                        </div>
-                     </div>
-                     
-                     <div class="flex gap-2">
-                        <input id="scan-input" type="text" class="flex-1 bg-[#111a22] border border-[#324d67] text-white font-black rounded-xl p-4 placeholder-slate-600 focus:border-primary outline-none text-center tracking-[4px] text-lg font-mono uppercase" placeholder="UUID MANUAL DE UNIDAD">
-                        <button id="btn-validate" class="bg-primary hover:bg-blue-600 text-white font-bold px-6 rounded-xl transition-all shadow-lg">
-                            <span class="material-symbols-outlined">search</span>
-                        </button>
-                     </div>
-                </div>
-
-                <div id="result-area" class="bg-[#1c2127] rounded-3xl p-8 border border-[#324d67] flex flex-col items-center justify-center text-center shadow-2xl h-full min-h-[450px] relative overflow-hidden transition-all duration-300">
-                    <div class="size-28 rounded-full bg-[#111a22] border-4 border-[#233648] flex items-center justify-center mb-6 shadow-inner">
-                        <span class="material-symbols-outlined text-7xl text-slate-700">qr_code_scanner</span>
-                    </div>
-                    <h3 class="text-2xl font-black text-white mb-2 uppercase tracking-tighter">Escáner Activo</h3>
-                    <p class="text-[#92adc9] text-sm max-w-xs mx-auto">Escanee el QR de la unidad para iniciar el proceso correspondiente.</p>
+            <div class="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-6">
+                <div class="w-full max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-6">
                     
-                    <!-- Información de códigos de emergencia (colapsada) -->
-                    <div id="emergency-info-panel" class="hidden mt-6 w-full border-t border-[#324d67] pt-4 animate-fade-in">
-                        <p class="text-[10px] font-bold text-orange-500 uppercase mb-2 tracking-widest">Códigos de emergencia activos</p>
-                        <div id="emergency-codes-list" class="space-y-2 text-xs max-h-[200px] overflow-y-auto custom-scrollbar">
-                            <p class="text-slate-500 text-center">Cargando...</p>
+                    <div class="flex flex-col gap-4 relative">
+                         <div id="step-1-blocker" class="hidden absolute inset-0 z-20 bg-[#0d141c]/90 backdrop-blur-sm rounded-3xl flex items-center justify-center border-2 border-emerald-500/50">
+                            <div class="text-center p-6">
+                                <span class="material-symbols-outlined text-5xl text-emerald-400 mb-2">directions_car</span>
+                                <h3 class="text-white font-black text-xl uppercase tracking-widest">Unidad Detectada</h3>
+                                <p class="text-[#92adc9] text-xs mt-2" id="step-1-message">Ahora ingresa el código del conductor</p>
+                                <button onclick="window.scannerView.resetScan()" class="mt-4 bg-red-600/20 text-red-500 text-xs px-4 py-2 rounded-lg border border-red-500/30">Cancelar</button>
+                            </div>
+                         </div>
+
+                         <div class="bg-black rounded-3xl overflow-hidden border-4 border-[#324d67] shadow-2xl relative aspect-square flex flex-col group">
+                            <div id="reader" class="w-full flex-1 bg-black min-h-[300px]"></div>
+                            <div class="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black via-black/90 to-transparent p-4 text-center z-10">
+                                <p class="text-white text-xs font-bold flex items-center justify-center gap-2 uppercase tracking-tighter">
+                                    <span class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span> ESCANEAR QR DE UNIDAD
+                                </p>
+                            </div>
+                         </div>
+                         
+                         <div class="flex gap-2">
+                            <input id="scan-input" type="text" class="flex-1 bg-[#111a22] border border-[#324d67] text-white font-black rounded-xl p-4 placeholder-slate-600 focus:border-primary outline-none text-center tracking-[4px] text-lg font-mono uppercase" placeholder="UUID MANUAL DE UNIDAD">
+                            <button id="btn-validate" class="bg-primary hover:bg-blue-600 text-white font-bold px-6 rounded-xl transition-all shadow-lg">
+                                <span class="material-symbols-outlined">search</span>
+                            </button>
+                         </div>
+                    </div>
+
+                    <div id="result-area" class="bg-[#1c2127] rounded-3xl p-6 border border-[#324d67] flex flex-col items-center justify-start text-center shadow-2xl min-h-[500px] relative overflow-y-auto custom-scrollbar transition-all duration-300">
+                        <div class="w-full">
+                            <div class="size-28 rounded-full bg-[#111a22] border-4 border-[#233648] flex items-center justify-center mb-6 shadow-inner mx-auto">
+                                <span class="material-symbols-outlined text-7xl text-slate-700">qr_code_scanner</span>
+                            </div>
+                            <h3 class="text-2xl font-black text-white mb-2 uppercase tracking-tighter">Escáner Activo</h3>
+                            <p class="text-[#92adc9] text-sm max-w-xs mx-auto">Escanee el QR de la unidad para iniciar el proceso correspondiente.</p>
+                            
+                            <!-- Información de códigos de emergencia -->
+                            <div id="emergency-info-panel" class="hidden mt-6 w-full border-t border-[#324d67] pt-4 animate-fade-in">
+                                <p class="text-[10px] font-bold text-orange-500 uppercase mb-2 tracking-widest">Códigos de emergencia activos</p>
+                                <div id="emergency-codes-list" class="space-y-2 text-xs max-h-[200px] overflow-y-auto custom-scrollbar">
+                                    <p class="text-slate-500 text-center">Cargando...</p>
+                                </div>
+                            </div>
+
+                            <!-- Códigos de acceso generados por taller -->
+                            <div id="access-codes-panel" class="mt-4 w-full border-t border-[#324d67] pt-4">
+                                <p class="text-[10px] font-bold text-emerald-500 uppercase mb-2 tracking-widest">Códigos de acceso activos</p>
+                                <div id="access-codes-list" class="space-y-2 text-xs max-h-[150px] overflow-y-auto custom-scrollbar">
+                                    <p class="text-slate-500 text-center">Cargando...</p>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                </div>
 
+                </div>
             </div>
         </div>
         `;
@@ -102,8 +114,8 @@ export class ScannerView {
             }
         };
         
-        // Cargar códigos de emergencia activos
         this.loadEmergencyCodes();
+        this.loadAccessCodes();
     }
 
     async loadEmergencyCodes() {
@@ -138,6 +150,44 @@ export class ScannerView {
         }
     }
 
+    async loadAccessCodes() {
+        try {
+            const { data: trips } = await supabase
+                .from('trips')
+                .select('id, access_code, vehicles(economic_number, plate), driver:driver_id(full_name)')
+                .eq('status', 'driver_accepted')
+                .not('access_code', 'is', null);
+                
+            const list = document.getElementById('access-codes-list');
+            if (!list) return;
+            
+            if (!trips || trips.length === 0) {
+                list.innerHTML = '<p class="text-slate-500 text-xs">No hay códigos de acceso activos</p>';
+                return;
+            }
+            
+            list.innerHTML = trips.map(t => `
+                <div class="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-2 flex justify-between items-center">
+                    <div class="text-left">
+                        <span class="text-emerald-500 font-mono font-bold text-sm">${t.access_code}</span>
+                        <p class="text-[8px] text-[#92adc9]">ECO-${t.vehicles?.economic_number} · ${t.driver?.full_name || ''}</p>
+                    </div>
+                    <button onclick="window.scannerView.useAccessCode('${t.access_code}')" 
+                            class="text-[8px] bg-emerald-500/20 text-emerald-500 px-2 py-1 rounded-full hover:bg-emerald-500 hover:text-white transition-colors">
+                        Usar
+                    </button>
+                </div>
+            `).join('');
+        } catch (error) {
+            console.error('Error cargando códigos:', error);
+        }
+    }
+
+    useAccessCode(code) {
+        document.getElementById('scan-input').value = code;
+        this.handleStepOne(code);
+    }
+
     showEmergencyInfo() {
         const panel = document.getElementById('emergency-info-panel');
         panel.classList.toggle('hidden');
@@ -152,18 +202,28 @@ export class ScannerView {
         this.isProcessing = false;
         document.getElementById('step-1-blocker').classList.add('hidden');
         document.getElementById('result-area').innerHTML = `
-            <div class="size-28 rounded-full bg-[#111a22] border-4 border-[#233648] flex items-center justify-center mb-6 shadow-inner mx-auto">
-                <span class="material-symbols-outlined text-7xl text-slate-700">qr_code_scanner</span>
-            </div>
-            <h3 class="text-2xl font-black text-white mb-2 uppercase tracking-tighter">Escáner Activo</h3>
-            <p class="text-[#92adc9] text-sm max-w-xs mx-auto">Escanee el QR de la unidad para iniciar el proceso correspondiente.</p>
-            <div id="emergency-info-panel" class="hidden mt-6 w-full border-t border-[#324d67] pt-4 animate-fade-in">
-                <p class="text-[10px] font-bold text-orange-500 uppercase mb-2 tracking-widest">Códigos de emergencia activos</p>
-                <div id="emergency-codes-list" class="space-y-2 text-xs max-h-[200px] overflow-y-auto custom-scrollbar">
-                    <p class="text-slate-500 text-center">Cargando...</p>
+            <div class="w-full">
+                <div class="size-28 rounded-full bg-[#111a22] border-4 border-[#233648] flex items-center justify-center mb-6 shadow-inner mx-auto">
+                    <span class="material-symbols-outlined text-7xl text-slate-700">qr_code_scanner</span>
+                </div>
+                <h3 class="text-2xl font-black text-white mb-2 uppercase tracking-tighter">Escáner Activo</h3>
+                <p class="text-[#92adc9] text-sm max-w-xs mx-auto">Escanee el QR de la unidad para iniciar el proceso correspondiente.</p>
+                <div id="emergency-info-panel" class="hidden mt-6 w-full border-t border-[#324d67] pt-4 animate-fade-in">
+                    <p class="text-[10px] font-bold text-orange-500 uppercase mb-2 tracking-widest">Códigos de emergencia activos</p>
+                    <div id="emergency-codes-list" class="space-y-2 text-xs max-h-[200px] overflow-y-auto custom-scrollbar">
+                        <p class="text-slate-500 text-center">Cargando...</p>
+                    </div>
+                </div>
+                <div id="access-codes-panel" class="mt-4 w-full border-t border-[#324d67] pt-4">
+                    <p class="text-[10px] font-bold text-emerald-500 uppercase mb-2 tracking-widest">Códigos de acceso activos</p>
+                    <div id="access-codes-list" class="space-y-2 text-xs max-h-[150px] overflow-y-auto custom-scrollbar">
+                        <p class="text-slate-500 text-center">Cargando...</p>
+                    </div>
                 </div>
             </div>
         `;
+        this.loadAccessCodes();
+        this.loadEmergencyCodes();
         setTimeout(() => { this.isProcessing = false; }, 1000);
     }
 
@@ -171,38 +231,32 @@ export class ScannerView {
     async handleStepOne(rawCode) {
         const cleanCode = rawCode.trim();
 
-        // Si ya tenemos un viaje pendiente, ignorar
         if (this.pendingTrip) {
             this.isProcessing = false;
             return;
         }
 
         try {
-            // Validar si es UUID (ID de vehículo) o código de 6 dígitos
             const isUUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(cleanCode);
             
             if (!isUUID) {
-                // Podría ser código de acceso (6 dígitos) o código de emergencia
                 if (/^[A-Z0-9]{6}$/.test(cleanCode)) {
-                    // Es un código de 6 dígitos - verificar si es de acceso o emergencia
                     await this.handleCodeInput(cleanCode);
                     return;
                 }
                 throw new Error("Código no válido. Escanea el QR de la unidad o ingresa código de 6 dígitos.");
             }
 
-            // Buscar viaje activo para esta unidad
             const { data: trip, error } = await supabase
                 .from('trips')
                 .select('*, profiles:driver_id(*), vehicles:vehicle_id(*)')
                 .eq('vehicle_id', cleanCode)
-                .in('status', ['driver_accepted', 'in_progress', 'awaiting_return_checklist'])
+                .in('status', ['driver_accepted', 'in_progress', 'awaiting_return_checklist', 'incident_report'])
                 .maybeSingle();
 
             if (error) throw error;
             if (!trip) throw new Error("Esta unidad no tiene un viaje activo");
 
-            // Determinar el tipo de acción según el estado
             let action = null;
             let actionMessage = '';
 
@@ -219,11 +273,14 @@ export class ScannerView {
                     action = 'workshop_return';
                     actionMessage = 'Unidad lista para revisión final';
                     break;
+                case 'incident_report':
+                    action = 'incident';
+                    actionMessage = '⚠️ UNIDAD CON INCIDENCIA - No autorizada';
+                    break;
                 default:
-                    throw new Error(`Estado no válido para acceso: ${trip.status}`);
+                    throw new Error(`Estado no válido: ${trip.status}`);
             }
 
-            // ÉXITO PASO 1
             this.pendingTrip = trip;
             this.currentAction = action;
             
@@ -231,7 +288,12 @@ export class ScannerView {
             
             document.getElementById('step-1-blocker').classList.remove('hidden');
             document.getElementById('step-1-message').innerText = actionMessage;
-            this.renderStepTwoUI(trip, action);
+            
+            if (action === 'incident') {
+                this.renderIncidentMessage(trip);
+            } else {
+                this.renderStepTwoUI(trip, action);
+            }
 
         } catch (e) {
             this.renderError(e.message);
@@ -241,10 +303,8 @@ export class ScannerView {
         }
     }
 
-    // Manejar código de 6 dígitos (acceso o emergencia)
     async handleCodeInput(code) {
         try {
-            // Primero buscar como código de acceso
             let { data: trip, error } = await supabase
                 .from('trips')
                 .select('*, profiles:driver_id(*), vehicles:vehicle_id(*)')
@@ -253,7 +313,6 @@ export class ScannerView {
                 .maybeSingle();
 
             if (trip) {
-                // Es código de acceso para salida
                 this.pendingTrip = trip;
                 this.currentAction = 'exit';
                 
@@ -263,7 +322,6 @@ export class ScannerView {
                 return;
             }
 
-            // Si no, buscar como código de emergencia
             const { data: emergencyTrip } = await supabase
                 .from('trips')
                 .select('*, profiles:driver_id(*), vehicles:vehicle_id(*)')
@@ -289,14 +347,41 @@ export class ScannerView {
         }
     }
 
-    // PASO 2: SOLICITAR DATOS ADICIONALES
+    renderIncidentMessage(trip) {
+        const area = document.getElementById('result-area');
+        
+        area.innerHTML = `
+            <div class="w-full animate-fade-in">
+                <div class="bg-red-500/10 border border-red-500/30 rounded-2xl p-6 mb-6">
+                    <span class="material-symbols-outlined text-5xl text-red-500 mb-4">warning</span>
+                    <h2 class="text-2xl font-black text-red-500 mb-2">UNIDAD CON INCIDENCIA</h2>
+                    <p class="text-white text-sm mb-4">Esta unidad tiene una incidencia reportada y no puede circular hasta que sea resuelta.</p>
+                    
+                    <div class="bg-[#111a22] p-4 rounded-xl text-left mb-4">
+                        <p class="text-[10px] text-[#92adc9] uppercase mb-1">Detalles de la incidencia</p>
+                        <p class="text-white text-sm">${trip.incident_description || trip.incident_notes || 'No especificada'}</p>
+                    </div>
+
+                    <div class="bg-[#111a22] p-4 rounded-xl text-left">
+                        <p class="text-[10px] text-[#92adc9] uppercase mb-1">Unidad</p>
+                        <p class="text-white font-bold">ECO-${trip.vehicles?.economic_number} · ${trip.vehicles?.plate}</p>
+                        <p class="text-[10px] text-[#92adc9] mt-2">Conductor: ${trip.profiles?.full_name}</p>
+                    </div>
+                </div>
+                
+                <button onclick="window.scannerView.resetScan()" class="w-full py-4 rounded-2xl font-black text-lg bg-[#233648] text-white border border-[#324d67] hover:bg-[#2d445a] transition-colors">
+                    ESCANEAR OTRA UNIDAD
+                </button>
+            </div>
+        `;
+    }
+
     renderStepTwoUI(trip, action) {
         const area = document.getElementById('result-area');
         
         if (action === 'exit') {
-            // Para salida, pedir código de acceso (aunque ya lo tenga, lo pedimos por seguridad)
             area.innerHTML = `
-                <div class="w-full h-full flex flex-col animate-fade-in-up">
+                <div class="w-full animate-fade-in-up">
                     <div class="bg-primary/10 border border-primary/30 rounded-2xl p-4 mb-4 shadow-inner text-left">
                         <div class="flex justify-between items-start">
                             <div>
@@ -313,7 +398,7 @@ export class ScannerView {
                         </div>
                     </div>
 
-                    <div class="flex-1 flex flex-col items-center justify-center">
+                    <div class="flex flex-col items-center justify-center py-4">
                         <span class="material-symbols-outlined text-6xl text-[#92adc9] mb-4">password</span>
                         <h3 class="text-xl font-black text-white mb-2 uppercase">Ingrese Código de Acceso</h3>
                         <p class="text-[#92adc9] text-xs mb-6 text-center">Verificar código proporcionado por el conductor</p>
@@ -340,9 +425,8 @@ export class ScannerView {
             };
             
         } else if (action === 'entry') {
-            // Para entrada, pedir kilometraje
             area.innerHTML = `
-                <div class="w-full h-full flex flex-col animate-fade-in-up">
+                <div class="w-full animate-fade-in-up">
                     <div class="bg-primary/10 border border-primary/30 rounded-2xl p-4 mb-4 shadow-inner text-left">
                         <div class="flex justify-between items-start">
                             <div>
@@ -359,7 +443,7 @@ export class ScannerView {
                         </div>
                     </div>
 
-                    <div class="flex-1 flex flex-col items-center justify-center">
+                    <div class="flex flex-col items-center justify-center py-4">
                         <span class="material-symbols-outlined text-6xl text-[#92adc9] mb-4">speed</span>
                         <h3 class="text-xl font-black text-white mb-2 uppercase">Kilometraje de Retorno</h3>
                         <p class="text-[#92adc9] text-xs mb-6 text-center">Ingrese el kilometraje actual del vehículo</p>
@@ -387,12 +471,11 @@ export class ScannerView {
         }
     }
 
-    // Confirmación para código de emergencia
     renderEmergencyConfirmation(trip) {
         const area = document.getElementById('result-area');
         
         area.innerHTML = `
-            <div class="w-full h-full flex flex-col animate-fade-in">
+            <div class="w-full animate-fade-in">
                 <div class="flex items-center justify-between mb-6">
                     <div class="text-left">
                         <span class="bg-orange-500/20 text-orange-400 text-[10px] px-2 py-1 rounded font-black uppercase tracking-widest">ACCESO DE EMERGENCIA</span>
@@ -401,7 +484,7 @@ export class ScannerView {
                     <span class="material-symbols-outlined text-5xl text-orange-400">emergency</span>
                 </div>
 
-                <div class="bg-[#111a22] border-2 border-orange-500/50 rounded-3xl p-6 shadow-2xl relative overflow-hidden">
+                <div class="bg-[#111a22] border-2 border-orange-500/50 rounded-3xl p-6 shadow-2xl relative overflow-hidden mb-6">
                     <div class="flex items-center gap-6 relative z-10">
                         <div class="size-20 rounded-2xl bg-slate-700 bg-cover bg-center border-2 border-white/20 shadow-lg" style="background-image: url('${trip.profiles?.photo_url || ''}')"></div>
                         <div class="text-left flex-1">
@@ -409,17 +492,19 @@ export class ScannerView {
                             <h3 class="text-white text-lg font-bold">${trip.profiles?.full_name || 'Desconocido'}</h3>
                             <p class="text-orange-400 font-mono text-xs mt-1 flex items-center gap-1">
                                 <span class="material-symbols-outlined text-[12px]">schedule</span> 
-                                Código expira: ${new Date(trip.emergency_expiry).toLocaleTimeString()}
+                                Expira: ${new Date(trip.emergency_expiry).toLocaleTimeString()}
                             </p>
                         </div>
                     </div>
                 </div>
 
-                <div class="mt-auto pt-8">
-                    <button id="btn-gate-action" class="w-full py-6 rounded-2xl font-black text-xl bg-orange-600 text-white shadow-[0_0_30px_rgba(249,115,22,0.3)] hover:scale-[1.02] active:scale-95 transition-all uppercase tracking-widest">
-                        ABRIR BARRERA (EMERGENCIA)
-                    </button>
-                </div>
+                <button id="btn-gate-action" class="w-full py-6 rounded-2xl font-black text-xl bg-orange-600 text-white shadow-[0_0_30px_rgba(249,115,22,0.3)] hover:scale-[1.02] active:scale-95 transition-all uppercase tracking-widest mb-4">
+                    ABRIR BARRERA (EMERGENCIA)
+                </button>
+                
+                <button onclick="window.scannerView.resetScan()" class="w-full py-3 rounded-xl font-black text-sm bg-[#233648] text-white border border-[#324d67] hover:bg-[#2d445a] transition-colors">
+                    CANCELAR
+                </button>
             </div>
         `;
 
@@ -431,7 +516,7 @@ export class ScannerView {
         const isExit = action === 'exit';
         
         area.innerHTML = `
-            <div class="w-full h-full flex flex-col animate-fade-in">
+            <div class="w-full animate-fade-in">
                 <div class="flex items-center justify-between mb-6">
                     <div class="text-left">
                         <span class="bg-emerald-500/20 text-emerald-400 text-[10px] px-2 py-1 rounded font-black uppercase tracking-widest">Coincidencia Exacta</span>
@@ -440,7 +525,7 @@ export class ScannerView {
                     <span class="material-symbols-outlined text-5xl text-emerald-400">gpp_good</span>
                 </div>
 
-                <div class="bg-[#111a22] border-2 border-emerald-500/50 rounded-3xl p-6 shadow-2xl relative overflow-hidden">
+                <div class="bg-[#111a22] border-2 border-emerald-500/50 rounded-3xl p-6 shadow-2xl relative overflow-hidden mb-6">
                     <div class="flex items-center gap-6 relative z-10">
                         <div class="size-20 rounded-2xl bg-slate-700 bg-cover bg-center border-2 border-white/20 shadow-lg" style="background-image: url('${trip.profiles?.photo_url || ''}')"></div>
                         <div class="text-left flex-1">
@@ -453,11 +538,13 @@ export class ScannerView {
                     </div>
                 </div>
 
-                <div class="mt-auto pt-8">
-                    <button id="btn-gate-action" class="w-full py-6 rounded-2xl font-black text-xl bg-emerald-600 text-white shadow-[0_0_30px_rgba(16,185,129,0.3)] hover:scale-[1.02] active:scale-95 transition-all uppercase tracking-widest">
-                        ${isExit ? 'ABRIR BARRERA (SALIDA)' : 'ABRIR BARRERA (ENTRADA)'}
-                    </button>
-                </div>
+                <button id="btn-gate-action" class="w-full py-6 rounded-2xl font-black text-xl bg-emerald-600 text-white shadow-[0_0_30px_rgba(16,185,129,0.3)] hover:scale-[1.02] active:scale-95 transition-all uppercase tracking-widest mb-4">
+                    ${isExit ? 'ABRIR BARRERA (SALIDA)' : 'ABRIR BARRERA (ENTRADA)'}
+                </button>
+                
+                <button onclick="window.scannerView.resetScan()" class="w-full py-3 rounded-xl font-black text-sm bg-[#233648] text-white border border-[#324d67] hover:bg-[#2d445a] transition-colors">
+                    ESCANEAR OTRA UNIDAD
+                </button>
             </div>
         `;
 
@@ -465,7 +552,6 @@ export class ScannerView {
             if (isExit) {
                 this.registerExit(trip);
             } else {
-                // Para entrada, ya registramos antes
                 alert('Barrera abierta');
                 this.resetScan();
             }
@@ -526,10 +612,13 @@ export class ScannerView {
                     </div>
                     <h2 class="text-3xl font-black text-white uppercase tracking-tighter">¡SALIDA REGISTRADA!</h2>
                     <p class="text-emerald-400 font-bold uppercase tracking-widest mt-2">Viaje iniciado correctamente</p>
+                    <button onclick="window.scannerView.resetScan()" class="mt-4 px-6 py-2 bg-[#233648] text-white rounded-lg text-sm">
+                        Escanear otra unidad
+                    </button>
                 </div>
             `;
             this.loadEmergencyCodes();
-            setTimeout(() => { this.resetScan(); }, 3000);
+            this.loadAccessCodes();
         }
     }
 
@@ -559,6 +648,7 @@ export class ScannerView {
         } else {
             this.renderFinalConfirmation(trip, 'entry');
             this.loadEmergencyCodes();
+            this.loadAccessCodes();
         }
     }
 }
