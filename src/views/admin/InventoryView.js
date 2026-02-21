@@ -10,6 +10,7 @@ export class InventoryView {
         this.vehicleLogs = [];
         this.vehicleTrips = [];
         this.vehicleDocuments = [];
+        this.vehicleInspectionsPhotos = []; // NUEVO: Para guardar las fotos de los viajes
         this.selectedVehicle = null;
         this.pendingStockDeduction = [];
         this.realtimeChannel = null; 
@@ -200,13 +201,10 @@ export class InventoryView {
         }
     }
 
-    // --- CARGA DE DATOS (CORREGIDA PARA EVITAR ERROR .catch) ---
     async loadAllData() {
         if (!supabase) return;
 
         try {
-            // El truco está en usar .then(r => r.error ? {data: []} : r) en lugar de .catch()
-            // porque Supabase no devuelve una Promesa con .catch en su constructor de consultas.
             const [vehRes, drvRes, insRes, invRes, srvRes, docRes] = await Promise.all([
                 supabase.from('vehicles').select('*').order('economic_number'),
                 supabase.from('profiles').select('*').eq('role', 'driver'),
@@ -244,7 +242,6 @@ export class InventoryView {
         }
     }
 
-    // --- NAVEGACIÓN PRINCIPAL ---
     switchMainTab(tab) {
         document.getElementById('main-view-vehicles').classList.add('hidden');
         document.getElementById('main-view-drivers').classList.add('hidden');
@@ -258,7 +255,6 @@ export class InventoryView {
         document.getElementById(`main-tab-${tab}`).className = "px-6 py-3 text-primary border-b-2 border-primary font-bold text-sm transition-colors";
     }
 
-    // --- RENDERIZADOS PRINCIPALES ---
     renderVehiclesGrid() {
         const grid = document.getElementById('grid-vehicles');
         if(this.vehicles.length === 0) {
@@ -401,7 +397,6 @@ export class InventoryView {
         }).join('');
     }
 
-    // --- ALTA DE UNIDAD ---
     openVehicleRegister() {
         const modal = document.getElementById('global-modal');
         const content = document.getElementById('global-modal-content');
@@ -634,8 +629,7 @@ export class InventoryView {
             const { data: newVeh, error } = await supabase.from('vehicles').insert([data]).select();
             if (error) throw error;
             
-            // Try insert log, no catch builder
-            const { error: logErr } = await supabase.from('vehicle_logs').insert([{
+            await supabase.from('vehicle_logs').insert([{
                 vehicle_id: newVeh[0].id,
                 date: new Date().toISOString().split('T')[0],
                 odometer: initialKm,
@@ -644,9 +638,7 @@ export class InventoryView {
                 total_cost: 0,
                 quantity: 1,
                 notes: `Vehículo registrado: ${data.brand} ${data.model} ${data.year}, Placas: ${data.plate}, ECO: ${data.economic_number}`
-            }]);
-            
-            if(logErr) console.warn('No se pudo guardar el log inicial', logErr);
+            }]).catch(e => console.warn('No se pudo guardar el log inicial', e));
             
             document.getElementById('global-modal').classList.add('hidden');
             alert("✅ Unidad registrada exitosamente y lista para operar.");
@@ -658,21 +650,22 @@ export class InventoryView {
         }
     }
 
-    // --- DETALLE DEL VEHÍCULO (ACTUALIZABLE EN VIVO) ---
     async openVehicleDetail(id) {
         this.selectedVehicle = this.vehicles.find(v => v.id === id);
         if(!this.selectedVehicle) return;
 
-        // Se usa .then() en lugar de .catch() para evitar el TypeError del Query Builder
-        const [logsRes, tripsRes, docsRes] = await Promise.all([
+        // Se añadió la consulta para obtener las fotos de las inspecciones de los viajes de esta unidad
+        const [logsRes, tripsRes, docsRes, inspectionsPhotosRes] = await Promise.all([
             supabase.from('vehicle_logs').select('*').eq('vehicle_id', id).order('date', {ascending: false}).then(r => r.error ? {data:[]} : r),
             supabase.from('vehicle_trips').select('*').eq('vehicle_id', id).order('start_date', {ascending: false}).then(r => r.error ? {data:[]} : r),
-            supabase.from('vehicle_documents').select('*').eq('vehicle_id', id).order('uploaded_at', {ascending: false}).then(r => r.error ? {data:[]} : r)
+            supabase.from('vehicle_documents').select('*').eq('vehicle_id', id).order('uploaded_at', {ascending: false}).then(r => r.error ? {data:[]} : r),
+            supabase.from('trips').select('id, created_at, workshop_reception_photos, workshop_return_photos, profiles:driver_id(full_name)').eq('vehicle_id', id).order('created_at', {ascending: false}).then(r => r.error ? {data:[]} : r)
         ]);
         
         this.vehicleLogs = logsRes?.data || [];
         this.vehicleTrips = tripsRes?.data || [];
         this.vehicleDocuments = docsRes?.data || [];
+        this.vehicleInspectionsPhotos = inspectionsPhotosRes?.data || [];
         
         const totalTripKm = this.vehicleTrips.reduce((sum, trip) => sum + Number(trip.distance_km || 0), 0);
         const currentKm = Number(this.selectedVehicle.initial_km || 0) + totalTripKm;
@@ -731,18 +724,21 @@ export class InventoryView {
                 </div>
             </div>
 
-            <div class="flex border-b border-[#324d67] bg-[#111a22] px-6 shrink-0">
-                <button onclick="window.invModule.switchVehicleTab(1)" id="veh-tab-1" class="py-4 px-6 text-sm font-bold border-b-2 border-primary text-primary transition-colors flex items-center gap-2">
+            <div class="flex border-b border-[#324d67] bg-[#111a22] px-6 shrink-0 overflow-x-auto custom-scrollbar">
+                <button onclick="window.invModule.switchVehicleTab(1)" id="veh-tab-1" class="py-4 px-6 text-sm font-bold border-b-2 border-primary text-primary transition-colors flex items-center gap-2 whitespace-nowrap">
                     <span class="material-symbols-outlined text-[18px]">info</span> Expediente Principal
                 </button>
-                <button onclick="window.invModule.switchVehicleTab(2)" id="veh-tab-2" class="py-4 px-6 text-sm font-bold border-b-2 border-transparent text-[#92adc9] hover:text-white transition-colors flex items-center gap-2">
+                <button onclick="window.invModule.switchVehicleTab(2)" id="veh-tab-2" class="py-4 px-6 text-sm font-bold border-b-2 border-transparent text-[#92adc9] hover:text-white transition-colors flex items-center gap-2 whitespace-nowrap">
                     <span class="material-symbols-outlined text-[18px]">engineering</span> Datos Técnicos
                 </button>
-                <button onclick="window.invModule.switchVehicleTab(3)" id="veh-tab-3" class="py-4 px-6 text-sm font-bold border-b-2 border-transparent text-[#92adc9] hover:text-white transition-colors flex items-center gap-2">
+                <button onclick="window.invModule.switchVehicleTab(3)" id="veh-tab-3" class="py-4 px-6 text-sm font-bold border-b-2 border-transparent text-[#92adc9] hover:text-white transition-colors flex items-center gap-2 whitespace-nowrap">
                     <span class="material-symbols-outlined text-[18px]">history</span> Bitácora y Servicios
                 </button>
-                <div class="ml-auto flex items-center py-2">
-                    <button onclick="window.invModule.openLogRegister('${this.selectedVehicle.id}')" class="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg font-bold text-xs flex items-center gap-2 shadow-lg shadow-green-900/20 transition-transform hover:scale-105">
+                <button onclick="window.invModule.switchVehicleTab(4)" id="veh-tab-4" class="py-4 px-6 text-sm font-bold border-b-2 border-transparent text-[#92adc9] hover:text-white transition-colors flex items-center gap-2 whitespace-nowrap">
+                    <span class="material-symbols-outlined text-[18px]">photo_library</span> Galería de Inspecciones
+                </button>
+                <div class="ml-auto flex items-center py-2 pl-4">
+                    <button onclick="window.invModule.openLogRegister('${this.selectedVehicle.id}')" class="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg font-bold text-xs flex items-center gap-2 shadow-lg shadow-green-900/20 transition-transform hover:scale-105 whitespace-nowrap">
                         <span class="material-symbols-outlined text-[16px]">build</span> Registrar Servicio
                     </button>
                 </div>
@@ -920,19 +916,92 @@ export class InventoryView {
                     </div>
                 </div>
 
+                <div id="veh-tab-content-4" class="hidden h-full overflow-y-auto p-6 custom-scrollbar">
+                    <h3 class="font-bold text-white mb-6 flex items-center gap-2 border-b border-[#324d67] pb-2 uppercase tracking-widest text-xs">
+                        <span class="material-symbols-outlined text-orange-500">photo_library</span> Historial Fotográfico de Inspecciones
+                    </h3>
+                    <div class="space-y-6">
+                        ${this.renderVehiclePhotosGallery()}
+                    </div>
+                </div>
+
             </div>
         `;
     }
 
     switchVehicleTab(num) {
-        for(let i=1; i<=3; i++) {
+        for(let i=1; i<=4; i++) { // Cambiado a 4 para incluir la nueva pestaña
             const btn = document.getElementById(`veh-tab-${i}`);
             const content = document.getElementById(`veh-tab-content-${i}`);
-            if(btn) btn.className = "py-4 px-6 text-sm font-bold border-b-2 border-transparent text-[#92adc9] hover:text-white transition-colors flex items-center gap-2";
+            if(btn) btn.className = "py-4 px-6 text-sm font-bold border-b-2 border-transparent text-[#92adc9] hover:text-white transition-colors flex items-center gap-2 whitespace-nowrap";
             if(content) content.classList.replace('block', 'hidden');
         }
-        document.getElementById(`veh-tab-${num}`).className = "py-4 px-6 text-sm font-bold border-b-2 border-primary text-primary transition-colors flex items-center gap-2 bg-primary/10";
+        document.getElementById(`veh-tab-${num}`).className = "py-4 px-6 text-sm font-bold border-b-2 border-primary text-primary transition-colors flex items-center gap-2 bg-primary/10 whitespace-nowrap";
         document.getElementById(`veh-tab-content-${num}`).classList.replace('hidden', 'block');
+    }
+
+    // --- NUEVO: GALERÍA DE FOTOS DE VIAJES ---
+    renderVehiclePhotosGallery() {
+        if (!this.vehicleInspectionsPhotos || this.vehicleInspectionsPhotos.length === 0) {
+            return `<div class="text-center py-10 text-slate-500"><span class="material-symbols-outlined text-4xl mb-2 opacity-50">no_photography</span><p>No hay fotos de viajes registradas para esta unidad.</p></div>`;
+        }
+
+        let html = '';
+        let foundPhotos = false;
+
+        this.vehicleInspectionsPhotos.forEach(trip => {
+            const hasReception = trip.workshop_reception_photos && trip.workshop_reception_photos.length > 0;
+            const hasReturn = trip.workshop_return_photos && trip.workshop_return_photos.length > 0;
+            
+            if (hasReception || hasReturn) {
+                foundPhotos = true;
+                const dateStr = new Date(trip.created_at).toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).toUpperCase();
+                const driverName = trip.profiles?.full_name || 'Desconocido';
+
+                html += `
+                <div class="bg-[#111a22] border border-[#324d67] rounded-xl p-5 shadow-lg">
+                    <div class="flex justify-between items-center mb-4 border-b border-[#233648] pb-2">
+                        <span class="text-white font-bold text-sm flex items-center gap-2"><span class="material-symbols-outlined text-primary text-sm">calendar_month</span> ${dateStr}</span>
+                        <span class="text-xs text-[#92adc9] bg-[#1c2127] px-3 py-1 rounded-full border border-[#324d67]">Conductor: <span class="text-white font-bold">${driverName}</span></span>
+                    </div>
+                    
+                    ${hasReception ? `
+                    <div class="mb-4">
+                        <p class="text-[10px] text-orange-400 font-bold uppercase tracking-widest mb-3 flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">logout</span> Evidencia de Salida (Guardia/Taller)</p>
+                        <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                            ${trip.workshop_reception_photos.map(p => `
+                                <div class="relative group cursor-pointer aspect-square rounded-lg overflow-hidden border border-[#324d67]" onclick="window.invModule.viewPhoto('${p.url}')">
+                                    <img src="${p.url}" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300">
+                                    <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                        <span class="material-symbols-outlined text-white text-sm">zoom_in</span>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                    ` : ''}
+
+                    ${hasReturn ? `
+                    <div>
+                        <p class="text-[10px] text-purple-400 font-bold uppercase tracking-widest mb-3 flex items-center gap-1 mt-4 border-t border-[#233648] pt-4"><span class="material-symbols-outlined text-[14px]">login</span> Evidencia de Entrada (Retorno)</p>
+                        <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                            ${trip.workshop_return_photos.map(p => `
+                                <div class="relative group cursor-pointer aspect-square rounded-lg overflow-hidden border border-[#324d67]" onclick="window.invModule.viewPhoto('${p.url}')">
+                                    <img src="${p.url}" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300">
+                                    <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                        <span class="material-symbols-outlined text-white text-sm">zoom_in</span>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                    ` : ''}
+                </div>
+                `;
+            }
+        });
+
+        return foundPhotos ? html : `<div class="text-center py-10 text-slate-500"><span class="material-symbols-outlined text-4xl mb-2 opacity-50">no_photography</span><p>No hay fotos de viajes registradas para esta unidad.</p></div>`;
     }
 
     // --- ALERTS & HELPERS ---
@@ -999,29 +1068,25 @@ export class InventoryView {
         return 'transparent';
     }
 
-    // --- MÉTODOS FALTANTES AÑADIDOS PARA EVITAR ERRORES DE CONSOLA ---
-    
+    // --- MÉTODOS AÑADIDOS PARA EVITAR ERRORES DE CONSOLA ---
     openDocumentUpload(vehicleId) {
-        alert("El módulo para subir documentos (PDF/JPG) al expediente digital se activará en la siguiente fase.");
+        alert("Módulo de subida de PDF en desarrollo.");
     }
 
     openVehicleEdit(vehicleId) {
-        alert("El editor completo de la ficha técnica se abrirá aquí próximamente.");
+        alert("El editor de perfil del vehículo se abrirá aquí próximamente.");
     }
 
     async saveDriver() {
         const name = document.getElementById('new-driver-name').value;
         const email = document.getElementById('new-driver-email').value;
-        const lic = document.getElementById('new-driver-lic').value;
-
-        if (!name || !email) return alert("El nombre y el correo electrónico son obligatorios.");
-
-        alert("Por seguridad, los conductores deben darse de alta en el Panel de Autenticación de Supabase primero para crearles su contraseña.");
+        if (!name || !email) return alert("Nombre y correo electrónico obligatorios.");
+        alert("Los conductores deben crearse en el panel de Autenticación de Supabase.");
         document.getElementById('modal-add-driver').classList.add('hidden');
     }
 
     viewDocuments(docType, vehicleId) {
-        alert("Abriendo el visor de documentos para: " + docType);
+        alert("Visor de documentos en desarrollo para: " + docType);
     }
 
     // --- REGISTRO DE SERVICIOS EN BITÁCORA ---
@@ -1194,7 +1259,6 @@ export class InventoryView {
             const { error } = await supabase.from('vehicle_logs').insert([logData]);
             if (error) throw error;
 
-            // Descuento automático de inventario
             for(let item of this.pendingStockDeduction) {
                 const currentItem = this.inventory.find(i => i.id === item.id);
                 if(currentItem) await supabase.from('inventory_items').update({ stock: currentItem.stock - item.qty }).eq('id', item.id);
@@ -1317,14 +1381,12 @@ export class InventoryView {
         if(!dist || !dest || dist <= 0) return alert("Ingresa una distancia válida y un destino/motivo.");
 
         try {
-            const { error: tripError } = await supabase.from('vehicle_trips').insert([{
+            await supabase.from('vehicle_trips').insert([{
                 vehicle_id: vehicleId,
                 distance_km: dist,
                 destination: dest,
                 start_date: new Date().toISOString()
-            }]);
-            
-            if (tripError) console.warn('Error guardando trip', tripError);
+            }]).catch(e => console.warn('Error guardando trip', e));
 
             const currentKm = Number(this.selectedVehicle.current_km) + dist;
             await supabase.from('vehicles').update({ current_km: currentKm }).eq('id', vehicleId);
