@@ -51,7 +51,7 @@ export class DriverView {
         
         window.conductorModule = this;
         
-        // Recuperador de segundo plano
+        // Recuperador de segundo plano: Si el usuario minimizó la app y vuelve, forzar sync
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible' && this.currentTrip?.status === 'in_progress') {
                 this.requestWakeLock();
@@ -600,7 +600,6 @@ export class DriverView {
                 this.addStopFromMap(e.latlng.lat, e.latlng.lng);
             });
             
-            // Auto-cargar destino si no hay ruta planeada aún (Ignorar 0,0)
             if (this.currentTrip?.request_details?.route_plan) {
                 this.routeStops = this.currentTrip.request_details.route_plan;
                 this.isReturning = this.currentTrip.request_details.is_returning || false;
@@ -608,7 +607,6 @@ export class DriverView {
                 const destLat = this.currentTrip.request_details.destination_coords.lat;
                 const destLon = this.currentTrip.request_details.destination_coords.lon;
                 
-                // Evitar punto en "Isla Nula"
                 if (destLat !== 0 && destLon !== 0) {
                     const destName = this.currentTrip.destination || 'Destino Inicial';
                     this.routeStops = [{
@@ -834,7 +832,7 @@ export class DriverView {
                 .from('trips')
                 .select(`created_at, completed_at, destination, exit_km, entry_km, vehicles:vehicle_id(plate, economic_number)`)
                 .eq('driver_id', this.userId)
-                .in('status', ['completed', 'closed']) // Filtro estricto
+                .in('status', ['completed', 'closed'])
                 .order('completed_at', { ascending: false })
                 .limit(1)
                 .maybeSingle();
@@ -1440,7 +1438,6 @@ export class DriverView {
     async loadDashboardState() {
         if (!this.userId) return;
         try {
-            // ✅ CORRECCIÓN: Solo buscar viajes con estados realmente activos
             const { data: trips, error } = await supabase
                 .from('trips')
                 .select(`*, vehicles(*)`)
@@ -1457,17 +1454,13 @@ export class DriverView {
                 await this.updateUIByStatus(trip);
             }
             
-            // Si no hay viaje activo, cargamos las unidades disponibles
             if (!trip) {
                 await this.loadAvailableUnits();
             }
-        } catch (error) { 
-            console.error('Error cargando estado:', error); 
-        }
+        } catch (error) { console.error('Error cargando estado:', error); }
     }
 
     async updateUIByStatus(trip) {
-        // ✅ CORRECCIÓN: Eliminamos 'completed' de esta lista para que caiga en el "else" (Disponible)
         const statusMap = { 
             'requested': { text: 'Solicitud enviada', color: 'bg-yellow-500', tab: 'unidad' }, 
             'approved_for_taller': { text: 'Dirígete a taller', color: 'bg-orange-500', tab: 'taller-inicial' }, 
@@ -1481,7 +1474,6 @@ export class DriverView {
         const unitsContent = document.getElementById('unidad-content');
 
         if (trip && statusMap[trip.status]) {
-            // ✅ ESTADO: EN VIAJE
             const status = statusMap[trip.status];
             document.getElementById('profile-status').innerText = status.text;
             const badge = document.getElementById('trip-status-badge');
@@ -1490,12 +1482,9 @@ export class DriverView {
                 badge.className = `px-3 py-1 rounded-full text-[10px] font-bold uppercase ${status.color} text-white`; 
             }
             
-            const plateEl = document.getElementById('current-vehicle-plate');
-            const modelEl = document.getElementById('current-vehicle-model');
-            if (plateEl) plateEl.innerText = trip.vehicles?.plate || '--';
-            if (modelEl) modelEl.innerText = `${trip.vehicles?.model || ''} ECO-${trip.vehicles?.economic_number || ''}`;
+            document.getElementById('current-vehicle-plate').innerText = trip.vehicles?.plate || '--';
+            document.getElementById('current-vehicle-model').innerText = `${trip.vehicles?.model || ''} ECO-${trip.vehicles?.economic_number || ''}`;
             
-            // Mostrar la info del viaje y ocultar las unidades disponibles para no saturar
             document.getElementById('current-trip-info')?.classList.remove('hidden');
             if (titleUnits) titleUnits.classList.add('hidden');
             if (unitsContent) unitsContent.classList.add('hidden');
@@ -1506,14 +1495,12 @@ export class DriverView {
             this.updateSpecificComponents(trip);
             
         } else {
-            // ✅ ESTADO: DISPONIBLE (Viaje terminado)
             document.getElementById('current-trip-info')?.classList.add('hidden');
             document.getElementById('profile-status').innerText = "Disponible";
             this.stopTracking();
             
-            // Volver a mostrar el título y cargar la lista de unidades
             if (titleUnits) titleUnits.classList.remove('hidden');
-            this.loadAvailableUnits();
+            await this.loadAvailableUnits();
         }
     }
 
