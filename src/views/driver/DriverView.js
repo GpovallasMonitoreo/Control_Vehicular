@@ -11,7 +11,8 @@ export class DriverView {
         this.backgroundSyncInterval = null;
         this.pendingLocations = [];
         this.unsubscribeRealtime = null;
-        this.selectedVehicleForRequest = null; // Para recordar qué unidad seleccionó
+        this.selectedVehicleForRequest = null;
+        this.signaturePad = null;
         
         // Sistema de logística completo
         this.tripLogistics = {
@@ -86,14 +87,14 @@ export class DriverView {
 
                 <main class="flex-1 overflow-y-auto custom-scrollbar relative pb-24">
                     
-                    <!-- PESTAÑA UNIDAD - Selección de unidad -->
+                    <!-- ========== PESTAÑA UNIDAD - LISTA DE UNIDADES DISPONIBLES ========== -->
                     <section id="tab-unidad" class="tab-content block p-5 space-y-4">
-                        <h3 class="text-white text-xs font-bold uppercase tracking-widest opacity-70">Selección de Unidad</h3>
+                        <h3 class="text-white text-xs font-bold uppercase tracking-widest opacity-70">Unidades Disponibles</h3>
                         
-                        <!-- Si no hay viaje activo, mostrar selector de unidades -->
+                        <!-- Si NO hay viaje activo, mostrar selector de unidades -->
                         <div id="unidad-content" class="space-y-3"></div>
                         
-                        <!-- Si hay viaje en progreso, mostrar info de la unidad actual -->
+                        <!-- Si HAY viaje activo, mostrar info de la unidad actual -->
                         <div id="current-trip-info" class="hidden">
                             <div class="bg-primary/10 border border-primary/30 p-5 rounded-2xl text-center">
                                 <p class="text-[10px] font-bold text-primary uppercase tracking-widest mb-2">Unidad Actual</p>
@@ -106,74 +107,87 @@ export class DriverView {
                         </div>
                     </section>
 
-                    <!-- PESTAÑA FORMULARIO - Formulario para solicitar unidad -->
+                    <!-- ========== PESTAÑA FORMULARIO - FORMULARIO DE SOLICITUD ========== -->
                     <section id="tab-formulario" class="tab-content hidden p-5 space-y-4">
                         <div class="bg-[#192633] border border-[#233648] rounded-2xl p-5 shadow-xl">
                             <h3 class="text-white font-bold mb-4 flex items-center gap-2 border-b border-[#233648] pb-3">
-                                <span class="material-symbols-outlined text-primary">assignment</span> Solicitar Unidad
+                                <span class="material-symbols-outlined text-primary">assignment</span> Formulario de Solicitud
                             </h3>
                             
                             <div id="solicitud-form" class="space-y-4">
-                                <!-- Unidad seleccionada (solo lectura) -->
-                                <div>
-                                    <label class="block text-xs font-bold text-[#92adc9] uppercase mb-2">Unidad seleccionada</label>
-                                    <div id="selected-vehicle-display" class="w-full bg-[#111a22] border border-[#233648] text-white p-3 rounded-xl">
-                                        Cargando...
+                                <!-- Mensaje si no hay unidad seleccionada -->
+                                <div id="no-vehicle-selected-msg" class="bg-yellow-500/10 border border-yellow-500/30 p-4 rounded-xl text-center">
+                                    <span class="material-symbols-outlined text-3xl text-yellow-500 mb-2">info</span>
+                                    <p class="text-white text-sm">Primero selecciona una unidad en la pestaña "Unidad"</p>
+                                    <button onclick="window.conductorModule.switchTab('unidad')" 
+                                            class="mt-3 px-4 py-2 bg-primary text-white text-xs font-bold rounded-lg">
+                                        IR A UNIDADES
+                                    </button>
+                                </div>
+                                
+                                <!-- Contenido del formulario (se muestra cuando hay unidad seleccionada) -->
+                                <div id="form-content" class="hidden space-y-4">
+                                    <!-- Unidad seleccionada (solo lectura) -->
+                                    <div>
+                                        <label class="block text-xs font-bold text-[#92adc9] uppercase mb-2">Unidad seleccionada</label>
+                                        <div id="selected-vehicle-display" class="w-full bg-[#111a22] border border-[#233648] text-white p-3 rounded-xl font-bold">
+                                            Cargando...
+                                        </div>
                                     </div>
-                                </div>
-                                
-                                <!-- Ubicación/Destino del viaje - con GPS -->
-                                <div>
-                                    <label class="block text-xs font-bold text-[#92adc9] uppercase mb-2">📍 Ubicación de destino</label>
-                                    <div class="relative">
-                                        <input type="text" id="solicitud-destino" class="w-full bg-[#111a22] border border-[#233648] text-white p-3 rounded-xl pr-12" 
-                                               placeholder="Ej: Zona industrial, Centro, etc.">
-                                        <button onclick="window.conductorModule.getCurrentLocationForDestination()" 
-                                                class="absolute right-2 top-1/2 -translate-y-1/2 bg-primary/20 text-primary p-2 rounded-lg">
-                                            <span class="material-symbols-outlined text-sm">my_location</span>
-                                        </button>
+                                    
+                                    <!-- Ubicación/Destino del viaje - con GPS -->
+                                    <div>
+                                        <label class="block text-xs font-bold text-[#92adc9] uppercase mb-2">📍 Ubicación de destino</label>
+                                        <div class="relative">
+                                            <input type="text" id="solicitud-destino" class="w-full bg-[#111a22] border border-[#233648] text-white p-3 rounded-xl pr-12" 
+                                                   placeholder="Ej: Zona industrial, Centro, etc.">
+                                            <button onclick="window.conductorModule.getCurrentLocationForDestination()" 
+                                                    class="absolute right-2 top-1/2 -translate-y-1/2 bg-primary/20 text-primary p-2 rounded-lg hover:bg-primary/40 transition-colors">
+                                                <span class="material-symbols-outlined text-sm">my_location</span>
+                                            </button>
+                                        </div>
+                                        <div id="destination-coords" class="text-[10px] text-[#92adc9] mt-1 hidden">
+                                            Lat: <span id="dest-lat">0</span>, Lon: <span id="dest-lon">0</span>
+                                        </div>
                                     </div>
-                                    <div id="destination-coords" class="text-[10px] text-[#92adc9] mt-1 hidden">
-                                        Lat: <span id="dest-lat">0</span>, Lon: <span id="dest-lon">0</span>
+                                    
+                                    <!-- Motivo del viaje -->
+                                    <div>
+                                        <label class="block text-xs font-bold text-[#92adc9] uppercase mb-2">Motivo del viaje</label>
+                                        <select id="solicitud-motivo" class="w-full bg-[#111a22] border border-[#233648] text-white p-3 rounded-xl">
+                                            <option value="">Seleccionar motivo...</option>
+                                            <option value="Entrega">Entrega de mercancía</option>
+                                            <option value="Recolección">Recolección</option>
+                                            <option value="Mantenimiento">Llevar a taller</option>
+                                            <option value="Traslado">Traslado interno</option>
+                                            <option value="Otro">Otro</option>
+                                        </select>
                                     </div>
-                                </div>
-                                
-                                <!-- Motivo del viaje -->
-                                <div>
-                                    <label class="block text-xs font-bold text-[#92adc9] uppercase mb-2">Motivo del viaje</label>
-                                    <select id="solicitud-motivo" class="w-full bg-[#111a22] border border-[#233648] text-white p-3 rounded-xl">
-                                        <option value="">Seleccionar motivo...</option>
-                                        <option value="Entrega">Entrega de mercancía</option>
-                                        <option value="Recolección">Recolección</option>
-                                        <option value="Mantenimiento">Llevar a taller</option>
-                                        <option value="Traslado">Traslado interno</option>
-                                        <option value="Otro">Otro</option>
-                                    </select>
-                                </div>
-                                
-                                <!-- Jefe Directo / Encargado -->
-                                <div>
-                                    <label class="block text-xs font-bold text-[#92adc9] uppercase mb-2">Jefe Directo / Encargado</label>
-                                    <select id="solicitud-encargado" class="w-full bg-[#111a22] border border-[#233648] text-white p-3 rounded-xl">
-                                        <option value="">Seleccionar encargado...</option>
-                                        <option value="Carlos López">Carlos López - Logística</option>
-                                        <option value="María García">María García - Operaciones</option>
-                                        <option value="Juan Martínez">Juan Martínez - Almacén</option>
-                                    </select>
-                                </div>
-                                
-                                <!-- Último checklist de la unidad seleccionada -->
-                                <div id="last-checklist-container" class="hidden bg-[#111a22] p-4 rounded-xl border border-[#324d67] mt-4">
-                                    <h4 class="text-xs font-bold text-[#92adc9] uppercase mb-3">Último checklist de esta unidad</h4>
-                                    <div id="last-checklist-content" class="text-sm text-white">
-                                        Cargando...
+                                    
+                                    <!-- Jefe Directo / Encargado -->
+                                    <div>
+                                        <label class="block text-xs font-bold text-[#92adc9] uppercase mb-2">Jefe Directo / Encargado</label>
+                                        <select id="solicitud-encargado" class="w-full bg-[#111a22] border border-[#233648] text-white p-3 rounded-xl">
+                                            <option value="">Seleccionar encargado...</option>
+                                            <option value="Carlos López">Carlos López - Logística</option>
+                                            <option value="María García">María García - Operaciones</option>
+                                            <option value="Juan Martínez">Juan Martínez - Almacén</option>
+                                        </select>
                                     </div>
+                                    
+                                    <!-- Último checklist de la unidad seleccionada -->
+                                    <div id="last-checklist-container" class="hidden bg-[#111a22] p-4 rounded-xl border border-[#324d67] mt-4">
+                                        <h4 class="text-xs font-bold text-[#92adc9] uppercase mb-3">Último checklist de esta unidad</h4>
+                                        <div id="last-checklist-content" class="text-sm text-white">
+                                            Cargando...
+                                        </div>
+                                    </div>
+                                    
+                                    <button onclick="window.conductorModule.enviarSolicitud()" 
+                                            class="w-full py-5 bg-primary text-white font-black rounded-xl uppercase text-lg shadow-[0_0_30px_rgba(19,127,236,0.3)] mt-4 hover:bg-primary/90 transition-colors">
+                                        ENVIAR SOLICITUD
+                                    </button>
                                 </div>
-                                
-                                <button onclick="window.conductorModule.enviarSolicitud()" 
-                                        class="w-full py-5 bg-primary text-white font-black rounded-xl uppercase text-lg shadow-[0_0_30px_rgba(19,127,236,0.3)] mt-4">
-                                    ENVIAR SOLICITUD
-                                </button>
                             </div>
                         </div>
                     </section>
@@ -1069,16 +1083,21 @@ export class DriverView {
         // Cambiar a pestaña formulario
         this.switchTab('formulario');
         
-        // Actualizar el display de la unidad seleccionada
+        // Mostrar el contenido del formulario y ocultar el mensaje de "sin unidad"
         setTimeout(() => {
+            const noVehicleMsg = document.getElementById('no-vehicle-selected-msg');
+            const formContent = document.getElementById('form-content');
             const display = document.getElementById('selected-vehicle-display');
+            
+            if (noVehicleMsg) noVehicleMsg.classList.add('hidden');
+            if (formContent) formContent.classList.remove('hidden');
             if (display) {
                 display.innerHTML = `${plate} · ${model} (ECO-${eco})`;
             }
             
             // Cargar último checklist
             this.loadLastChecklist(vehicleId);
-        }, 500);
+        }, 100);
     }
 
     async enviarSolicitud() {
@@ -1128,15 +1147,14 @@ export class DriverView {
 
         if (error) {
             alert("Error: " + error.message);
+            btn.disabled = false;
+            btn.innerText = 'ENVIAR SOLICITUD';
         } else {
             this.showNotification('Solicitud enviada', 'Espera la aprobación del supervisor', 'success');
-            this.switchTab('unidad');
             this.selectedVehicleForRequest = null;
+            await this.loadDashboardState();
+            this.switchTab('unidad');
         }
-        
-        btn.disabled = false;
-        btn.innerText = 'ENVIAR SOLICITUD';
-        this.loadDashboardState();
     }
 
     // ==================== FIRMA DE RECEPCIÓN EN TALLER ====================
@@ -1147,16 +1165,33 @@ export class DriverView {
         setTimeout(() => {
             const canvas = document.getElementById('signature-pad');
             if (canvas) {
-                this.signaturePad = new SignaturePad(canvas, {
-                    backgroundColor: '#1c2127',
-                    penColor: '#ffffff',
-                    velocityFilterWeight: 0.7,
-                    minWidth: 0.5,
-                    maxWidth: 2.5
-                });
-                
-                canvas.addEventListener('mouseup', () => this.validateSignature());
-                canvas.addEventListener('touchend', () => this.validateSignature());
+                // Cargar librería de firma si no existe
+                if (typeof SignaturePad === 'undefined') {
+                    const script = document.createElement('script');
+                    script.src = 'https://cdn.jsdelivr.net/npm/signature_pad@4.1.7/dist/signature_pad.umd.min.js';
+                    script.onload = () => {
+                        this.signaturePad = new SignaturePad(canvas, {
+                            backgroundColor: '#1c2127',
+                            penColor: '#ffffff',
+                            velocityFilterWeight: 0.7,
+                            minWidth: 0.5,
+                            maxWidth: 2.5
+                        });
+                        canvas.addEventListener('mouseup', () => this.validateSignature());
+                        canvas.addEventListener('touchend', () => this.validateSignature());
+                    };
+                    document.head.appendChild(script);
+                } else {
+                    this.signaturePad = new SignaturePad(canvas, {
+                        backgroundColor: '#1c2127',
+                        penColor: '#ffffff',
+                        velocityFilterWeight: 0.7,
+                        minWidth: 0.5,
+                        maxWidth: 2.5
+                    });
+                    canvas.addEventListener('mouseup', () => this.validateSignature());
+                    canvas.addEventListener('touchend', () => this.validateSignature());
+                }
             }
         }, 500);
     }
@@ -1196,6 +1231,8 @@ export class DriverView {
 
         if (error) {
             alert('Error: ' + error.message);
+            btn.disabled = false;
+            btn.innerText = 'FIRMAR RECEPCIÓN';
         } else {
             this.showNotification('Recepción confirmada', 'Ya puedes pasar con el guardia', 'success');
             this.switchTab('unidad');
@@ -1217,10 +1254,13 @@ export class DriverView {
 
         if (error) {
             alert('Error: ' + error.message);
+            btn.disabled = false;
+            btn.innerText = 'CONFIRMAR LIBERACIÓN';
         } else {
             this.showNotification('Unidad liberada', 'Puedes solicitar una nueva unidad', 'success');
             this.currentTrip = null;
-            this.loadDashboardState();
+            this.selectedVehicleForRequest = null;
+            await this.loadDashboardState();
             this.switchTab('unidad');
         }
     }
@@ -1372,9 +1412,26 @@ export class DriverView {
         document.getElementById(`tab-${tabId}`).classList.remove('hidden');
         document.getElementById(`nav-${tabId}`).classList.add('active', 'text-primary');
 
-        if (tabId === 'formulario' && !this.selectedVehicleForRequest) {
-            // Si no hay unidad seleccionada, volver a unidad
-            this.switchTab('unidad');
+        // Validación especial para formulario
+        if (tabId === 'formulario') {
+            if (!this.selectedVehicleForRequest) {
+                // Si no hay unidad seleccionada, mostrar mensaje y ocultar formulario
+                const noVehicleMsg = document.getElementById('no-vehicle-selected-msg');
+                const formContent = document.getElementById('form-content');
+                if (noVehicleMsg) noVehicleMsg.classList.remove('hidden');
+                if (formContent) formContent.classList.add('hidden');
+            } else {
+                // Si hay unidad seleccionada, mostrar formulario
+                const noVehicleMsg = document.getElementById('no-vehicle-selected-msg');
+                const formContent = document.getElementById('form-content');
+                const display = document.getElementById('selected-vehicle-display');
+                
+                if (noVehicleMsg) noVehicleMsg.classList.add('hidden');
+                if (formContent) formContent.classList.remove('hidden');
+                if (display) {
+                    display.innerHTML = `${this.selectedVehicleForRequest.plate} · ${this.selectedVehicleForRequest.model} (ECO-${this.selectedVehicleForRequest.eco})`;
+                }
+            }
         }
 
         if (tabId === 'ruta' && this.currentTrip?.status === 'in_progress') {
