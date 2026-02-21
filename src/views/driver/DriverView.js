@@ -13,6 +13,7 @@ export class DriverView {
         this.selectedVehicleForRequest = null;
         this.profile = null;
         this.signaturePad = null;
+        this.accessCode = null; // Para almacenar el código generado
         
         // Sistema de logística completo
         this.tripLogistics = {
@@ -116,6 +117,18 @@ export class DriverView {
                                 </div>
                             </div>
                         </div>
+
+                        <!-- Código de acceso para mostrar cuando el viaje está aprobado -->
+                        <div id="access-code-container" class="hidden mt-4 bg-gradient-to-r from-green-600 to-emerald-600 p-5 rounded-2xl animate-pulse">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-white text-[8px] font-bold uppercase opacity-80">Código de acceso para guardia</p>
+                                    <p id="access-code-display" class="text-white text-3xl font-mono font-black tracking-widest">------</p>
+                                </div>
+                                <span class="material-symbols-outlined text-4xl text-white/50">qr_code_scanner</span>
+                            </div>
+                            <p class="text-green-200 text-[8px] mt-2">Muestra este código al guardia al salir</p>
+                        </div>
                     </section>
 
                     <!-- PESTAÑA SOLICITUD - Formulario para pedir unidad -->
@@ -158,12 +171,8 @@ export class DriverView {
                                 
                                 <div>
                                     <label class="block text-xs font-bold text-[#92adc9] uppercase mb-2">Jefe Directo *</label>
-                                    <select id="solicitud-encargado" class="w-full bg-[#111a22] border border-[#233648] text-white p-3 rounded-xl">
-                                        <option value="">Seleccionar jefe directo...</option>
-                                        <option value="Carlos López">Carlos López - Logística</option>
-                                        <option value="María García">María García - Operaciones</option>
-                                        <option value="Juan Martínez">Juan Martínez - Almacén</option>
-                                    </select>
+                                    <input type="text" id="solicitud-jefe" class="w-full bg-[#111a22] border border-[#233648] text-white p-3 rounded-xl" 
+                                           placeholder="Nombre del jefe directo">
                                 </div>
                                 
                                 <!-- Último checklist de la unidad seleccionada -->
@@ -341,8 +350,6 @@ export class DriverView {
                                 <div id="card-photo" class="h-16 w-16 bg-slate-100 rounded-xl bg-cover bg-center"></div>
                             </div>
 
-                            <div id="access-code-container" class="mb-6"></div>
-
                             <div class="bg-slate-50 p-4 rounded-2xl mb-4">
                                 <h4 class="text-slate-800 text-xs font-black uppercase mb-3 border-b border-slate-200 pb-2">
                                     <span class="material-symbols-outlined text-sm text-primary">badge</span> Datos
@@ -475,29 +482,33 @@ export class DriverView {
             
             this.startBackgroundSync();
 
-            // Configurar suscripción en tiempo real
-            supabase.channel('driver_realtime')
+            // Configurar suscripción en tiempo real - IMPORTANTE para actualización automática
+            supabase.channel('driver_realtime_' + this.userId)
                 .on('postgres_changes', { 
-                    event: 'UPDATE', 
+                    event: '*', 
                     schema: 'public', 
                     table: 'trips', 
                     filter: `driver_id=eq.${this.userId}` 
-                }, (payload) => {
+                }, async (payload) => {
                     console.log('🔄 Cambio detectado en viaje:', payload);
-                    this.handleTripUpdate(payload.new);
-                    this.showNotification('Viaje actualizado', 'El estado del viaje ha cambiado');
-                })
-                .on('postgres_changes', { 
-                    event: 'INSERT', 
-                    schema: 'public', 
-                    table: 'trips', 
-                    filter: `driver_id=eq.${this.userId}` 
-                }, (payload) => {
-                    console.log('🔄 Nuevo viaje asignado:', payload);
-                    this.handleTripUpdate(payload.new);
-                    this.showNotification('Nuevo viaje', 'Se te ha asignado un nuevo viaje');
+                    
+                    if (payload.new) {
+                        await this.handleTripUpdate(payload.new);
+                        
+                        // Mostrar código de acceso cuando el viaje está aprobado
+                        if (payload.new.status === 'driver_accepted' && payload.new.access_code) {
+                            this.showAccessCode(payload.new.access_code);
+                        }
+                    }
                 })
                 .subscribe();
+                
+            // Configurar actualización periódica (cada 5 segundos)
+            this.updateInterval = setInterval(async () => {
+                if (navigator.onLine) {
+                    await this.loadDashboardState();
+                }
+            }, 5000);
                 
         } catch (error) {
             console.error('❌ Error en onMount:', error);
@@ -600,7 +611,9 @@ export class DriverView {
                 
             case 'driver_accepted':
                 this.showNotification('Recepción completada', 'Ya puedes pasar con el guardia para la salida', 'success');
-                this.renderFirmaRecepcion();
+                if (updatedTrip.access_code) {
+                    this.showAccessCode(updatedTrip.access_code);
+                }
                 break;
                 
             case 'in_progress':
@@ -624,7 +637,24 @@ export class DriverView {
                 break;
         }
         
-        this.loadDashboardState();
+        await this.loadDashboardState();
+    }
+
+    // ==================== MOSTRAR CÓDIGO DE ACCESO ====================
+    
+    showAccessCode(code) {
+        const container = document.getElementById('access-code-container');
+        const display = document.getElementById('access-code-display');
+        
+        if (container && display) {
+            display.innerText = code;
+            container.classList.remove('hidden');
+            
+            // Hacer que parpadee para llamar la atención
+            setTimeout(() => {
+                container.classList.add('opacity-90');
+            }, 10000);
+        }
     }
 
     // ==================== CONFIGURACIÓN ====================
@@ -651,6 +681,10 @@ export class DriverView {
         try {
             if (this.backgroundSyncInterval) {
                 clearInterval(this.backgroundSyncInterval);
+            }
+            
+            if (this.updateInterval) {
+                clearInterval(this.updateInterval);
             }
             
             this.stopTracking();
@@ -1092,7 +1126,7 @@ export class DriverView {
         const vehicleId = document.getElementById('solicitud-vehicle').value;
         const destino = document.getElementById('solicitud-destino').value;
         const motivo = document.getElementById('solicitud-motivo').value;
-        const jefeDirecto = document.getElementById('solicitud-encargado').value;
+        const jefeDirecto = document.getElementById('solicitud-jefe').value;
         
         // Validaciones
         if (!vehicleId) {
@@ -1113,8 +1147,8 @@ export class DriverView {
         }
         
         if (!jefeDirecto) {
-            alert('Por favor selecciona el jefe directo');
-            document.getElementById('solicitud-encargado').focus();
+            alert('Por favor ingresa el nombre del jefe directo');
+            document.getElementById('solicitud-jefe').focus();
             return;
         }
 
@@ -1126,8 +1160,9 @@ export class DriverView {
         }
 
         try {
-            // Generar código de acceso
+            // Generar código de acceso (6 caracteres alfanuméricos)
             const accessCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+            this.accessCode = accessCode;
             
             // Crear objeto de solicitud - SOLO con las columnas que existen en la tabla
             const newTrip = {
@@ -1165,7 +1200,7 @@ export class DriverView {
             document.getElementById('solicitud-destino').value = '';
             document.getElementById('solicitud-vehicle').value = '';
             document.getElementById('solicitud-motivo').value = '';
-            document.getElementById('solicitud-encargado').value = '';
+            document.getElementById('solicitud-jefe').value = '';
             
             // Ocultar el checklist
             const checklistContainer = document.getElementById('last-checklist-container');
@@ -1418,6 +1453,11 @@ export class DriverView {
             if (unitsContent) unitsContent.classList.add('hidden');
             if (noUnitsMsg) noUnitsMsg.classList.add('hidden');
             
+            // Mostrar código de acceso si el viaje está en estado driver_accepted
+            if (trip.status === 'driver_accepted' && trip.access_code) {
+                this.showAccessCode(trip.access_code);
+            }
+            
             if (trip.status === 'approved_for_taller') {
                 const tInfo = document.getElementById('taller-vehicle-info');
                 if (tInfo) tInfo.innerText = `ECO-${trip.vehicles?.economic_number} - ${trip.vehicles?.plate}`;
@@ -1433,6 +1473,10 @@ export class DriverView {
         } else {
             const currentTripInfo = document.getElementById('current-trip-info');
             if (currentTripInfo) currentTripInfo.classList.add('hidden');
+            
+            // Ocultar código de acceso
+            const accessContainer = document.getElementById('access-code-container');
+            if (accessContainer) accessContainer.classList.add('hidden');
             
             if (profileStatus) profileStatus.innerText = "Disponible";
             this.stopTracking();
@@ -1541,6 +1585,20 @@ export class DriverView {
         if (tabId === 'perfil') {
             this.loadProfileData();
         }
+    }
+
+    // ==================== LIMPIEZA ====================
+    
+    destroy() {
+        if (this.backgroundSyncInterval) {
+            clearInterval(this.backgroundSyncInterval);
+        }
+        
+        if (this.updateInterval) {
+            clearInterval(this.updateInterval);
+        }
+        
+        this.stopTracking();
     }
 }
 
