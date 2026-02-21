@@ -10,8 +10,8 @@ export class InventoryView {
         this.vehicleLogs = [];
         this.vehicleTrips = [];
         this.vehicleDocuments = [];
-        this.allAppTrips = []; // Todos los viajes de la app
-        this.vehicleAppTrips = []; // Viajes de la unidad seleccionada
+        this.allAppTrips = []; 
+        this.vehicleAppTrips = []; 
         this.vehicleInspectionsPhotos = []; 
         this.selectedVehicle = null;
         this.pendingStockDeduction = [];
@@ -151,9 +151,8 @@ export class InventoryView {
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'vehicle_inspections' }, () => {
                 this.refreshInspections();
             })
-            // Detectar cambios en viajes para actualizar estado a "En Uso"
             .on('postgres_changes', { event: '*', schema: 'public', table: 'trips' }, () => {
-                this.loadAllData(); // Recarga general para sincronizar estados de viajes y vehículos
+                this.loadAllData(); 
             })
             .subscribe((status) => {
                 console.log('📡 Inventario Realtime:', status);
@@ -194,7 +193,7 @@ export class InventoryView {
         }
     }
 
-    showToast(msg) {
+    showToast(msg, title = 'Aviso', type = 'info') {
         const toast = document.getElementById('inv-notification-toast');
         const text = document.getElementById('inv-notification-text');
         if (toast && text) {
@@ -216,7 +215,6 @@ export class InventoryView {
                 supabase.from('inventory_items').select('*').order('name').then(r => r.error ? {data: []} : r),
                 supabase.from('service_templates').select('*, service_template_items(quantity, inventory_items(id, name, cost, unit, stock, sku))').then(r => r.error ? {data: []} : r),
                 supabase.from('vehicle_documents').select('*').then(r => r.error ? {data: []} : r),
-                // Extraer todos los viajes de la app para ver destinos e historiales gráficos
                 supabase.from('trips').select('id, vehicle_id, status, destination, created_at, profiles:driver_id(full_name), workshop_reception_photos, workshop_return_photos').order('created_at', { ascending: false }).then(r => r.error ? {data: []} : r)
             ]);
 
@@ -278,7 +276,6 @@ export class InventoryView {
         grid.innerHTML = this.vehicles.map(v => {
             const imgUrl = (v.image_url && v.image_url !== "0" && v.image_url !== "null") ? v.image_url : 'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&w=500&q=60';
             
-            // VERIFICAR ESTADO "EN USO" BASADO EN VIAJES ACTIVOS
             const activeTrip = this.allAppTrips.find(t => t.vehicle_id === v.id && ['requested', 'approved_for_taller', 'driver_accepted', 'in_progress'].includes(t.status));
             let statusName = v.status === 'active' ? 'Disponible' : (v.status === 'maintenance' ? 'En Taller' : 'Inactivo');
             let statusColor = v.status === 'active' ? 'border-green-500 text-green-400' : (v.status === 'maintenance' ? 'border-orange-500 text-orange-400' : 'border-red-500 text-red-400');
@@ -649,7 +646,8 @@ export class InventoryView {
             const { data: newVeh, error } = await supabase.from('vehicles').insert([data]).select();
             if (error) throw error;
             
-            await supabase.from('vehicle_logs').insert([{
+            // Try insert log, no catch builder
+            const { error: logErr } = await supabase.from('vehicle_logs').insert([{
                 vehicle_id: newVeh[0].id,
                 date: new Date().toISOString().split('T')[0],
                 odometer: initialKm,
@@ -658,7 +656,9 @@ export class InventoryView {
                 total_cost: 0,
                 quantity: 1,
                 notes: `Vehículo registrado: ${data.brand} ${data.model} ${data.year}, Placas: ${data.plate}, ECO: ${data.economic_number}`
-            }]).catch(e => console.warn('No se pudo guardar el log inicial', e));
+            }]);
+            
+            if(logErr) console.warn('No se pudo guardar el log inicial', logErr);
             
             document.getElementById('global-modal').classList.add('hidden');
             alert("✅ Unidad registrada exitosamente y lista para operar.");
@@ -674,7 +674,6 @@ export class InventoryView {
         this.selectedVehicle = this.vehicles.find(v => v.id === id);
         if(!this.selectedVehicle) return;
 
-        // Limpiar para asegurar info fresca
         this.vehicleAppTrips = this.allAppTrips.filter(t => t.vehicle_id === id);
         this.vehicleInspectionsPhotos = this.vehicleAppTrips.filter(t => (t.workshop_reception_photos && t.workshop_reception_photos.length > 0) || (t.workshop_return_photos && t.workshop_return_photos.length > 0));
 
@@ -708,9 +707,9 @@ export class InventoryView {
 
         const totalTripKm = this.vehicleTrips.reduce((sum, trip) => sum + Number(trip.distance_km || 0), 0);
         const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${this.selectedVehicle.id}&color=111a22`;
+        
         const imgUrl = (this.selectedVehicle.image_url && this.selectedVehicle.image_url !== "0" && this.selectedVehicle.image_url !== "null") ? this.selectedVehicle.image_url : 'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&w=800&q=60';
 
-        // LÓGICA DE ESTADO (Activo, Mantenimiento, En Uso)
         const activeTrip = this.vehicleAppTrips.find(t => ['requested', 'approved_for_taller', 'driver_accepted', 'in_progress'].includes(t.status));
         let statusName = this.selectedVehicle.status === 'active' ? 'Disponible' : (this.selectedVehicle.status === 'maintenance' ? 'En Taller' : 'Inactivo');
         let statusClass = this.selectedVehicle.status === 'active' ? 'border-green-500 text-green-400 bg-green-500/10' : (this.selectedVehicle.status === 'maintenance' ? 'border-orange-500 text-orange-400 bg-orange-500/10' : 'border-red-500 text-red-400 bg-red-500/10');
@@ -823,7 +822,7 @@ export class InventoryView {
                                         </div>
                                         <div class="bg-[#1c2127] p-3 rounded-lg border border-[#324d67]">
                                             <div class="flex justify-between items-center mb-1">
-                                                <span class="text-xs text-[#92adc9]">Recorrido Histórico (Manual):</span>
+                                                <span class="text-xs text-[#92adc9]">Recorrido Histórico (Trayectos manuales):</span>
                                                 <span class="text-sm font-bold text-primary">${totalTripKm.toLocaleString()} km</span>
                                             </div>
                                         </div>
@@ -996,7 +995,6 @@ export class InventoryView {
             </div>
         `;
         
-        // Pinta la UI de salud de componentes
         setTimeout(() => this.renderComponentsHealth(), 100);
     }
 
@@ -1011,7 +1009,6 @@ export class InventoryView {
         document.getElementById(`veh-tab-content-${num}`).classList.replace('hidden', 'block');
     }
 
-    // --- NUEVO LÓGICA DE SALUD DE COMPONENTES ---
     renderComponentsHealth() {
         let comps = this.selectedVehicle.components;
         if (!comps || !Array.isArray(comps) || comps.length === 0) {
@@ -1093,8 +1090,6 @@ export class InventoryView {
             </div>
         `;
         container.appendChild(newRow);
-        
-        // Auto-scroll to bottom
         container.scrollTop = container.scrollHeight;
         this.calculateTotalHealth();
     }
@@ -1156,13 +1151,12 @@ export class InventoryView {
                 throw error;
             }
             this.selectedVehicle.components = components;
-            this.showToast('✅ Salud de componentes actualizada correctamente.');
+            this.showToast('✅ Salud de componentes actualizada correctamente.', 'Éxito', 'success');
         } catch(e) {
             alert('Error al guardar: ' + e.message);
         }
     }
 
-    // --- GALERÍA DE FOTOS DE VIAJES ---
     renderVehiclePhotosGallery() {
         if (!this.vehicleInspectionsPhotos || this.vehicleInspectionsPhotos.length === 0) {
             return `<div class="text-center py-10 text-slate-500"><span class="material-symbols-outlined text-4xl mb-2 opacity-50">no_photography</span><p>No hay fotos de viajes registradas para esta unidad.</p></div>`;
@@ -1226,72 +1220,6 @@ export class InventoryView {
         return foundPhotos ? html : `<div class="text-center py-10 text-slate-500"><span class="material-symbols-outlined text-4xl mb-2 opacity-50">no_photography</span><p>No hay fotos de viajes registradas para esta unidad.</p></div>`;
     }
 
-    // --- ALERTS & HELPERS ---
-    getVehicleAlertsHTML() {
-        const alerts = [];
-        const today = new Date();
-        
-        if (this.selectedVehicle.license_expiry) {
-            const days = Math.ceil((new Date(this.selectedVehicle.license_expiry) - today) / 86400000);
-            if (days < 30 && days > 0) alerts.push(`<div class="bg-orange-500/10 border border-orange-500/30 text-orange-400 p-2 rounded flex items-center gap-2 text-xs"><span class="material-symbols-outlined text-sm">warning</span> Tarjeta Circ. vence en ${days} días.</div>`);
-            else if (days <= 0) alerts.push(`<div class="bg-red-500/10 border border-red-500/30 text-red-400 p-2 rounded flex items-center gap-2 text-xs font-bold"><span class="material-symbols-outlined text-sm">error</span> Tarjeta de Circulación VENCIDA.</div>`);
-        }
-        if (this.selectedVehicle.insurance_expiry) {
-            const days = Math.ceil((new Date(this.selectedVehicle.insurance_expiry) - today) / 86400000);
-            if (days < 30 && days > 0) alerts.push(`<div class="bg-orange-500/10 border border-orange-500/30 text-orange-400 p-2 rounded flex items-center gap-2 text-xs"><span class="material-symbols-outlined text-sm">warning</span> Póliza de seguro vence en ${days} días.</div>`);
-            else if (days <= 0) alerts.push(`<div class="bg-red-500/10 border border-red-500/30 text-red-400 p-2 rounded flex items-center gap-2 text-xs font-bold"><span class="material-symbols-outlined text-sm">error</span> Póliza de Seguro VENCIDA.</div>`);
-        }
-
-        return alerts.length > 0 ? alerts.join('') : `<div class="h-full flex flex-col items-center justify-center text-slate-500 opacity-50"><span class="material-symbols-outlined text-4xl mb-2">verified_user</span><span class="text-xs font-bold uppercase tracking-widest">Documentación al día</span></div>`;
-    }
-
-    getDocumentationHTML() {
-        const docs = [
-            { type: 'license', title: 'Tarjeta Circulación', exp: this.selectedVehicle.license_expiry, status: this.selectedVehicle.license_status, icon: 'badge' },
-            { type: 'insurance', title: 'Póliza de Seguro', exp: this.selectedVehicle.insurance_expiry, status: this.selectedVehicle.insurance_status, icon: 'shield' },
-            { type: 'verification', title: 'Verificación Ambiental', exp: this.selectedVehicle.verification_expiry, status: this.selectedVehicle.verification_status, icon: 'eco' }
-        ];
-
-        return docs.map(d => {
-            const vehicleDocs = this.vehicleDocuments.filter(doc => doc.document_type === d.type);
-            const hasFiles = vehicleDocs.length > 0;
-            const color = d.status === 'vigente' ? 'green' : d.status === 'vencido' ? 'red' : 'orange';
-
-            return `
-                <div class="bg-[#1c2127] border border-[#324d67] p-3 rounded-lg flex justify-between items-center hover:border-[#456b8f] transition-colors shadow-sm">
-                    <div class="flex items-center gap-3">
-                        <div class="bg-[#233648] p-2 rounded-lg text-[#92adc9]"><span class="material-symbols-outlined text-[20px]">${d.icon}</span></div>
-                        <div>
-                            <p class="text-white text-xs font-bold uppercase">${d.title}</p>
-                            <p class="text-[10px] text-[#92adc9] mt-0.5">Vence: <span class="font-mono text-slate-300">${d.exp ? this.formatDate(d.exp) : 'No definida'}</span></p>
-                        </div>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        ${hasFiles ? `<button onclick="window.invModule.viewDocuments('${d.type}', '${this.selectedVehicle.id}')" class="text-primary hover:text-blue-400 bg-primary/10 hover:bg-primary/20 p-1.5 rounded transition-colors" title="Ver Archivos"><span class="material-symbols-outlined text-[16px]">visibility</span></button>` : ''}
-                        <span class="text-[9px] font-black uppercase px-2 py-1 rounded border border-${color}-500/30 text-${color}-400 bg-${color}-500/10 tracking-widest">${d.status || 'SIN ESTADO'}</span>
-                    </div>
-                </div>
-            `;
-        }).join('');
-    }
-
-    formatDate(dateString) {
-        if (!dateString) return '--';
-        return new Date(dateString).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase();
-    }
-
-    getColorHex(colorName) {
-        const c = (colorName||'').toLowerCase();
-        if(c.includes('blanco')) return '#ffffff';
-        if(c.includes('negro')) return '#000000';
-        if(c.includes('rojo')) return '#ef4444';
-        if(c.includes('azul')) return '#3b82f6';
-        if(c.includes('gris') || c.includes('plata')) return '#94a3b8';
-        return 'transparent';
-    }
-
-    // --- MÉTODOS AÑADIDOS PARA EVITAR ERRORES DE CONSOLA (Uncaught TypeError) ---
-    
     // VISOR DE IMÁGENES GLOBAL
     viewPhoto(url) {
         const modalId = 'photo-viewer-modal-' + Date.now();
@@ -1300,7 +1228,7 @@ export class InventoryView {
         modal.className = 'fixed inset-0 z-[200] flex items-center justify-center bg-black/95 p-4 animate-fade-in';
         modal.innerHTML = `
             <div class="relative max-w-4xl w-full flex flex-col items-center">
-                <button onclick="document.getElementById('${modalId}').remove()" class="absolute -top-12 right-0 bg-white/10 hover:bg-red-500 text-white p-2 rounded-full transition-colors flex items-center justify-center">
+                <button onclick="document.getElementById('${modalId}').remove()" class="absolute -top-12 right-0 bg-white/10 hover:bg-red-500 text-white p-2 rounded-full transition-colors flex items-center justify-center cursor-pointer">
                     <span class="material-symbols-outlined">close</span>
                 </button>
                 <img src="${url}" class="w-full max-h-[85vh] object-contain rounded-xl shadow-2xl border border-[#324d67]" />
@@ -1309,291 +1237,191 @@ export class InventoryView {
         document.body.appendChild(modal);
     }
 
+    // --- NUEVO: SUBIDA DE DOCUMENTOS ---
     openDocumentUpload(vehicleId) {
-        alert("El módulo para subir documentos (PDF/JPG) al expediente digital se activará en la siguiente fase.");
-    }
-
-    openVehicleEdit(vehicleId) {
-        alert("El editor de perfil del vehículo se abrirá aquí próximamente.");
-    }
-
-    async saveDriver() {
-        const name = document.getElementById('new-driver-name').value;
-        const email = document.getElementById('new-driver-email').value;
-        if (!name || !email) return alert("El nombre y el correo electrónico son obligatorios.");
-        alert("Por seguridad, los conductores deben crearse en el panel de Autenticación de Supabase.");
-        document.getElementById('modal-add-driver').classList.add('hidden');
-    }
-
-    viewDocuments(docType, vehicleId) {
-        alert("Visor de documentos en desarrollo para: " + docType);
-    }
-
-    // --- REGISTRO DE SERVICIOS EN BITÁCORA ---
-    openLogRegister(vehicleId) {
-        this.pendingStockDeduction = [];
         const modal = document.getElementById('global-modal');
         const content = document.getElementById('global-modal-content');
+        content.className = "bg-[#1c2127] w-full max-w-md rounded-2xl shadow-2xl p-6 border border-[#324d67] animate-fade-in-up font-display";
         
-        content.className = "bg-[#1c2127] w-full max-w-5xl rounded-2xl shadow-2xl p-6 border border-[#324d67] animate-fade-in-up font-display flex flex-col max-h-[90vh]";
         content.innerHTML = `
-            <div class="flex justify-between items-center mb-6 border-b border-[#324d67] pb-4 shrink-0">
-                <h3 class="font-black text-xl text-white flex items-center gap-2 uppercase tracking-tight">
-                    <span class="material-symbols-outlined text-green-500 text-3xl">build</span> Reporte de Servicio: ECO-${this.selectedVehicle.economic_number}
+            <div class="flex justify-between items-center mb-6 border-b border-[#324d67] pb-4">
+                <h3 class="font-black text-xl text-white flex items-center gap-2">
+                    <span class="material-symbols-outlined text-primary">upload_file</span> Subir Documento
                 </h3>
-                <button onclick="document.getElementById('global-modal').classList.add('hidden'); window.invModule.openVehicleDetail('${vehicleId}')" class="text-slate-400 hover:text-white transition-colors bg-[#233648] p-2 rounded-full border border-[#324d67]">
+                <button onclick="document.getElementById('global-modal').classList.add('hidden')" class="text-slate-400 hover:text-white transition-colors bg-[#233648] p-2 rounded-full">
                     <span class="material-symbols-outlined">close</span>
                 </button>
             </div>
-
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 overflow-y-auto custom-scrollbar pb-2">
-                <div class="space-y-4">
-                    <div class="bg-[#111a22] border border-[#324d67] p-5 rounded-xl space-y-4 shadow-lg">
-                        <h4 class="text-xs font-bold text-primary uppercase tracking-widest border-b border-[#324d67] pb-2">1. Detalles de la Intervención</h4>
-                        <div class="grid grid-cols-2 gap-4">
-                            <div>
-                                <label class="text-[10px] font-bold text-[#92adc9] uppercase block mb-1">Fecha del Servicio</label>
-                                <input type="date" id="log-date" class="w-full bg-[#1c2127] border border-[#324d67] text-white rounded-lg px-3 py-2 text-sm outline-none focus:border-primary" value="${new Date().toISOString().split('T')[0]}">
-                            </div>
-                            <div>
-                                <label class="text-[10px] font-bold text-[#92adc9] uppercase block mb-1">Kilometraje de Ingreso</label>
-                                <input type="number" id="log-odometer" class="w-full bg-[#1c2127] border border-[#324d67] text-white rounded-lg px-3 py-2 text-sm font-mono outline-none focus:border-primary" value="${this.selectedVehicle.current_km}">
-                            </div>
-                        </div>
-                        <div>
-                            <label class="text-[10px] font-bold text-[#92adc9] uppercase block mb-1">Diagnóstico / Trabajo Realizado</label>
-                            <input id="log-service-name" class="w-full bg-[#1c2127] border border-[#324d67] text-white rounded-lg px-3 py-2 text-sm outline-none focus:border-primary" placeholder="Ej: Cambio aceite, revisión frenos...">
-                        </div>
-                        <div class="grid grid-cols-2 gap-4">
-                            <div>
-                                <label class="text-[10px] font-bold text-[#92adc9] uppercase block mb-1">Responsable / Taller</label>
-                                <input id="log-mechanic" class="w-full bg-[#1c2127] border border-[#324d67] text-white rounded-lg px-3 py-2 text-sm outline-none focus:border-primary" placeholder="Nombre interno o proveedor">
-                            </div>
-                            <div>
-                                <label class="text-[10px] font-bold text-[#92adc9] uppercase block mb-1">Costo Mano Obra ($)</label>
-                                <input type="number" id="log-labor-cost" class="w-full bg-[#1c2127] border border-[#324d67] text-white rounded-lg px-3 py-2 text-sm font-mono outline-none focus:border-primary" value="0" oninput="window.invModule.updateServiceSummary()">
-                            </div>
-                        </div>
-                    </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="text-[10px] font-bold text-[#92adc9] uppercase block mb-1">Tipo de Documento</label>
+                    <select id="doc-upload-type" class="w-full bg-[#111a22] border border-[#324d67] text-white rounded-lg px-3 py-2 outline-none focus:border-primary">
+                        <option value="license">Tarjeta de Circulación</option>
+                        <option value="insurance">Póliza de Seguro</option>
+                        <option value="verification">Verificación Ambiental</option>
+                    </select>
                 </div>
-
-                <div class="space-y-4 flex flex-col">
-                    <div class="bg-[#111a22] border border-[#324d67] p-5 rounded-xl flex-1 flex flex-col shadow-lg">
-                        <h4 class="text-xs font-bold text-orange-500 uppercase tracking-widest border-b border-[#324d67] pb-2 mb-4">2. Consumo de Refacciones (Almacén)</h4>
-                        
-                        <div class="flex gap-2 mb-4">
-                            <select id="log-inv-select" class="flex-1 bg-[#1c2127] border border-[#324d67] text-white rounded-lg px-2 py-2 text-sm outline-none focus:border-primary">
-                                <option value="">Buscar en catálogo...</option>
-                                ${this.inventory.map(i => `<option value="${i.id}" data-stock="${i.stock}" data-cost="${i.cost}" data-name="${i.name}">${i.name} (Stk: ${i.stock} | $${i.cost})</option>`).join('')}
-                            </select>
-                            <input type="number" id="log-inv-qty" class="w-16 bg-[#1c2127] border border-[#324d67] text-white rounded-lg px-2 py-2 text-center text-sm font-mono outline-none focus:border-primary" value="1" min="1">
-                            <button onclick="window.invModule.addManualItem()" class="bg-[#233648] hover:bg-primary text-white px-4 rounded-lg flex items-center justify-center transition-colors shadow" title="Añadir a la lista">
-                                <span class="material-symbols-outlined text-sm">add</span>
-                            </button>
-                        </div>
-
-                        <div class="flex-1 border border-[#324d67] rounded-lg overflow-hidden bg-[#1c2127] min-h-[150px]">
-                            <table class="w-full text-left text-xs text-white">
-                                <thead class="bg-[#233648] text-[#92adc9]"><tr><th class="p-2">Refacción / Insumo</th><th class="p-2 text-center">Cant</th><th class="p-2 text-right">Subtotal</th><th class="p-2"></th></tr></thead>
-                                <tbody id="inventory-preview-body" class="divide-y divide-[#324d67]">
-                                    <tr><td colspan="4" class="text-center p-6 text-slate-500 font-mono text-[10px] bg-[#111a22]">Sin insumos. Selecciona y presiona +</td></tr>
-                                </tbody>
-                            </table>
-                        </div>
-
-                        <div class="mt-4 bg-[#0d141c] p-4 rounded-lg border border-[#324d67] flex justify-between items-center">
-                            <span class="text-xs text-[#92adc9] uppercase font-bold tracking-widest">Inversión Total de la Orden:</span>
-                            <span id="summary-total-cost" class="text-2xl font-black text-green-400 font-mono">$0.00</span>
-                        </div>
-                    </div>
+                <div>
+                    <label class="text-[10px] font-bold text-[#92adc9] uppercase block mb-1">Archivo (PDF, JPG, PNG)</label>
+                    <input type="file" id="doc-upload-file" accept=".pdf, image/jpeg, image/png" class="w-full bg-[#111a22] border border-[#324d67] text-slate-300 rounded-lg px-3 py-2 outline-none focus:border-primary text-sm file:mr-4 file:py-1 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-primary/20 file:text-primary hover:file:bg-primary/30 cursor-pointer">
                 </div>
-            </div>
-
-            <div class="mt-6 pt-4 border-t border-[#324d67] shrink-0">
-                <button onclick="window.invModule.saveLog()" class="w-full bg-green-600 hover:bg-green-500 text-white py-4 rounded-xl font-bold shadow-[0_0_20px_rgba(22,163,74,0.3)] transition-all flex items-center justify-center gap-2 text-lg tracking-wide uppercase">
-                    <span class="material-symbols-outlined">save</span> Firmar y Registrar en Expediente
+                <button id="btn-upload-doc" onclick="window.invModule.uploadDocument('${vehicleId}')" class="w-full py-3 mt-4 bg-primary hover:bg-blue-600 text-white rounded-xl font-bold shadow-lg transition-all flex items-center justify-center gap-2">
+                    <span class="material-symbols-outlined">cloud_upload</span> Subir Archivo
                 </button>
             </div>
         `;
         modal.classList.remove('hidden');
     }
 
-    addManualItem() {
-        const select = document.getElementById('log-inv-select');
-        const qty = parseFloat(document.getElementById('log-inv-qty').value);
-        const opt = select.options[select.selectedIndex];
+    async uploadDocument(vehicleId) {
+        const fileInput = document.getElementById('doc-upload-file');
+        const typeInput = document.getElementById('doc-upload-type');
+        const btn = document.getElementById('btn-upload-doc');
         
-        if (!opt || qty <= 0 || !select.value) return alert('Selecciona un producto del catálogo y una cantidad válida mayor a 0.');
-        
-        const itemId = select.value;
-        const stock = parseFloat(opt.dataset.stock);
-        const cost = parseFloat(opt.dataset.cost);
-        const name = opt.dataset.name;
-
-        if (qty > stock) alert(`⚠️ Advertencia de Almacén: Estás sacando (${qty}) pero el sistema solo registra (${stock}) en existencia. Se generará un negativo.`);
-
-        const existingItem = this.pendingStockDeduction.find(i => i.id === itemId);
-        if (existingItem) existingItem.qty += qty;
-        else this.pendingStockDeduction.push({ id: itemId, name, cost, qty });
-        
-        this.previewService();
-        document.getElementById('log-inv-select').value = '';
-        document.getElementById('log-inv-qty').value = 1;
-    }
-
-    removePendingItem(idx) {
-        this.pendingStockDeduction.splice(idx, 1);
-        this.previewService();
-    }
-
-    previewService() {
-        const tbody = document.getElementById('inventory-preview-body');
-        if (this.pendingStockDeduction.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="4" class="text-center p-6 text-slate-500 font-mono text-[10px] bg-[#111a22]">Sin insumos. Selecciona y presiona +</td></tr>';
-        } else {
-            tbody.innerHTML = this.pendingStockDeduction.map((item, idx) => `
-                <tr class="hover:bg-[#233648] transition-colors">
-                    <td class="p-2 font-bold truncate max-w-[150px] text-primary" title="${item.name}">${item.name}</td>
-                    <td class="p-2 text-center text-white font-mono bg-white/5 rounded mx-1">${item.qty}</td>
-                    <td class="p-2 text-right font-mono text-green-400">$${(item.qty * item.cost).toFixed(2)}</td>
-                    <td class="p-2 text-center">
-                        <button onclick="window.invModule.removePendingItem(${idx})" class="text-slate-500 hover:text-red-500 hover:bg-red-500/10 p-1 rounded transition-colors"><span class="material-symbols-outlined text-[16px]">close</span></button>
-                    </td>
-                </tr>
-            `).join('');
+        if (!fileInput.files || fileInput.files.length === 0) {
+            return this.showToast('Atención', 'Selecciona un archivo primero.', 'warning');
         }
-        this.updateServiceSummary();
-    }
-
-    updateServiceSummary() {
-        const partsCost = this.pendingStockDeduction.reduce((sum, item) => sum + (item.qty * item.cost), 0);
-        const laborCost = parseFloat(document.getElementById('log-labor-cost').value) || 0;
-        document.getElementById('summary-total-cost').textContent = `$${(partsCost + laborCost).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-    }
-
-    async saveLog() {
-        const serviceName = document.getElementById('log-service-name').value;
-        const date = document.getElementById('log-date').value;
-        const odometer = parseInt(document.getElementById('log-odometer').value);
-        const laborCost = parseFloat(document.getElementById('log-labor-cost').value) || 0;
         
-        if (!serviceName || !date || isNaN(odometer)) return alert("Completa los datos obligatorios: Diagnóstico, Fecha y Kilometraje actual.");
-
-        const partsCost = this.pendingStockDeduction.reduce((sum, item) => sum + (item.qty * item.cost), 0);
-        const totalCost = partsCost + laborCost;
+        const file = fileInput.files[0];
+        const docType = typeInput.value;
         
-        const logData = {
-            vehicle_id: this.selectedVehicle.id,
-            date: date,
-            odometer: odometer,
-            service_name: serviceName,
-            parts_used: this.pendingStockDeduction.length ? this.pendingStockDeduction.map(i => `${i.qty} PZ - ${i.name} ($${i.cost.toFixed(2)} c/u)`).join('\n') : 'Ninguna (Solo Mano de Obra)',
-            total_cost: totalCost,
-            labor_cost: laborCost,
-            parts_cost: partsCost,
-            mechanic: document.getElementById('log-mechanic').value || 'Taller Interno',
-            created_at: new Date().toISOString()
-        };
-
+        btn.disabled = true;
+        btn.innerHTML = '<span class="animate-spin material-symbols-outlined">sync</span> Subiendo...';
+        
         try {
-            const { error } = await supabase.from('vehicle_logs').insert([logData]);
-            if (error) throw error;
-
-            for(let item of this.pendingStockDeduction) {
-                const currentItem = this.inventory.find(i => i.id === item.id);
-                if(currentItem) await supabase.from('inventory_items').update({ stock: currentItem.stock - item.qty }).eq('id', item.id);
-            }
-
-            if(odometer > this.selectedVehicle.current_km) {
-                await supabase.from('vehicles').update({ current_km: odometer }).eq('id', this.selectedVehicle.id);
-            }
-
-            alert("✅ Orden de Servicio guardada. El inventario ha sido actualizado automáticamente.");
+            // 1. Upload to Storage
+            const fileExt = file.name.split('.').pop();
+            const fileName = `${vehicleId}/${docType}_${Date.now()}.${fileExt}`;
             
+            const { data: uploadData, error: uploadError } = await supabase.storage
+                .from('vehicle_documents') 
+                .upload(fileName, file);
+                
+            if (uploadError) throw uploadError;
+            
+            // 2. Get Public URL
+            const { data: { publicUrl } } = supabase.storage
+                .from('vehicle_documents')
+                .getPublicUrl(fileName);
+                
+            // 3. Save to DB
+            const { error: dbError } = await supabase
+                .from('vehicle_documents')
+                .insert([{
+                    vehicle_id: vehicleId,
+                    document_type: docType,
+                    file_url: publicUrl,
+                    file_name: file.name
+                }]);
+                
+            if (dbError) throw dbError;
+            
+            this.showToast('Documento guardado correctamente', 'Éxito', 'success');
+            document.getElementById('global-modal').classList.add('hidden');
+            
+            // Refresh modal view
             await this.loadAllData();
-            this.openVehicleDetail(this.selectedVehicle.id); 
+            this.openVehicleDetail(vehicleId);
             
-        } catch (e) {
-            alert("Error del sistema al guardar la bitácora: " + e.message);
+        } catch (error) {
+            console.error("Error upload:", error);
+            this.showToast('No se pudo subir el archivo: ' + error.message, 'Error', 'error');
+            if (error.message.includes('Bucket not found')) {
+                alert('🚨 ATENCIÓN: Necesitas crear un Storage Bucket llamado "vehicle_documents" en Supabase y hacerlo Público.');
+            }
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<span class="material-symbols-outlined">cloud_upload</span> Subir Archivo';
         }
     }
 
-    generateMaintenanceReport() {
-        const total = this.vehicleLogs.reduce((sum, log) => sum + Number(log.total_cost || 0), 0);
-        const reportWindow = window.open('', '_blank');
-        reportWindow.document.write(`
-            <html><head><title>Expediente de Mantenimiento ECO-${this.selectedVehicle.economic_number}</title>
-            <style>
-                body{font-family:'Helvetica Neue', Helvetica, Arial, sans-serif; padding:40px; color:#1e293b; background: #fff;}
-                .header { border-bottom: 2px solid #0f172a; padding-bottom: 20px; margin-bottom: 30px; }
-                .header h2 { margin:0; color: #0f172a; font-size: 24px; text-transform: uppercase; letter-spacing: 2px;}
-                .header p { margin: 5px 0 0 0; color: #475569; font-size: 14px;}
-                table{width:100%; border-collapse:collapse; margin-top:20px; font-size: 12px;}
-                th,td{border:1px solid #cbd5e1; padding:12px; text-align:left;}
-                th{background:#f1f5f9; color: #334155; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;}
-                tr:nth-child(even){background-color: #f8fafc;}
-                .tot{text-align:right; font-weight:900; font-size:20px; margin-top:30px; color:#0f172a; padding: 15px; background: #f1f5f9; border-radius: 8px;}
-                .parts { font-size: 10px; color: #64748b; white-space: pre-wrap; }
-            </style>
-            </head><body>
-                <div class="header">
-                    <h2>EXPEDIENTE HISTÓRICO DE MANTENIMIENTO</h2>
-                    <p><strong>UNIDAD:</strong> ${this.selectedVehicle.brand} ${this.selectedVehicle.model} (${this.selectedVehicle.year}) | <strong>PLACAS:</strong> ${this.selectedVehicle.plate} | <strong>ECO:</strong> ${this.selectedVehicle.economic_number}</p>
-                    <p><strong>KM ACTUAL:</strong> ${Number(this.selectedVehicle.current_km).toLocaleString()} km | <strong>FECHA REPORTE:</strong> ${new Date().toLocaleDateString()}</p>
-                </div>
-                <table>
-                    <tr><th>Fecha</th><th>Servicio / Diagnóstico</th><th>Kilometraje</th><th>Taller/Mecánico</th><th>Desglose de Refacciones</th><th>Inversión</th></tr>
-                    ${this.vehicleLogs.map(l => `
-                        <tr>
-                            <td style="white-space:nowrap">${this.formatDate(l.date)}</td>
-                            <td><strong>${l.service_name}</strong></td>
-                            <td style="font-family:monospace">${Number(l.odometer).toLocaleString()} km</td>
-                            <td>${l.mechanic || 'Interno'}</td>
-                            <td class="parts">${l.parts_used}</td>
-                            <td style="font-family:monospace; font-weight:bold; text-align:right">$${Number(l.total_cost).toLocaleString()}</td>
-                        </tr>
-                    `).join('')}
-                </table>
-                <div class="tot">INVERSIÓN TOTAL ACUMULADA: $${total.toLocaleString(undefined, {minimumFractionDigits: 2})} MXN</div>
-                <div style="margin-top: 50px; text-align: center; color: #94a3b8; font-size: 10px;">
-                    Reporte generado automáticamente por COV - Central de Operaciones Vehiculares
-                </div>
-                <script>window.onload = () => { window.print(); setTimeout(window.close, 500); }</script>
-            </body></html>
-        `);
+    viewDocuments(docType, vehicleId) {
+        const docs = this.vehicleDocuments.filter(d => d.vehicle_id === vehicleId && d.document_type === docType);
+        
+        if(docs.length === 0) {
+            return this.showToast('No hay documentos de este tipo.', 'Aviso', 'warning');
+        }
+        
+        const modal = document.getElementById('global-modal');
+        const content = document.getElementById('global-modal-content');
+        
+        const typeNames = {
+            'license': 'Tarjeta de Circulación',
+            'insurance': 'Póliza de Seguro',
+            'verification': 'Verificación Ambiental'
+        };
+        
+        content.className = "bg-[#1c2127] w-full max-w-2xl rounded-2xl shadow-2xl p-6 border border-[#324d67] animate-fade-in-up font-display";
+        
+        content.innerHTML = `
+            <div class="flex justify-between items-center mb-6 border-b border-[#324d67] pb-4">
+                <h3 class="font-black text-xl text-white flex items-center gap-2">
+                    <span class="material-symbols-outlined text-primary">folder</span> Archivos: ${typeNames[docType]}
+                </h3>
+                <button onclick="window.invModule.openVehicleDetail('${vehicleId}')" class="text-slate-400 hover:text-white transition-colors bg-[#233648] p-2 rounded-full">
+                    <span class="material-symbols-outlined">arrow_back</span>
+                </button>
+            </div>
+            <div class="space-y-3 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
+                ${docs.map(d => {
+                    const isPdf = d.file_url.toLowerCase().endsWith('.pdf');
+                    const icon = isPdf ? 'picture_as_pdf' : 'image';
+                    const color = isPdf ? 'text-red-400' : 'text-blue-400';
+                    return `
+                    <div class="flex items-center justify-between bg-[#111a22] p-3 rounded-xl border border-[#324d67] hover:border-primary transition-colors">
+                        <div class="flex items-center gap-3 overflow-hidden">
+                            <span class="material-symbols-outlined ${color} text-3xl">${icon}</span>
+                            <div class="flex flex-col overflow-hidden">
+                                <span class="text-white text-sm font-bold truncate">${d.file_name || 'Documento'}</span>
+                                <span class="text-[10px] text-[#92adc9]">${new Date(d.uploaded_at || d.created_at).toLocaleDateString()}</span>
+                            </div>
+                        </div>
+                        <div class="flex gap-2 shrink-0">
+                            <a href="${d.file_url}" target="_blank" class="bg-[#233648] hover:bg-primary text-white p-2 rounded-lg transition-colors flex items-center cursor-pointer" title="Abrir en nueva pestaña">
+                                <span class="material-symbols-outlined text-sm">open_in_new</span>
+                            </a>
+                            ${!isPdf ? `
+                            <button onclick="window.invModule.viewPhoto('${d.file_url}')" class="bg-[#233648] hover:bg-primary text-white p-2 rounded-lg transition-colors flex items-center" title="Vista Previa">
+                                <span class="material-symbols-outlined text-sm">visibility</span>
+                            </button>
+                            ` : ''}
+                        </div>
+                    </div>
+                    `;
+                }).join('')}
+            </div>
+        `;
+        modal.classList.remove('hidden');
     }
 
-    printQR(url, plate) {
-        const printWindow = window.open('', '_blank');
-        printWindow.document.write(`
-            <html><head><style>
-                body{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;text-align:center; margin:0;}
-                .card { border: 4px solid #000; border-radius: 20px; padding: 40px; display:flex; flex-direction:column; align-items:center; width: 400px;}
-                h1{font-size: 50px; margin: 10px 0; font-family: monospace; letter-spacing: 5px;}
-                h2{font-size: 16px; margin: 0; color: #555; letter-spacing: 2px;}
-                img{width:250px;height:250px;margin:20px 0;}
-                p{font-size: 12px; color: #888; font-weight: bold;}
-            </style></head>
-            <body>
-                <div class="card">
-                    <h2>UNIDAD VINCULADA COV</h2>
-                    <h1>${plate}</h1>
-                    <img src="${url}">
-                    <p>ESCANEAR PARA GESTIÓN DE SALIDAS Y TALLER</p>
-                </div>
-                <script>window.onload=()=>{window.print();setTimeout(window.close,500);}</script>
-            </body></html>
-        `);
+    openVehicleEdit(vehicleId) {
+        alert("El editor completo de la ficha técnica se abrirá aquí próximamente.");
+    }
+
+    async saveDriver() {
+        const name = document.getElementById('new-driver-name').value;
+        const email = document.getElementById('new-driver-email').value;
+        if (!name || !email) return alert("El nombre y el correo electrónico son obligatorios.");
+        alert("Por seguridad, los conductores deben darse de alta en el Panel de Autenticación de Supabase primero para crearles su contraseña.");
+        document.getElementById('modal-add-driver').classList.add('hidden');
     }
 
     openTripRegister(vehicleId) {
+        this.pendingStockDeduction = [];
         const modal = document.getElementById('global-modal');
         const content = document.getElementById('global-modal-content');
-        content.className = "bg-[#1c2127] w-full max-w-sm rounded-2xl shadow-2xl p-6 border border-[#324d67] animate-fade-in-up font-display";
+        
+        content.className = "bg-[#1c2127] w-full max-w-sm rounded-2xl shadow-2xl p-6 border border-[#324d67] animate-fade-in-up font-display flex flex-col max-h-[90vh]";
         content.innerHTML = `
-            <h3 class="font-bold text-white mb-4 flex items-center gap-2 border-b border-[#324d67] pb-2 uppercase tracking-widest text-xs">
-                <span class="material-symbols-outlined text-primary">add_location</span> Registrar Trayecto Manual
-            </h3>
+            <div class="flex justify-between items-center mb-6 border-b border-[#324d67] pb-4 shrink-0">
+                <h3 class="font-black text-xl text-white flex items-center gap-2 uppercase tracking-tight">
+                    <span class="material-symbols-outlined text-primary text-3xl">add_location</span> Registrar Trayecto
+                </h3>
+                <button onclick="document.getElementById('global-modal').classList.add('hidden'); window.invModule.openVehicleDetail('${vehicleId}')" class="text-slate-400 hover:text-white transition-colors bg-[#233648] p-2 rounded-full border border-[#324d67]">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+
             <div class="space-y-4">
                 <div class="bg-blue-500/10 p-3 rounded-lg border border-blue-500/30 text-xs text-blue-400 mb-4">
                     Este formulario sumará kilómetros al odómetro general de la unidad, útil para viajes no rastreados por GPS.
@@ -1631,15 +1459,14 @@ export class InventoryView {
             const currentKm = Number(this.selectedVehicle.current_km) + dist;
             await supabase.from('vehicles').update({ current_km: currentKm }).eq('id', vehicleId);
 
-            alert(`✅ Trayecto registrado. Se sumaron ${dist} km al odómetro de la unidad.`);
+            this.showToast(`Se sumaron ${dist} km al odómetro de la unidad.`, '✅ Trayecto registrado', 'success');
             await this.loadAllData();
             this.openVehicleDetail(vehicleId);
         } catch (e) {
-            alert("Error al guardar trayecto: " + e.message);
+            this.showToast('Error al guardar trayecto: ' + e.message, 'Error', 'error');
         }
     }
 
-    // --- LIMPIEZA ---
     destroy() {
         if (this.realtimeChannel) {
             supabase.removeChannel(this.realtimeChannel);
