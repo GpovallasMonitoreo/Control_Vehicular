@@ -1,19 +1,15 @@
 export class Layout {
     constructor() {
-        // Leemos el rol del usuario (admin, guard, driver, taller, guest)
         this.role = localStorage.getItem('userRole') || 'guest';
         this.userId = localStorage.getItem('userId');
         console.log('🎨 Layout inicializado con rol:', this.role);
     }
 
-    // Verificar si hay sesión válida
     hasValidSession() {
         return this.role && this.role !== 'guest' && this.userId;
     }
 
-    // Genera el HTML del menú lateral según el rol
     getSidebar() {
-        // Si no hay sesión válida o es conductor/invitado, NO mostrar sidebar
         if (!this.hasValidSession() || this.role === 'driver' || this.role === 'guest') {
             return '';
         }
@@ -35,7 +31,6 @@ export class Layout {
                 <a href="#users" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[#92adc9] hover:text-white hover:bg-primary/20 transition-all mb-1">
                     <span class="material-symbols-outlined text-[22px]">group</span> 
                     <span class="font-medium text-sm">Usuarios</span>
-                    <span class="ml-auto text-[10px] bg-primary/20 text-primary px-2 py-0.5 rounded-full">Nuevo</span>
                 </a>
                 
                 <a href="#tracking" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[#92adc9] hover:text-white hover:bg-[#324d67]/30 transition-all mb-1 group relative overflow-hidden">
@@ -87,7 +82,7 @@ export class Layout {
         } 
         
         // ============================================
-        // MENÚ PARA TALLER
+        // MENÚ PARA TALLER (usando rutas simplificadas)
         // ============================================
         else if (this.role === 'taller') {
             menuItems = `
@@ -100,7 +95,7 @@ export class Layout {
                 
                 <a href="#taller-inventory" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[#92adc9] hover:text-white hover:bg-purple-500/20 transition-all mb-1">
                     <span class="material-symbols-outlined text-[22px]">inventory</span> 
-                    <span class="font-medium text-sm">Inventario Taller</span>
+                    <span class="font-medium text-sm">Inventario</span>
                 </a>
                 
                 <a href="#taller-stock" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[#92adc9] hover:text-white hover:bg-purple-500/20 transition-all mb-1">
@@ -111,6 +106,11 @@ export class Layout {
                 <a href="#taller-reports" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[#92adc9] hover:text-white hover:bg-purple-500/20 transition-all mb-1">
                     <span class="material-symbols-outlined text-[22px]">bar_chart</span> 
                     <span class="font-medium text-sm">Reportes Taller</span>
+                </a>
+                
+                <a href="#incident" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-red-400 hover:text-white hover:bg-red-500/20 transition-all mt-4 border border-red-500/20">
+                    <span class="material-symbols-outlined text-[22px]">report_problem</span> 
+                    <span class="font-medium text-sm">Reportar Incidente</span>
                 </a>
             `;
         }
