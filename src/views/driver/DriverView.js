@@ -126,21 +126,26 @@ export class DriverView {
                             </h3>
                             
                             <div id="solicitud-form" class="space-y-4">
+                                <div class="bg-primary/10 p-3 rounded-xl border border-primary/30 mb-2">
+                                    <p class="text-[10px] text-primary uppercase font-bold">Conductor</p>
+                                    <p id="conductor-nombre" class="text-white font-bold">Cargando...</p>
+                                </div>
+
                                 <div>
-                                    <label class="block text-xs font-bold text-[#92adc9] uppercase mb-2">Unidad a solicitar</label>
+                                    <label class="block text-xs font-bold text-[#92adc9] uppercase mb-2">Seleccionar Unidad *</label>
                                     <select id="solicitud-vehicle" class="w-full bg-[#111a22] border border-[#233648] text-white p-3 rounded-xl">
                                         <option value="">Seleccionar unidad...</option>
                                     </select>
                                 </div>
                                 
                                 <div>
-                                    <label class="block text-xs font-bold text-[#92adc9] uppercase mb-2">Destino del viaje</label>
+                                    <label class="block text-xs font-bold text-[#92adc9] uppercase mb-2">Ubicación de Destino *</label>
                                     <input type="text" id="solicitud-destino" class="w-full bg-[#111a22] border border-[#233648] text-white p-3 rounded-xl" 
                                            placeholder="Ej: Zona industrial, Centro, etc.">
                                 </div>
                                 
                                 <div>
-                                    <label class="block text-xs font-bold text-[#92adc9] uppercase mb-2">Motivo del viaje</label>
+                                    <label class="block text-xs font-bold text-[#92adc9] uppercase mb-2">Motivo del Viaje *</label>
                                     <select id="solicitud-motivo" class="w-full bg-[#111a22] border border-[#233648] text-white p-3 rounded-xl">
                                         <option value="">Seleccionar motivo...</option>
                                         <option value="Entrega">Entrega de mercancía</option>
@@ -152,9 +157,9 @@ export class DriverView {
                                 </div>
                                 
                                 <div>
-                                    <label class="block text-xs font-bold text-[#92adc9] uppercase mb-2">Encargado de área</label>
+                                    <label class="block text-xs font-bold text-[#92adc9] uppercase mb-2">Jefe Directo *</label>
                                     <select id="solicitud-encargado" class="w-full bg-[#111a22] border border-[#233648] text-white p-3 rounded-xl">
-                                        <option value="">Seleccionar encargado...</option>
+                                        <option value="">Seleccionar jefe directo...</option>
                                         <option value="Carlos López">Carlos López - Logística</option>
                                         <option value="María García">María García - Operaciones</option>
                                         <option value="Juan Martínez">Juan Martínez - Almacén</option>
@@ -1087,7 +1092,7 @@ export class DriverView {
         const vehicleId = document.getElementById('solicitud-vehicle').value;
         const destino = document.getElementById('solicitud-destino').value;
         const motivo = document.getElementById('solicitud-motivo').value;
-        const encargado = document.getElementById('solicitud-encargado').value;
+        const jefeDirecto = document.getElementById('solicitud-encargado').value;
         
         // Validaciones
         if (!vehicleId) {
@@ -1107,8 +1112,8 @@ export class DriverView {
             return;
         }
         
-        if (!encargado) {
-            alert('Por favor selecciona el encargado de área');
+        if (!jefeDirecto) {
+            alert('Por favor selecciona el jefe directo');
             document.getElementById('solicitud-encargado').focus();
             return;
         }
@@ -1124,26 +1129,25 @@ export class DriverView {
             // Generar código de acceso
             const accessCode = Math.random().toString(36).substring(2, 8).toUpperCase();
             
-            // Crear objeto de solicitud - IMPORTANTE: la estructura debe coincidir con la tabla
+            // Crear objeto de solicitud - SOLO con las columnas que existen en la tabla
             const newTrip = {
-                driver_id: this.userId, // Asegurar que esto no sea null
+                driver_id: this.userId,
                 vehicle_id: vehicleId,
                 status: 'requested',
                 access_code: accessCode,
                 destination: destino,
-                reason: motivo,
-                supervisor: encargado,
+                supervisor: jefeDirecto,
                 request_details: {
                     destination: destino,
                     motivo: motivo,
-                    supervisor: encargado,
+                    supervisor: jefeDirecto,
                     requested_at: new Date().toISOString(),
                     vehicle_id: vehicleId
                 },
                 created_at: new Date().toISOString()
             };
 
-            console.log('📤 Enviando solicitud:', newTrip); // Para debugging
+            console.log('📤 Enviando solicitud:', newTrip);
 
             const { data, error } = await supabase
                 .from('trips')
@@ -1333,6 +1337,10 @@ export class DriverView {
                 
                 const profileRole = document.getElementById('profile-role');
                 if (profileRole) profileRole.innerText = 'Conductor';
+
+                // Mostrar nombre del conductor en el formulario de solicitud
+                const conductorNombre = document.getElementById('conductor-nombre');
+                if (conductorNombre) conductorNombre.innerText = p.full_name || 'Conductor';
             }
         } catch (error) {
             console.error('Error en loadProfileData:', error);
