@@ -111,7 +111,7 @@ export class DriverView {
                         </div>
                     </section>
 
-                    <!-- PESTAÑA FORMULARIO - CAMPOS MANUALES -->
+                    <!-- PESTAÑA FORMULARIO -->
                     <section id="tab-formulario" class="tab-content hidden p-4 space-y-4">
                         <div class="bg-gradient-to-br from-[#192633] to-[#1a2533] border border-[#233648] rounded-2xl p-5 shadow-xl">
                             <h3 class="text-white font-bold mb-4 flex items-center gap-2 border-b border-[#233648] pb-3">
@@ -139,14 +139,14 @@ export class DriverView {
                                         </div>
                                     </div>
                                     
-                                    <!-- Ubicación/Destino - CAMPO MANUAL -->
+                                    <!-- Ubicación/Destino -->
                                     <div>
                                         <label class="block text-xs font-bold text-[#92adc9] uppercase mb-2">
                                             <span class="material-symbols-outlined text-sm align-middle">location_on</span> Ubicación de destino
                                         </label>
                                         <div class="relative">
                                             <input type="text" id="solicitud-destino" class="w-full bg-[#111a22] border border-[#233648] text-white p-4 rounded-xl pr-12 text-sm" 
-                                                   placeholder="Ej: Zona industrial, Centro, dirección específica...">
+                                                   placeholder="Ej: Zona industrial, Centro...">
                                             <button onclick="window.conductorModule.getCurrentLocationForDestination()" 
                                                     class="absolute right-2 top-1/2 -translate-y-1/2 bg-primary/20 text-primary p-2 rounded-lg hover:bg-primary/40 transition-colors">
                                                 <span class="material-symbols-outlined text-sm">my_location</span>
@@ -157,16 +157,16 @@ export class DriverView {
                                         </div>
                                     </div>
                                     
-                                    <!-- Motivo - CAMPO MANUAL -->
+                                    <!-- Motivo -->
                                     <div>
                                         <label class="block text-xs font-bold text-[#92adc9] uppercase mb-2">
                                             <span class="material-symbols-outlined text-sm align-middle">description</span> Motivo del viaje
                                         </label>
                                         <input type="text" id="solicitud-motivo" class="w-full bg-[#111a22] border border-[#233648] text-white p-4 rounded-xl text-sm" 
-                                               placeholder="Ej: Entrega de mercancía, reunión, mantenimiento...">
+                                               placeholder="Ej: Entrega, recolección, reunión...">
                                     </div>
                                     
-                                    <!-- Jefe Inmediato - CAMPO MANUAL -->
+                                    <!-- Jefe Inmediato -->
                                     <div>
                                         <label class="block text-xs font-bold text-[#92adc9] uppercase mb-2">
                                             <span class="material-symbols-outlined text-sm align-middle">supervisor_account</span> Jefe Inmediato
@@ -175,7 +175,7 @@ export class DriverView {
                                                placeholder="Nombre del jefe directo">
                                     </div>
                                     
-                                    <!-- Departamento - CAMPO MANUAL -->
+                                    <!-- Departamento -->
                                     <div>
                                         <label class="block text-xs font-bold text-[#92adc9] uppercase mb-2">
                                             <span class="material-symbols-outlined text-sm align-middle">business</span> Departamento
@@ -542,7 +542,7 @@ export class DriverView {
     // ==================== ESTADÍSTICAS DE PERFIL ====================
     async loadLastTripStats() {
         try {
-            // Cargar último viaje completado - USANDO maybeSingle()
+            // Cargar último viaje completado - USAR maybeSingle()
             const { data: lastTrip, error: lastError } = await supabase
                 .from('trips')
                 .select(`
@@ -686,9 +686,14 @@ export class DriverView {
                         this.startTracking();
                     }
                     
-                    // Si el viaje se completó, actualizar perfil
+                    // Si el viaje se completó, actualizar perfil y limpiar selección
                     if (newStatus === 'completed') {
-                        this.loadLastTripStats();
+                        this.currentTrip = null;
+                        this.selectedVehicleForRequest = null;
+                        await this.loadLastTripStats();
+                        await this.loadAvailableUnits(); // Recargar unidades disponibles
+                        this.switchTab('unidad');
+                        this.showToast('✅ Viaje completado', 'Puedes solicitar una nueva unidad', 'success');
                     }
                 }
             })
@@ -924,7 +929,7 @@ export class DriverView {
             
             if (error) {
                 console.error('Error al sincronizar:', error);
-                // Solo reintentar si es error de red, no de datos
+                // Devolver a la cola solo si es error de red
                 if (error.code === '23503' || error.code === '22003') {
                     console.warn('Error de datos, descartando ubicaciones problemáticas');
                 } else {
@@ -1403,7 +1408,8 @@ export class DriverView {
             .from('trips')
             .update({
                 driver_confirmed_at: new Date().toISOString(),
-                completed_at: new Date().toISOString()
+                completed_at: new Date().toISOString(),
+                status: 'completed'
             })
             .eq('id', this.currentTrip.id);
 
@@ -1415,6 +1421,7 @@ export class DriverView {
             this.selectedVehicleForRequest = null;
             await this.loadDashboardState();
             await this.loadLastTripStats();
+            await this.loadAvailableUnits(); // Recargar unidades disponibles
             this.switchTab('unidad');
         }
     }
