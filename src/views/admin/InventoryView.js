@@ -200,18 +200,20 @@ export class InventoryView {
         }
     }
 
+    // --- CARGA DE DATOS (CORREGIDA PARA EVITAR ERROR .catch) ---
     async loadAllData() {
         if (!supabase) return;
 
         try {
-            // El catch individual en las tablas que pueden no existir evita que todo el Promise.all colapse
+            // El truco está en usar .then(r => r.error ? {data: []} : r) en lugar de .catch()
+            // porque Supabase no devuelve una Promesa con .catch en su constructor de consultas.
             const [vehRes, drvRes, insRes, invRes, srvRes, docRes] = await Promise.all([
                 supabase.from('vehicles').select('*').order('economic_number'),
                 supabase.from('profiles').select('*').eq('role', 'driver'),
-                supabase.from('vehicle_inspections').select('*, vehicles(economic_number, plate, model)').order('created_at', { ascending: false }).catch(() => ({data: []})),
-                supabase.from('inventory_items').select('*').order('name').catch(() => ({data: []})),
-                supabase.from('service_templates').select('*, service_template_items(quantity, inventory_items(id, name, cost, unit, stock, sku))').catch(() => ({data: []})),
-                supabase.from('vehicle_documents').select('*').catch(() => ({data: []}))
+                supabase.from('vehicle_inspections').select('*, vehicles(economic_number, plate, model)').order('created_at', { ascending: false }).then(r => r.error ? {data: []} : r),
+                supabase.from('inventory_items').select('*').order('name').then(r => r.error ? {data: []} : r),
+                supabase.from('service_templates').select('*, service_template_items(quantity, inventory_items(id, name, cost, unit, stock, sku))').then(r => r.error ? {data: []} : r),
+                supabase.from('vehicle_documents').select('*').then(r => r.error ? {data: []} : r)
             ]);
 
             this.vehicles = vehRes.data || [];
@@ -242,6 +244,7 @@ export class InventoryView {
         }
     }
 
+    // --- NAVEGACIÓN PRINCIPAL ---
     switchMainTab(tab) {
         document.getElementById('main-view-vehicles').classList.add('hidden');
         document.getElementById('main-view-drivers').classList.add('hidden');
@@ -255,6 +258,7 @@ export class InventoryView {
         document.getElementById(`main-tab-${tab}`).className = "px-6 py-3 text-primary border-b-2 border-primary font-bold text-sm transition-colors";
     }
 
+    // --- RENDERIZADOS PRINCIPALES ---
     renderVehiclesGrid() {
         const grid = document.getElementById('grid-vehicles');
         if(this.vehicles.length === 0) {
@@ -269,7 +273,6 @@ export class InventoryView {
         }
 
         grid.innerHTML = this.vehicles.map(v => {
-            // ✅ CORRECCIÓN 404: Ignorar imágenes que vengan guardadas como "0"
             const imgUrl = (v.image_url && v.image_url !== "0" && v.image_url !== "null") ? v.image_url : 'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&w=500&q=60';
             
             return `
@@ -398,6 +401,7 @@ export class InventoryView {
         }).join('');
     }
 
+    // --- ALTA DE UNIDAD ---
     openVehicleRegister() {
         const modal = document.getElementById('global-modal');
         const content = document.getElementById('global-modal-content');
@@ -630,8 +634,8 @@ export class InventoryView {
             const { data: newVeh, error } = await supabase.from('vehicles').insert([data]).select();
             if (error) throw error;
             
-            // Intenta guardar el log, pero no detiene la creación si falla por no existir la tabla
-            await supabase.from('vehicle_logs').insert([{
+            // Try insert log, no catch builder
+            const { error: logErr } = await supabase.from('vehicle_logs').insert([{
                 vehicle_id: newVeh[0].id,
                 date: new Date().toISOString().split('T')[0],
                 odometer: initialKm,
@@ -640,7 +644,9 @@ export class InventoryView {
                 total_cost: 0,
                 quantity: 1,
                 notes: `Vehículo registrado: ${data.brand} ${data.model} ${data.year}, Placas: ${data.plate}, ECO: ${data.economic_number}`
-            }]).catch(e => console.warn('No se pudo guardar el log inicial', e));
+            }]);
+            
+            if(logErr) console.warn('No se pudo guardar el log inicial', logErr);
             
             document.getElementById('global-modal').classList.add('hidden');
             alert("✅ Unidad registrada exitosamente y lista para operar.");
@@ -657,11 +663,11 @@ export class InventoryView {
         this.selectedVehicle = this.vehicles.find(v => v.id === id);
         if(!this.selectedVehicle) return;
 
-        // ✅ CORRECCIÓN 404: Se ignoran los errores si las tablas aún no existen
+        // Se usa .then() en lugar de .catch() para evitar el TypeError del Query Builder
         const [logsRes, tripsRes, docsRes] = await Promise.all([
-            supabase.from('vehicle_logs').select('*').eq('vehicle_id', id).order('date', {ascending: false}).catch(() => ({data: []})),
-            supabase.from('vehicle_trips').select('*').eq('vehicle_id', id).order('start_date', {ascending: false}).catch(() => ({data: []})),
-            supabase.from('vehicle_documents').select('*').eq('vehicle_id', id).order('uploaded_at', {ascending: false}).catch(() => ({data: []}))
+            supabase.from('vehicle_logs').select('*').eq('vehicle_id', id).order('date', {ascending: false}).then(r => r.error ? {data:[]} : r),
+            supabase.from('vehicle_trips').select('*').eq('vehicle_id', id).order('start_date', {ascending: false}).then(r => r.error ? {data:[]} : r),
+            supabase.from('vehicle_documents').select('*').eq('vehicle_id', id).order('uploaded_at', {ascending: false}).then(r => r.error ? {data:[]} : r)
         ]);
         
         this.vehicleLogs = logsRes?.data || [];
@@ -689,7 +695,6 @@ export class InventoryView {
         const totalTripKm = this.vehicleTrips.reduce((sum, trip) => sum + Number(trip.distance_km || 0), 0);
         const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${this.selectedVehicle.id}&color=111a22`;
         
-        // ✅ CORRECCIÓN 404: Validar imagen
         const imgUrl = (this.selectedVehicle.image_url && this.selectedVehicle.image_url !== "0" && this.selectedVehicle.image_url !== "null") ? this.selectedVehicle.image_url : 'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&w=800&q=60';
 
         content.className = "bg-[#0d141c] w-full max-w-7xl h-[95vh] rounded-2xl shadow-2xl flex flex-col border border-[#324d67] overflow-hidden animate-fade-in-up font-display";
@@ -994,13 +999,14 @@ export class InventoryView {
         return 'transparent';
     }
 
-    // --- MÉTODOS FALTANTES AÑADIDOS PARA EVITAR ERRORES (Uncaught TypeError) ---
+    // --- MÉTODOS FALTANTES AÑADIDOS PARA EVITAR ERRORES DE CONSOLA ---
+    
     openDocumentUpload(vehicleId) {
-        alert("El módulo para subir documentos en PDF/JPG al expediente de la unidad se activará pronto.");
+        alert("El módulo para subir documentos (PDF/JPG) al expediente digital se activará en la siguiente fase.");
     }
 
     openVehicleEdit(vehicleId) {
-        alert("El editor de perfil del vehículo se abrirá aquí.");
+        alert("El editor completo de la ficha técnica se abrirá aquí próximamente.");
     }
 
     async saveDriver() {
@@ -1010,12 +1016,12 @@ export class InventoryView {
 
         if (!name || !email) return alert("El nombre y el correo electrónico son obligatorios.");
 
-        alert("Los conductores deben ser creados en el Panel de Autenticación de Supabase primero por seguridad. Se habilitará el enlace directo aquí.");
+        alert("Por seguridad, los conductores deben darse de alta en el Panel de Autenticación de Supabase primero para crearles su contraseña.");
         document.getElementById('modal-add-driver').classList.add('hidden');
     }
 
     viewDocuments(docType, vehicleId) {
-        alert("Abriendo visor de documentos para: " + docType);
+        alert("Abriendo el visor de documentos para: " + docType);
     }
 
     // --- REGISTRO DE SERVICIOS EN BITÁCORA ---
@@ -1188,6 +1194,7 @@ export class InventoryView {
             const { error } = await supabase.from('vehicle_logs').insert([logData]);
             if (error) throw error;
 
+            // Descuento automático de inventario
             for(let item of this.pendingStockDeduction) {
                 const currentItem = this.inventory.find(i => i.id === item.id);
                 if(currentItem) await supabase.from('inventory_items').update({ stock: currentItem.stock - item.qty }).eq('id', item.id);
@@ -1310,13 +1317,14 @@ export class InventoryView {
         if(!dist || !dest || dist <= 0) return alert("Ingresa una distancia válida y un destino/motivo.");
 
         try {
-            // El catch previene errores si la tabla aún no existe en Supabase
-            await supabase.from('vehicle_trips').insert([{
+            const { error: tripError } = await supabase.from('vehicle_trips').insert([{
                 vehicle_id: vehicleId,
                 distance_km: dist,
                 destination: dest,
                 start_date: new Date().toISOString()
-            }]).catch(e => console.warn('Error guardando trip', e));
+            }]);
+            
+            if (tripError) console.warn('Error guardando trip', tripError);
 
             const currentKm = Number(this.selectedVehicle.current_km) + dist;
             await supabase.from('vehicles').update({ current_km: currentKm }).eq('id', vehicleId);
