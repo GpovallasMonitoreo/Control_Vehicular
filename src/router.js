@@ -35,7 +35,7 @@ export class Router {
         this.layout = new Layout();
         this.isHandlingRoute = false;
 
-        // MAPEO DE RUTAS - VERSIÓN COMPLETA CON WORKSHOPVIEW
+        // MAPEO DE RUTAS
         this.routes = {
             // Auth
             '': LoginView,
@@ -50,20 +50,20 @@ export class Router {
             '#inventory': InventoryView,
             '#fleet': FleetView,
             '#fuel': FuelView,
-            '#maintenance': MaintenanceView,
+            '#maintenance': WorkshopView,           // AHORA USA WORKSHOPVIEW
             '#incidents-admin': IncidentsDashboard,
             '#reports': ReportsView,
             '#stock': InventoryStockView,
             '#tracking': TrackingView,
             
             // ============================================
-            // TALLER - AHORA USA LA VISTA COMPLETA DE TALLER
+            // TALLER
             // ============================================
-            '#taller-dashboard': WorkshopView,        // Panel del taller con flujo completo
-            '#taller-inventory': InventoryView,        // Inventario del taller
-            '#taller-stock': InventoryStockView,       // Stock de refacciones
-            '#taller-reports': ReportsView,            // Reportes del taller
-            '#taller-workshop': WorkshopView,          // Alias para acceso directo al taller
+            '#taller-dashboard': WorkshopView,
+            '#taller-inventory': InventoryView,
+            '#taller-stock': InventoryStockView,
+            '#taller-reports': ReportsView,
+            '#taller-workshop': WorkshopView,
             
             // ============================================
             // VIGILANCIA
