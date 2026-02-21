@@ -131,12 +131,12 @@ export class AssignmentsView {
                     destination,
                     motivo,
                     supervisor,
-                    vehicles:economico!trips_vehicle_id_fkey(
+                    vehicles:vehicle_id(
                         economic_number, 
                         model, 
                         plate
                     ),
-                    driver:profiles!trips_driver_id_fkey(
+                    driver:driver_id(
                         full_name, 
                         photo_url
                     )
@@ -204,11 +204,11 @@ export class AssignmentsView {
                 .select(`
                     id, 
                     created_at,
-                    vehicles:economico!trips_vehicle_id_fkey(
+                    vehicles:vehicle_id(
                         economic_number, 
                         plate
                     ),
-                    driver:profiles!trips_driver_id_fkey(
+                    driver:driver_id(
                         full_name, 
                         photo_url
                     )
@@ -263,12 +263,12 @@ export class AssignmentsView {
                     motivo,
                     supervisor,
                     vehicle_id,
-                    vehicles:economico!trips_vehicle_id_fkey(
+                    vehicles:vehicle_id(
                         economic_number, 
                         model, 
                         plate
                     ), 
-                    driver:profiles!trips_driver_id_fkey(
+                    driver:driver_id(
                         full_name, 
                         photo_url
                     )
