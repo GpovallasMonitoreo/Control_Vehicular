@@ -16,14 +16,6 @@ import { FleetView } from './views/admin/FleetView.js';
 import { InventoryStockView } from './views/admin/InventoryStockView.js';
 import { TrackingView } from './views/admin/TrackingView.js';
 
-// Vistas Taller
-import { WorkshopView } from './views/taller/WorkshopView.js';
-import { PendingChecklistsView } from './views/taller/PendingChecklistsView.js';
-import { MaintenanceQueueView } from './views/taller/MaintenanceQueueView.js';
-import { WorkshopHistoryView } from './views/taller/WorkshopHistoryView.js';
-import { PartsInventoryView } from './views/taller/PartsInventoryView.js';
-import { WorkshopReportsView } from './views/taller/WorkshopReportsView.js';
-
 // Vistas Vigilancia
 import { ScannerView } from './views/guard/ScannerView.js';
 
@@ -40,14 +32,14 @@ export class Router {
         this.layout = new Layout();
         this.isHandlingRoute = false;
 
-        // MAPEO DE RUTAS - CORREGIDO
+        // MAPEO DE RUTAS - SOLO CON LAS VISTAS QUE EXISTEN
         this.routes = {
             // Auth
             '': LoginView,
             '#login': LoginView,
             
             // ============================================
-            // ADMINISTRADOR (RUTAS CORRECTAS)
+            // ADMINISTRADOR
             // ============================================
             '#dashboard': DashboardView,
             '#users': AdminDashboardView,
@@ -62,14 +54,12 @@ export class Router {
             '#tracking': TrackingView,
             
             // ============================================
-            // TALLER
+            // TALLER - Usando las vistas de admin que ya existen
             // ============================================
-            '#workshop': WorkshopView,
-            '#pending-checklists': PendingChecklistsView,
-            '#maintenance-queue': MaintenanceQueueView,
-            '#workshop-history': WorkshopHistoryView,
-            '#parts-inventory': PartsInventoryView,
-            '#workshop-reports': WorkshopReportsView,
+            '#taller-dashboard': MaintenanceView,      // Panel del taller (usa MaintenanceView)
+            '#taller-inventory': InventoryView,        // Inventario del taller
+            '#taller-stock': InventoryStockView,       // Stock de refacciones
+            '#taller-reports': ReportsView,            // Reportes del taller
             
             // ============================================
             // VIGILANCIA
@@ -116,7 +106,7 @@ export class Router {
             if (hasValidSession && hash === '#login') {
                 const redirectMap = {
                     'admin': '#dashboard',
-                    'taller': '#workshop',
+                    'taller': '#taller-dashboard',
                     'guard': '#scanner',
                     'driver': '#driver'
                 };
@@ -184,9 +174,8 @@ export class Router {
                 '#tracking', '#incident'
             ],
             'taller': [
-                '#workshop', '#pending-checklists', '#maintenance-queue',
-                '#workshop-history', '#parts-inventory', '#workshop-reports',
-                '#incident'
+                '#taller-dashboard', '#taller-inventory', '#taller-stock', 
+                '#taller-reports', '#incident'
             ],
             'guard': [
                 '#scanner', '#incident'
@@ -205,7 +194,7 @@ export class Router {
     redirectToDefault(role) {
         const defaultRoutes = {
             'admin': '#dashboard',
-            'taller': '#workshop',
+            'taller': '#taller-dashboard',
             'guard': '#scanner',
             'driver': '#driver'
         };
