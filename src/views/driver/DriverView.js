@@ -16,6 +16,11 @@ export class DriverView {
         this.updateInterval = null;
         this.forceUpdateInterval = null;
         
+        // Variables para Ping Inteligente y Broadcast
+        this.lastBroadcastTime = 0;
+        this.lastBroadcastPos = null;
+        this.broadcastChannel = null; 
+        
         // Sistema de logística
         this.tripLogistics = {
             startTime: null,
@@ -42,7 +47,6 @@ export class DriverView {
         <div class="fixed inset-0 w-full h-full bg-[#0d141c] font-display flex justify-center overflow-hidden">
             <div class="w-full md:max-w-md bg-[#111a22] h-full relative shadow-2xl border-x border-[#233648] flex flex-col">
                 
-                <!-- HEADER -->
                 <header class="w-full shrink-0 border-b border-[#233648] px-5 py-3 bg-[#111a22] z-20">
                     <div class="flex items-center justify-between">
                         <div class="flex items-center gap-3">
@@ -68,7 +72,6 @@ export class DriverView {
                         </div>
                     </div>
 
-                    <!-- BANNER DE CÓDIGO DE ACCESO -->
                     <div id="access-code-banner" class="hidden mt-3 bg-gradient-to-r from-green-600 to-emerald-600 p-3 rounded-xl animate-pulse">
                         <div class="flex items-center justify-between">
                             <div>
@@ -80,7 +83,6 @@ export class DriverView {
                         <p class="text-green-200 text-[8px] mt-1">Muestra este código al guardia al salir</p>
                     </div>
 
-                    <!-- BANNER DE INCIDENCIA -->
                     <div id="incident-banner" class="hidden mt-3 bg-gradient-to-r from-red-600 to-orange-600 p-3 rounded-xl">
                         <div class="flex items-center gap-2">
                             <span class="material-symbols-outlined text-white">warning</span>
@@ -94,7 +96,6 @@ export class DriverView {
 
                 <main class="flex-1 overflow-y-auto custom-scrollbar relative pb-20" id="main-content">
                     
-                    <!-- PESTAÑA UNIDAD -->
                     <section id="tab-unidad" class="tab-content block p-4 space-y-4">
                         <h3 class="text-white text-xs font-bold uppercase tracking-widest opacity-70 px-1">Unidades Disponibles</h3>
                         
@@ -109,7 +110,6 @@ export class DriverView {
                             <p class="text-sm">Sin unidades activas</p>
                         </div>
                         
-                        <!-- Viaje activo -->
                         <div id="current-trip-info" class="hidden">
                             <div class="bg-gradient-to-br from-primary/20 to-blue-600/20 border border-primary/30 p-5 rounded-2xl text-center backdrop-blur-sm">
                                 <p class="text-[10px] font-bold text-primary uppercase tracking-widest mb-2">Unidad Actual</p>
@@ -122,7 +122,6 @@ export class DriverView {
                         </div>
                     </section>
 
-                    <!-- PESTAÑA FORMULARIO -->
                     <section id="tab-formulario" class="tab-content hidden p-4 space-y-4">
                         <div class="bg-gradient-to-br from-[#192633] to-[#1a2533] border border-[#233648] rounded-2xl p-5 shadow-xl">
                             <h3 class="text-white font-bold mb-4 flex items-center gap-2 border-b border-[#233648] pb-3">
@@ -130,7 +129,6 @@ export class DriverView {
                             </h3>
                             
                             <div id="solicitud-form" class="space-y-4">
-                                <!-- Mensaje si no hay unidad seleccionada -->
                                 <div id="no-vehicle-selected-msg" class="bg-yellow-500/10 border border-yellow-500/30 p-5 rounded-xl text-center">
                                     <span class="material-symbols-outlined text-3xl text-yellow-500 mb-2">info</span>
                                     <p class="text-white text-sm mb-3">Primero selecciona una unidad</p>
@@ -140,9 +138,7 @@ export class DriverView {
                                     </button>
                                 </div>
                                 
-                                <!-- Contenido del formulario -->
                                 <div id="form-content" class="hidden space-y-4">
-                                    <!-- Unidad seleccionada -->
                                     <div class="bg-primary/10 p-4 rounded-xl border border-primary/30">
                                         <label class="block text-[10px] font-bold text-[#92adc9] uppercase mb-2">Unidad seleccionada</label>
                                         <div id="selected-vehicle-display" class="text-white font-bold text-lg">
@@ -150,7 +146,6 @@ export class DriverView {
                                         </div>
                                     </div>
                                     
-                                    <!-- Ubicación/Destino -->
                                     <div>
                                         <label class="block text-xs font-bold text-[#92adc9] uppercase mb-2">
                                             <span class="material-symbols-outlined text-sm align-middle">location_on</span> Ubicación de destino
@@ -168,7 +163,6 @@ export class DriverView {
                                         </div>
                                     </div>
                                     
-                                    <!-- Motivo -->
                                     <div>
                                         <label class="block text-xs font-bold text-[#92adc9] uppercase mb-2">
                                             <span class="material-symbols-outlined text-sm align-middle">description</span> Motivo del viaje
@@ -177,7 +171,6 @@ export class DriverView {
                                                placeholder="Ej: Entrega, recolección, reunión...">
                                     </div>
                                     
-                                    <!-- Jefe Inmediato -->
                                     <div>
                                         <label class="block text-xs font-bold text-[#92adc9] uppercase mb-2">
                                             <span class="material-symbols-outlined text-sm align-middle">supervisor_account</span> Jefe Inmediato
@@ -186,7 +179,6 @@ export class DriverView {
                                                placeholder="Nombre del jefe directo">
                                     </div>
                                     
-                                    <!-- Departamento -->
                                     <div>
                                         <label class="block text-xs font-bold text-[#92adc9] uppercase mb-2">
                                             <span class="material-symbols-outlined text-sm align-middle">business</span> Departamento
@@ -195,7 +187,6 @@ export class DriverView {
                                                placeholder="Ej: Logística, Ventas, Operaciones...">
                                     </div>
                                     
-                                    <!-- Último checklist -->
                                     <div id="last-checklist-container" class="hidden bg-[#111a22] p-4 rounded-xl border border-[#324d67]">
                                         <h4 class="text-[10px] font-bold text-[#92adc9] uppercase mb-3 flex items-center gap-1">
                                             <span class="material-symbols-outlined text-sm">checklist</span> Último checklist
@@ -212,7 +203,6 @@ export class DriverView {
                         </div>
                     </section>
 
-                    <!-- PESTAÑA TALLER INICIAL -->
                     <section id="tab-taller-inicial" class="tab-content hidden p-4 space-y-4">
                         <div class="bg-gradient-to-br from-orange-600/20 to-orange-800/20 border border-orange-500/30 rounded-2xl p-5 shadow-xl">
                             <div class="flex items-center gap-3 mb-4">
@@ -235,7 +225,6 @@ export class DriverView {
                                     <h4 id="taller-vehicle-info" class="text-white font-bold text-lg">--</h4>
                                 </div>
                                 
-                                <!-- Barra de progreso -->
                                 <div class="bg-[#111a22] p-4 rounded-xl">
                                     <div class="flex justify-between text-[10px] text-[#92adc9] mb-2">
                                         <span>Esperando taller</span>
@@ -247,13 +236,11 @@ export class DriverView {
                                     </div>
                                 </div>
                                 
-                                <!-- Fotos de recepción -->
                                 <div id="reception-photos-gallery" class="hidden">
                                     <p class="text-[10px] text-[#92adc9] uppercase mb-2">Fotos tomadas</p>
                                     <div id="reception-photos-grid" class="grid grid-cols-3 gap-2"></div>
                                 </div>
                                 
-                                <!-- Mensaje cuando el taller completa -->
                                 <div id="taller-complete-message" class="hidden bg-green-600/20 border border-green-500/30 p-4 rounded-xl text-center">
                                     <span class="material-symbols-outlined text-3xl text-green-500 mb-2">check_circle</span>
                                     <p class="text-white text-sm">¡Recepción completada! Ya puedes pasar con el guardia.</p>
@@ -262,17 +249,14 @@ export class DriverView {
                         </div>
                     </section>
 
-                    <!-- PESTAÑA RUTA -->
                     <section id="tab-ruta" class="tab-content hidden h-full flex flex-col">
                         <div class="p-4 space-y-4">
-                            <!-- Esperando salida -->
                             <div id="route-waiting-msg" class="bg-[#192633] border border-[#233648] rounded-2xl p-8 text-center">
                                 <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
                                 <h3 class="text-white font-bold text-lg">Esperando Salida</h3>
                                 <p class="text-[#92adc9] text-xs mt-2">Esperando autorización del guardia...</p>
                             </div>
 
-                            <!-- Viaje en progreso -->
                             <div id="active-trip-panel" class="hidden space-y-4">
                                 <div class="bg-gradient-to-br from-primary/20 to-blue-600/20 rounded-2xl p-5 border border-primary/30">
                                     <div class="grid grid-cols-2 gap-4 mb-4">
@@ -300,7 +284,6 @@ export class DriverView {
                                     </div>
                                 </div>
 
-                                <!-- Notas del viaje -->
                                 <div class="bg-[#192633] rounded-xl p-4 border border-[#233648]">
                                     <p class="text-[10px] text-[#92adc9] uppercase mb-2 flex items-center gap-1">
                                         <span class="material-symbols-outlined text-sm">note</span> Notas del viaje
@@ -315,7 +298,6 @@ export class DriverView {
                                 </div>
                             </div>
 
-                            <!-- Estado del GPS -->
                             <div class="bg-[#111a22] border border-[#233648] rounded-xl p-4">
                                 <div id="gps-status-indicator" class="text-center">
                                     <div class="flex items-center justify-center gap-2 text-slate-400">
@@ -327,7 +309,6 @@ export class DriverView {
                         </div>
                     </section>
 
-                    <!-- PESTAÑA TALLER FINAL -->
                     <section id="tab-taller-final" class="tab-content hidden p-4 space-y-4">
                         <div class="bg-gradient-to-br from-purple-600/20 to-purple-800/20 border border-purple-500/30 rounded-2xl p-5 shadow-xl">
                             <div class="flex items-center gap-3 mb-4">
@@ -345,7 +326,6 @@ export class DriverView {
                                     <p class="text-white text-sm">Viaje terminado. Dirígete a taller para revisión final.</p>
                                 </div>
                                 
-                                <!-- Resumen del viaje -->
                                 <div class="bg-[#111a22] border border-[#324d67] p-4 rounded-xl">
                                     <p class="text-[10px] text-[#92adc9] uppercase mb-3">Resumen del viaje</p>
                                     <div class="grid grid-cols-2 gap-3">
@@ -360,13 +340,11 @@ export class DriverView {
                                     </div>
                                 </div>
                                 
-                                <!-- Fotos de retorno -->
                                 <div id="return-photos-gallery" class="hidden bg-[#111a22] border border-[#324d67] p-4 rounded-xl">
                                     <p class="text-[10px] text-[#92adc9] uppercase mb-2">Fotos de entrega</p>
                                     <div id="return-photos-grid" class="grid grid-cols-3 gap-2"></div>
                                 </div>
                                 
-                                <!-- Barra de progreso -->
                                 <div class="bg-[#111a22] p-4 rounded-xl">
                                     <div class="flex justify-between text-[10px] text-[#92adc9] mb-2">
                                         <span>Esperando taller</span>
@@ -378,7 +356,6 @@ export class DriverView {
                                     </div>
                                 </div>
                                 
-                                <!-- Botón de confirmación -->
                                 <div id="conductor-confirmacion-container" class="hidden">
                                     <button onclick="window.conductorModule.confirmarLiberacionTaller()" 
                                             class="w-full py-5 bg-green-600 text-white font-black rounded-xl uppercase text-lg hover:bg-green-500 transition-all shadow-lg">
@@ -389,10 +366,8 @@ export class DriverView {
                         </div>
                     </section>
 
-                    <!-- PESTAÑA PERFIL CON HISTORIAL -->
                     <section id="tab-perfil" class="tab-content hidden p-4">
                         <div class="bg-white rounded-3xl p-6 shadow-2xl">
-                            <!-- Foto y nombre -->
                             <div class="flex items-center gap-4 mb-6">
                                 <div id="card-photo" class="h-16 w-16 rounded-2xl bg-slate-200 bg-cover bg-center border-2 border-primary"></div>
                                 <div class="flex-1">
@@ -401,7 +376,6 @@ export class DriverView {
                                 </div>
                             </div>
 
-                            <!-- Datos personales -->
                             <div class="bg-slate-50 p-4 rounded-2xl mb-4">
                                 <h4 class="text-slate-800 text-xs font-black uppercase mb-3 flex items-center gap-1">
                                     <span class="material-symbols-outlined text-sm text-primary">badge</span> Datos
@@ -414,7 +388,6 @@ export class DriverView {
                                 </div>
                             </div>
 
-                            <!-- ÚLTIMO VIAJE REALIZADO -->
                             <div class="bg-slate-50 p-4 rounded-2xl">
                                 <h4 class="text-slate-800 text-xs font-black uppercase mb-3 flex items-center gap-1">
                                     <span class="material-symbols-outlined text-sm text-primary">history</span> Último viaje
@@ -447,7 +420,6 @@ export class DriverView {
                                 </div>
                             </div>
 
-                            <!-- ESTADÍSTICAS GENERALES -->
                             <div class="mt-4 grid grid-cols-2 gap-2">
                                 <div class="bg-slate-50 p-3 rounded-xl">
                                     <p class="text-[8px] text-slate-500 uppercase">Viajes totales</p>
@@ -462,7 +434,6 @@ export class DriverView {
                     </section>
                 </main>
 
-                <!-- NAVEGACIÓN -->
                 <nav class="absolute bottom-0 w-full bg-[#111a22] border-t border-[#233648] flex justify-around items-center h-16 z-30">
                     <button onclick="window.conductorModule.switchTab('unidad')" id="nav-unidad" class="nav-btn active text-primary flex flex-col items-center justify-center flex-1 h-full">
                         <span class="material-symbols-outlined text-xl">directions_car</span>
@@ -482,7 +453,6 @@ export class DriverView {
                     </button>
                 </nav>
 
-                <!-- MODAL DE EMERGENCIA -->
                 <div id="modal-emergency" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-sm p-4">
                     <div class="bg-[#1c2127] w-full max-w-md rounded-3xl p-6 border border-red-500/30">
                         <span class="material-symbols-outlined text-5xl text-red-500 mb-4 block">emergency</span>
@@ -504,7 +474,6 @@ export class DriverView {
                     </div>
                 </div>
 
-                <!-- TOAST DE NOTIFICACIONES -->
                 <div id="notification-toast" class="hidden fixed bottom-20 left-4 right-4 z-40 animate-slide-up">
                     <div class="bg-[#1c2127] border border-primary/30 rounded-xl p-4 shadow-2xl">
                         <div class="flex items-center gap-3">
@@ -666,6 +635,7 @@ export class DriverView {
             supabase.removeChannel(this.realtimeChannel);
         }
 
+        // 1. Canal para escuchar los cambios de estado
         this.realtimeChannel = supabase
             .channel('driver_realtime_' + this.userId)
             .on('postgres_changes', { 
@@ -681,7 +651,6 @@ export class DriverView {
                     const newStatus = payload.new.status;
                     
                     this.currentTrip = payload.new;
-                    
                     await this.updateUIByStatus(payload.new);
                     
                     if (oldStatus && oldStatus !== newStatus) {
@@ -711,8 +680,12 @@ export class DriverView {
                 }
             })
             .subscribe((status) => {
-                console.log('📡 Estado de suscripción:', status);
+                console.log('📡 Estado de suscripción trips:', status);
             });
+
+        // 2. Canal general para EMITIR el GPS sin guardarlo en DB
+        this.broadcastChannel = supabase.channel('tracking_realtime');
+        this.broadcastChannel.subscribe();
     }
 
     // ==================== BANNER DE INCIDENCIA ====================
@@ -948,7 +921,7 @@ export class DriverView {
         this.pendingLocations = [];
         
         try {
-            console.log('Sincronizando ubicaciones:', locations);
+            console.log('Sincronizando ubicaciones a la DB:', locations.length);
             
             const dataToInsert = locations.map(loc => ({
                 trip_id: this.currentTrip.id,
@@ -971,7 +944,7 @@ export class DriverView {
                     this.pendingLocations = [...locations, ...this.pendingLocations];
                 }
             } else {
-                console.log('✅ Ubicaciones sincronizadas:', dataToInsert.length);
+                console.log('✅ Ubicaciones guardadas en DB:', dataToInsert.length);
             }
         } catch (error) {
             console.error('Error en sync:', error);
@@ -1108,6 +1081,7 @@ export class DriverView {
     handlePositionUpdate(pos) {
         const { latitude, longitude, speed, accuracy } = pos.coords;
         const now = new Date();
+        const currentTime = Date.now();
         const speedKmh = Math.min(999, Math.round((speed || 0) * 3.6));
 
         document.getElementById('live-speed').innerText = speedKmh;
@@ -1154,7 +1128,45 @@ export class DriverView {
             </div>
         `;
 
-        if (this.currentTrip?.status === 'in_progress') {
+        // PING INTELIGENTE Y BROADCAST
+        let shouldBroadcast = false;
+        
+        if (!this.lastBroadcastPos) {
+            shouldBroadcast = true;
+        } else {
+            const timeDiff = currentTime - this.lastBroadcastTime;
+            const distDiff = this.calculateDistance(
+                this.lastBroadcastPos.lat, this.lastBroadcastPos.lng,
+                latitude, longitude
+            ) * 1000; // a metros
+
+            // Transmitir solo si pasaron 15 segs o se movió más de 15 metros
+            if (timeDiff > 15000 || distDiff > 15) {
+                shouldBroadcast = true;
+            }
+        }
+
+        if (shouldBroadcast && this.currentTrip?.status === 'in_progress') {
+            
+            // Envío fugaz para el mapa en tiempo real (NO guarda en base de datos)
+            if (this.broadcastChannel) {
+                this.broadcastChannel.send({
+                    type: 'broadcast',
+                    event: 'location_update',
+                    payload: {
+                        trip_id: this.currentTrip.id,
+                        lat: latitude,
+                        lng: longitude,
+                        speed: speedKmh,
+                        timestamp: now.toISOString()
+                    }
+                });
+            }
+            
+            this.lastBroadcastTime = currentTime;
+            this.lastBroadcastPos = { lat: latitude, lng: longitude };
+
+            // Solo guardamos puntos significativos en memoria
             this.pendingLocations.push({
                 lat: latitude,
                 lng: longitude,
@@ -1163,7 +1175,8 @@ export class DriverView {
                 timestamp: now.toISOString()
             });
             
-            if (this.pendingLocations.length >= 10) {
+            // Incrementamos el lote para hacer menos inserciones
+            if (this.pendingLocations.length >= 20) {
                 this.syncPendingLocations();
             }
         }
@@ -1189,8 +1202,7 @@ export class DriverView {
         const dLon = this.deg2rad(lon2 - lon1);
         const a = 
             Math.sin(dLat/2) * Math.sin(dLat/2) +
-            Math.cos(this.deg2rad(lat1)) * Math.cos(this.deg2rad(lat2)) * 
-            Math.sin(dLon/2) * Math.sin(dLon/2);
+            Math.cos(this.deg2rad(lat1)) * Math.cos(this.deg2rad(lat2)) * Math.sin(dLon/2) * Math.sin(dLon/2);
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
         return R * c;
     }
@@ -1675,6 +1687,9 @@ export class DriverView {
         }
         if (this.realtimeChannel) {
             supabase.removeChannel(this.realtimeChannel);
+        }
+        if (this.broadcastChannel) {
+            supabase.removeChannel(this.broadcastChannel);
         }
         this.stopTracking();
     }
