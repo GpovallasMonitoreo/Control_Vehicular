@@ -11,7 +11,9 @@ export class AssignmentsView {
         <div class="flex flex-col h-full gap-6 animate-fade-in relative pb-20">
             <div class="flex justify-between items-center border-b border-[#324d67] pb-4">
                 <h1 class="text-xl font-black text-white">Centro de Control</h1>
-                <button onclick="window.location.reload()" class="p-2 bg-[#1c2127] rounded text-slate-400"><span class="material-symbols-outlined">refresh</span></button>
+                <button onclick="window.assignmentsView.loadData()" class="p-2 bg-[#1c2127] rounded text-slate-400 hover:text-white transition-colors">
+                    <span class="material-symbols-outlined">refresh</span>
+                </button>
             </div>
 
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 min-h-0 flex-1">
@@ -102,46 +104,6 @@ export class AssignmentsView {
                     </div>
                 </div>
             </div>
-
-            <!-- MODAL DE INCIDENCIAS (para cuando taller rechaza) -->
-            <div id="modal-incident" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
-                <div class="bg-[#1c2127] w-full max-w-md rounded-2xl border border-red-500/30 shadow-2xl animate-fade-in-up overflow-hidden">
-                    <div class="p-6 border-b border-[#324d67] bg-[#151b23]">
-                        <h3 class="text-xl font-bold text-white flex items-center gap-2">
-                            <span class="material-symbols-outlined text-red-500">warning</span> Registrar Incidencia
-                        </h3>
-                    </div>
-                    
-                    <div class="p-6 space-y-4">
-                        <div class="bg-[#111a22] p-4 rounded-xl border border-[#324d67]">
-                            <p class="text-sm text-white mb-2" id="incident-vehicle-info"></p>
-                            <textarea id="incident-description" rows="4" 
-                                      class="w-full bg-[#0d141c] border border-[#324d67] text-white p-3 rounded-lg text-sm"
-                                      placeholder="Describe el problema encontrado..."></textarea>
-                        </div>
-                        
-                        <div>
-                            <label class="block text-xs font-bold text-[#92adc9] uppercase mb-2">Responsable</label>
-                            <select id="incident-responsible" class="w-full bg-[#111a22] border border-[#324d67] text-white p-3 rounded-lg">
-                                <option value="unidad">Falla de la unidad</option>
-                                <option value="conductor">Responsabilidad del conductor</option>
-                                <option value="externo">Causa externa</option>
-                            </select>
-                        </div>
-
-                        <div class="flex gap-3 pt-4">
-                            <button onclick="document.getElementById('modal-incident').classList.add('hidden')" 
-                                    class="flex-1 py-3 bg-[#233648] text-white rounded-lg">
-                                Cancelar
-                            </button>
-                            <button onclick="window.assignmentsView.saveIncident()" 
-                                    class="flex-1 py-3 bg-red-600 text-white rounded-lg font-bold">
-                                GUARDAR INCIDENCIA
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
         </div>
         `;
     }
@@ -160,199 +122,314 @@ export class AssignmentsView {
     }
 
     async loadRequests() {
-        const { data: requests } = await supabase
-            .from('trips')
-            .select(`
-                id, 
-                created_at,
-                request_details,
-                vehicles(economic_number, model, plate), 
-                driver:profiles!trips_driver_id_fkey(full_name, photo_url)
-            `)
-            .eq('status', 'requested')
-            .order('created_at', { ascending: false });
+        try {
+            const { data: requests, error } = await supabase
+                .from('trips')
+                .select(`
+                    id, 
+                    created_at,
+                    destination,
+                    motivo,
+                    supervisor,
+                    vehicles:economico!trips_vehicle_id_fkey(
+                        economic_number, 
+                        model, 
+                        plate
+                    ),
+                    driver:profiles!trips_driver_id_fkey(
+                        full_name, 
+                        photo_url
+                    )
+                `)
+                .eq('status', 'requested')
+                .order('created_at', { ascending: false });
 
-        const reqList = document.getElementById('list-requests');
-        document.getElementById('requests-count').innerText = requests?.length || 0;
-        
-        if(!requests?.length) {
-            reqList.innerHTML = '<p class="text-slate-500 text-center text-xs">Sin solicitudes pendientes</p>';
-        } else {
-            reqList.innerHTML = requests.map(r => {
-                const details = r.request_details || {};
-                return `
-                <div class="bg-[#151b23] p-4 rounded-lg border border-slate-700 hover:border-yellow-500/50 transition-colors">
-                    <div class="flex items-center gap-3 mb-3">
-                        <div class="w-10 h-10 rounded-full bg-slate-700 bg-cover bg-center" style="background-image: url('${r.driver.photo_url || ''}')"></div>
-                        <div class="flex-1">
-                            <p class="text-white font-bold text-sm">${r.driver.full_name}</p>
-                            <p class="text-[10px] text-[#92adc9]">${new Date(r.created_at).toLocaleString()}</p>
+            if (error) throw error;
+
+            const reqList = document.getElementById('list-requests');
+            const countSpan = document.getElementById('requests-count');
+            
+            if (countSpan) countSpan.innerText = requests?.length || 0;
+            
+            if (!requests || requests.length === 0) {
+                if (reqList) reqList.innerHTML = '<p class="text-slate-500 text-center text-xs">Sin solicitudes pendientes</p>';
+                return;
+            }
+
+            if (reqList) {
+                reqList.innerHTML = requests.map(r => {
+                    const eco = r.vehicles?.economic_number || 'Sin Asignar';
+                    return `
+                    <div class="bg-[#151b23] p-4 rounded-lg border border-slate-700 hover:border-yellow-500/50 transition-colors">
+                        <div class="flex items-center gap-3 mb-3">
+                            <div class="w-10 h-10 rounded-full bg-slate-700 bg-cover bg-center" 
+                                 style="background-image: url('${r.driver?.photo_url || ''}')"></div>
+                            <div class="flex-1">
+                                <p class="text-white font-bold text-sm">${r.driver?.full_name || 'Desconocido'}</p>
+                                <p class="text-[10px] text-[#92adc9]">${new Date(r.created_at).toLocaleString()}</p>
+                            </div>
                         </div>
+                        
+                        <div class="bg-[#111a22] p-3 rounded-lg space-y-2 text-xs">
+                            <p><span class="text-[#92adc9]">Unidad:</span> 
+                               <span class="text-white font-bold">ECO-${eco}</span></p>
+                            <p><span class="text-[#92adc9]">Destino:</span> 
+                               <span class="text-white">${r.destination || 'No especificado'}</span></p>
+                            <p><span class="text-[#92adc9]">Motivo:</span> 
+                               <span class="text-white">${r.motivo || 'No especificado'}</span></p>
+                            <p><span class="text-[#92adc9]">Encargado:</span> 
+                               <span class="text-white">${r.supervisor || 'No especificado'}</span></p>
+                        </div>
+                        
+                        <button onclick="window.assignmentsView.openRequest('${r.id}')" 
+                                class="w-full mt-3 bg-primary/20 text-primary hover:bg-primary hover:text-white py-2 rounded-lg text-xs font-bold transition-all">
+                            REVISAR SOLICITUD
+                        </button>
                     </div>
-                    
-                    <div class="bg-[#111a22] p-3 rounded-lg space-y-2 text-xs">
-                        <p><span class="text-[#92adc9]">Unidad:</span> <span class="text-white font-bold">ECO-${r.vehicles?.economic_number}</span></p>
-                        <p><span class="text-[#92adc9]">Destino:</span> <span class="text-white">${details.destination || 'No especificado'}</span></p>
-                        <p><span class="text-[#92adc9]">Motivo:</span> <span class="text-white">${details.motivo || 'No especificado'}</span></p>
-                        <p><span class="text-[#92adc9]">Encargado:</span> <span class="text-white">${details.supervisor || 'No especificado'}</span></p>
-                    </div>
-                    
-                    <button onclick="window.assignmentsView.openRequest('${r.id}')" 
-                            class="w-full mt-3 bg-primary/20 text-primary hover:bg-primary hover:text-white py-2 rounded-lg text-xs font-bold transition-all">
-                        REVISAR SOLICITUD
-                    </button>
-                </div>
-            `}).join('');
+                `}).join('');
+            }
+        } catch (error) {
+            console.error('Error cargando solicitudes:', error);
+            const reqList = document.getElementById('list-requests');
+            if (reqList) {
+                reqList.innerHTML = '<p class="text-red-500 text-center text-xs">Error al cargar solicitudes</p>';
+            }
         }
     }
 
     async loadTallerReceptions() {
-        const { data: trips } = await supabase
-            .from('trips')
-            .select(`
-                id, 
-                created_at,
-                vehicles(economic_number, model, plate), 
-                driver:profiles!trips_driver_id_fkey(full_name, photo_url)
-            `)
-            .eq('status', 'approved_for_taller')
-            .order('created_at', { ascending: false });
+        try {
+            const { data: trips, error } = await supabase
+                .from('trips')
+                .select(`
+                    id, 
+                    created_at,
+                    vehicles:economico!trips_vehicle_id_fkey(
+                        economic_number, 
+                        plate
+                    ),
+                    driver:profiles!trips_driver_id_fkey(
+                        full_name, 
+                        photo_url
+                    )
+                `)
+                .eq('status', 'approved_for_taller')
+                .order('created_at', { ascending: false });
 
-        const tallerList = document.getElementById('list-taller');
-        document.getElementById('taller-count').innerText = trips?.length || 0;
-        
-        if(!trips?.length) {
-            tallerList.innerHTML = '<p class="text-slate-500 text-center text-xs">Sin vehículos en recepción</p>';
-        } else {
-            tallerList.innerHTML = trips.map(t => `
-                <div class="bg-[#151b23] p-4 rounded-lg border border-orange-500/30 hover:border-orange-500 transition-colors">
-                    <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-full bg-slate-700 bg-cover bg-center" style="background-image: url('${t.driver.photo_url || ''}')"></div>
-                        <div class="flex-1">
-                            <p class="text-white font-bold text-sm">${t.driver.full_name}</p>
-                            <p class="text-[10px] text-orange-400">ECO-${t.vehicles?.economic_number} · ${t.vehicles?.plate}</p>
+            if (error) throw error;
+
+            const tallerList = document.getElementById('list-taller');
+            const countSpan = document.getElementById('taller-count');
+            
+            if (countSpan) countSpan.innerText = trips?.length || 0;
+            
+            if (!trips || trips.length === 0) {
+                if (tallerList) tallerList.innerHTML = '<p class="text-slate-500 text-center text-xs">Sin vehículos en recepción</p>';
+                return;
+            }
+
+            if (tallerList) {
+                tallerList.innerHTML = trips.map(t => `
+                    <div class="bg-[#151b23] p-4 rounded-lg border border-orange-500/30 hover:border-orange-500 transition-colors">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-full bg-slate-700 bg-cover bg-center" 
+                                 style="background-image: url('${t.driver?.photo_url || ''}')"></div>
+                            <div class="flex-1">
+                                <p class="text-white font-bold text-sm">${t.driver?.full_name || 'Desconocido'}</p>
+                                <p class="text-[10px] text-orange-400">ECO-${t.vehicles?.economic_number || '??'} · ${t.vehicles?.plate || ''}</p>
+                            </div>
                         </div>
+                        <p class="text-xs text-[#92adc9] mt-2">Esperando recepción en taller</p>
                     </div>
-                    <p class="text-xs text-[#92adc9] mt-2">Esperando recepción en taller</p>
-                </div>
-            `).join('');
+                `).join('');
+            }
+        } catch (error) {
+            console.error('Error cargando recepciones:', error);
+            const tallerList = document.getElementById('list-taller');
+            if (tallerList) {
+                tallerList.innerHTML = '<p class="text-red-500 text-center text-xs">Error al cargar</p>';
+            }
         }
     }
 
     async openRequest(tripId) {
-        const { data: trip } = await supabase
-            .from('trips')
-            .select(`
-                id, 
-                created_at,
-                request_details,
-                vehicle_id,
-                vehicles(economic_number, model, plate), 
-                driver:profiles!trips_driver_id_fkey(full_name, photo_url)
-            `)
-            .eq('id', tripId)
-            .single();
+        try {
+            const { data: trip, error } = await supabase
+                .from('trips')
+                .select(`
+                    id, 
+                    created_at,
+                    destination,
+                    motivo,
+                    supervisor,
+                    vehicle_id,
+                    vehicles:economico!trips_vehicle_id_fkey(
+                        economic_number, 
+                        model, 
+                        plate
+                    ), 
+                    driver:profiles!trips_driver_id_fkey(
+                        full_name, 
+                        photo_url
+                    )
+                `)
+                .eq('id', tripId)
+                .single();
 
-        if(!trip) return;
+            if (error) throw error;
+            if (!trip) return;
 
-        this.currentRequest = trip;
-        const details = trip.request_details || {};
+            this.currentRequest = trip;
 
-        document.getElementById('review-subtitle').innerText = `Conductor: ${trip.driver.full_name}`;
-        document.getElementById('review-driver').innerText = trip.driver.full_name;
-        document.getElementById('review-vehicle').innerText = `ECO-${trip.vehicles?.economic_number} ${trip.vehicles?.plate}`;
-        document.getElementById('review-destination').innerText = details.destination || 'No especificado';
-        document.getElementById('review-motivo').innerText = details.motivo || 'No especificado';
-        document.getElementById('review-supervisor').innerText = details.supervisor || 'No especificado';
+            const subtitle = document.getElementById('review-subtitle');
+            const driverEl = document.getElementById('review-driver');
+            const vehicleEl = document.getElementById('review-vehicle');
+            const destEl = document.getElementById('review-destination');
+            const motivoEl = document.getElementById('review-motivo');
+            const supEl = document.getElementById('review-supervisor');
 
-        // Cargar último checklist de la unidad
-        await this.loadLastChecklist(trip.vehicle_id);
+            if (subtitle) subtitle.innerText = `Conductor: ${trip.driver?.full_name || 'Desconocido'}`;
+            if (driverEl) driverEl.innerText = trip.driver?.full_name || 'Desconocido';
+            if (vehicleEl) vehicleEl.innerText = `ECO-${trip.vehicles?.economic_number || '??'} ${trip.vehicles?.plate || ''}`;
+            if (destEl) destEl.innerText = trip.destination || 'No especificado';
+            if (motivoEl) motivoEl.innerText = trip.motivo || 'No especificado';
+            if (supEl) supEl.innerText = trip.supervisor || 'No especificado';
 
-        document.getElementById('btn-approve-review').onclick = () => this.approveRequest(tripId);
-        document.getElementById('btn-reject-review').onclick = () => this.rejectRequest(tripId);
+            // Cargar último checklist de la unidad
+            await this.loadLastChecklist(trip.vehicle_id);
 
-        document.getElementById('modal-review').classList.remove('hidden');
+            const approveBtn = document.getElementById('btn-approve-review');
+            const rejectBtn = document.getElementById('btn-reject-review');
+            
+            if (approveBtn) approveBtn.onclick = () => this.approveRequest(tripId);
+            if (rejectBtn) rejectBtn.onclick = () => this.rejectRequest(tripId);
+
+            const modal = document.getElementById('modal-review');
+            if (modal) modal.classList.remove('hidden');
+
+        } catch (error) {
+            console.error('Error abriendo solicitud:', error);
+            alert('Error al cargar los datos de la solicitud');
+        }
     }
 
     async loadLastChecklist(vehicleId) {
-        const { data: lastTrip } = await supabase
-            .from('trips')
-            .select('workshop_checklist, completed_at')
-            .eq('vehicle_id', vehicleId)
-            .eq('status', 'completed')
-            .order('completed_at', { ascending: false })
-            .limit(1)
-            .single();
-
         const container = document.getElementById('last-checklist-info');
-        
-        if (!lastTrip?.workshop_checklist) {
-            container.innerHTML = '<p class="text-slate-400 text-sm">No hay checklist previo para esta unidad</p>';
-            return;
-        }
+        if (!container) return;
 
-        const check = lastTrip.workshop_checklist;
-        container.innerHTML = `
-            <div class="space-y-2">
-                <div class="grid grid-cols-2 gap-2">
-                    <span class="text-green-400 text-xs flex items-center gap-1">
-                        <span class="material-symbols-outlined text-sm">${check.liquid ? 'check_circle' : 'cancel'}</span> Líquido
-                    </span>
-                    <span class="text-green-400 text-xs flex items-center gap-1">
-                        <span class="material-symbols-outlined text-sm">${check.oil ? 'check_circle' : 'cancel'}</span> Aceite
-                    </span>
-                    <span class="text-green-400 text-xs flex items-center gap-1">
-                        <span class="material-symbols-outlined text-sm">${check.coolant ? 'check_circle' : 'cancel'}</span> Anticongelante
-                    </span>
-                    <span class="text-green-400 text-xs flex items-center gap-1">
-                        <span class="material-symbols-outlined text-sm">${check.lights ? 'check_circle' : 'cancel'}</span> Luces
-                    </span>
-                    <span class="text-green-400 text-xs flex items-center gap-1">
-                        <span class="material-symbols-outlined text-sm">${check.tires ? 'check_circle' : 'cancel'}</span> Llantas
-                    </span>
+        try {
+            const { data: lastTrip, error } = await supabase
+                .from('trips')
+                .select('workshop_checklist, completed_at')
+                .eq('vehicle_id', vehicleId)
+                .eq('status', 'completed')
+                .order('completed_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+            if (error) throw error;
+            
+            if (!lastTrip?.workshop_checklist) {
+                container.innerHTML = '<p class="text-slate-400 text-sm">No hay checklist previo para esta unidad</p>';
+                return;
+            }
+
+            const check = lastTrip.workshop_checklist;
+            container.innerHTML = `
+                <div class="space-y-2">
+                    <div class="grid grid-cols-2 gap-2">
+                        <span class="text-green-400 text-xs flex items-center gap-1">
+                            <span class="material-symbols-outlined text-sm">${check.liquid ? 'check_circle' : 'cancel'}</span> Líquido
+                        </span>
+                        <span class="text-green-400 text-xs flex items-center gap-1">
+                            <span class="material-symbols-outlined text-sm">${check.oil ? 'check_circle' : 'cancel'}</span> Aceite
+                        </span>
+                        <span class="text-green-400 text-xs flex items-center gap-1">
+                            <span class="material-symbols-outlined text-sm">${check.coolant ? 'check_circle' : 'cancel'}</span> Anticongelante
+                        </span>
+                        <span class="text-green-400 text-xs flex items-center gap-1">
+                            <span class="material-symbols-outlined text-sm">${check.lights ? 'check_circle' : 'cancel'}</span> Luces
+                        </span>
+                        <span class="text-green-400 text-xs flex items-center gap-1">
+                            <span class="material-symbols-outlined text-sm">${check.tires ? 'check_circle' : 'cancel'}</span> Llantas
+                        </span>
+                    </div>
+                    <p class="text-[10px] text-[#92adc9] mt-2">Fecha: ${lastTrip.completed_at ? new Date(lastTrip.completed_at).toLocaleDateString() : 'N/A'}</p>
                 </div>
-                <p class="text-[10px] text-[#92adc9] mt-2">Fecha: ${new Date(lastTrip.completed_at).toLocaleDateString()}</p>
-            </div>
-        `;
+            `;
+        } catch (error) {
+            console.error('Error cargando checklist:', error);
+            container.innerHTML = '<p class="text-red-400 text-sm">Error al cargar checklist</p>';
+        }
     }
 
     async approveRequest(tripId) {
         const btn = document.getElementById('btn-approve-review');
+        if (!btn) return;
+        
+        const originalText = btn.innerHTML;
         btn.innerHTML = 'PROCESANDO...';
         btn.disabled = true;
 
-        const { error } = await supabase
-            .from('trips')
-            .update({ 
-                status: 'approved_for_taller',
-                approved_at: new Date().toISOString()
-            })
-            .eq('id', tripId);
+        try {
+            const { error } = await supabase
+                .from('trips')
+                .update({ 
+                    status: 'approved_for_taller',
+                    approved_at: new Date().toISOString()
+                })
+                .eq('id', tripId);
 
-        if (error) {
-            alert('Error: ' + error.message);
-        } else {
+            if (error) throw error;
+
             alert('✅ Solicitud aprobada. El conductor debe acudir a taller.');
-            document.getElementById('modal-review').classList.add('hidden');
+            
+            const modal = document.getElementById('modal-review');
+            if (modal) modal.classList.add('hidden');
+            
             this.loadData();
+
+        } catch (error) {
+            console.error('Error aprobando:', error);
+            alert('Error: ' + error.message);
+            btn.innerHTML = originalText;
+            btn.disabled = false;
         }
     }
 
     async rejectRequest(tripId) {
         if (!confirm('¿Rechazar esta solicitud?')) return;
 
-        const { error } = await supabase
-            .from('trips')
-            .update({ 
-                status: 'rejected',
-                rejected_at: new Date().toISOString()
-            })
-            .eq('id', tripId);
+        const btn = document.getElementById('btn-reject-review');
+        if (!btn) return;
+        
+        const originalText = btn.innerHTML;
+        btn.innerHTML = 'RECHAZANDO...';
+        btn.disabled = true;
 
-        if (!error) {
+        try {
+            const { error } = await supabase
+                .from('trips')
+                .update({ 
+                    status: 'rejected',
+                    rejected_at: new Date().toISOString()
+                })
+                .eq('id', tripId);
+
+            if (error) throw error;
+
             alert('❌ Solicitud rechazada');
-            document.getElementById('modal-review').classList.add('hidden');
+            
+            const modal = document.getElementById('modal-review');
+            if (modal) modal.classList.add('hidden');
+            
             this.loadData();
+
+        } catch (error) {
+            console.error('Error rechazando:', error);
+            alert('Error: ' + error.message);
+            btn.innerHTML = originalText;
+            btn.disabled = false;
         }
     }
 }
