@@ -51,7 +51,7 @@ export class DriverView {
         
         window.conductorModule = this;
         
-        // Recuperador de segundo plano: Si el usuario minimizó la app y vuelve, forzar sync
+        // Recuperador de segundo plano
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible' && this.currentTrip?.status === 'in_progress') {
                 this.requestWakeLock();
@@ -600,6 +600,7 @@ export class DriverView {
                 this.addStopFromMap(e.latlng.lat, e.latlng.lng);
             });
             
+            // Auto-cargar destino si no hay ruta planeada aún (Ignorar 0,0)
             if (this.currentTrip?.request_details?.route_plan) {
                 this.routeStops = this.currentTrip.request_details.route_plan;
                 this.isReturning = this.currentTrip.request_details.is_returning || false;
@@ -826,6 +827,9 @@ export class DriverView {
     }
 
     async loadLastTripStats() {
+        // 🔴 ESTO SOLUCIONA EL ERROR 400 EN LA CONSOLA (Bad Request eq.null)
+        if (!this.userId) return; 
+
         try {
             // Buscamos el viaje más reciente que esté finalizado
             const { data: lastTrip, error: lastError } = await supabase
@@ -856,7 +860,7 @@ export class DriverView {
                 
                 const exitKm = lastTrip.exit_km || 0;
                 const entryKm = lastTrip.entry_km || 0;
-                const distancia = Math.max(0, entryKm - exitKm); // Evita números negativos
+                const distancia = Math.max(0, entryKm - exitKm);
                 
                 document.getElementById('last-trip-distance').innerText = `${Math.round(distancia)} km`;
                 document.getElementById('last-trip-destination').innerText = lastTrip.destination || 'No especificado';
@@ -1397,6 +1401,8 @@ export class DriverView {
         btn.disabled = true; 
         btn.innerHTML = '<span class="animate-spin inline-block mr-2">⌛</span> CONFIRMANDO...';
         
+        const vehicleId = this.currentTrip?.vehicle_id;
+
         const { error } = await supabase.from('trips')
             .update({ driver_confirmed_at: new Date().toISOString(), completed_at: new Date().toISOString(), status: 'completed' })
             .eq('id', this.currentTrip.id);
@@ -1408,14 +1414,15 @@ export class DriverView {
         } else {
             this.showToast('¡Unidad liberada!', 'Puedes solicitar una nueva unidad', 'success');
             
-            // Limpiar memoria
+            // ✅ FORZAR CAMBIO A "ACTIVO" SI LA BASE DE DATOS NO LO HACE
+            if (vehicleId) {
+                await supabase.from('vehicles').update({ status: 'active' }).eq('id', vehicleId);
+            }
+            
             this.currentTrip = null; 
             this.selectedVehicleForRequest = null;
             
-            // Forzar UI a modo "Disponible"
             await this.updateUIByStatus(null);
-            
-            // Recargar datos
             await this.loadDashboardState(); 
             await this.loadLastTripStats(); 
             this.switchTab('unidad');
@@ -1472,6 +1479,7 @@ export class DriverView {
 
         const titleUnits = document.querySelector('#tab-unidad h3');
         const unitsContent = document.getElementById('unidad-content');
+        const noUnitsMsg = document.getElementById('no-units-message');
 
         if (trip && statusMap[trip.status]) {
             const status = statusMap[trip.status];
@@ -1488,6 +1496,7 @@ export class DriverView {
             document.getElementById('current-trip-info')?.classList.remove('hidden');
             if (titleUnits) titleUnits.classList.add('hidden');
             if (unitsContent) unitsContent.classList.add('hidden');
+            if (noUnitsMsg) noUnitsMsg.classList.add('hidden');
             
             if (trip.status === 'approved_for_taller') document.getElementById('taller-vehicle-info').innerText = `ECO-${trip.vehicles?.economic_number} - ${trip.vehicles?.plate}`;
             if (trip.status === 'in_progress' && this.activeTab === 'ruta') setTimeout(() => this.startTracking(), 500);
