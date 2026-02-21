@@ -51,6 +51,9 @@ export class WorkshopView {
                 <button onclick="window.workshopView.switchMode('pending')" id="tab-pending" class="px-6 py-3 text-[#92adc9] hover:text-white border-b-2 border-transparent font-medium text-sm transition-colors whitespace-nowrap flex items-center gap-2">
                     <span class="material-symbols-outlined text-[18px]">pending_actions</span> Pendientes
                 </button>
+                <button onclick="window.workshopView.switchMode('incidents')" id="tab-incidents" class="px-6 py-3 text-[#92adc9] hover:text-white border-b-2 border-transparent font-medium text-sm transition-colors whitespace-nowrap flex items-center gap-2">
+                    <span class="material-symbols-outlined text-[18px]">warning</span> Incidencias
+                </button>
                 <button onclick="window.workshopView.switchMode('completed')" id="tab-completed" class="px-6 py-3 text-[#92adc9] hover:text-white border-b-2 border-transparent font-medium text-sm transition-colors whitespace-nowrap flex items-center gap-2">
                     <span class="material-symbols-outlined text-[18px]">history</span> Completados
                 </button>
@@ -188,35 +191,47 @@ export class WorkshopView {
 
                 <!-- MODO PENDIENTES -->
                 <div id="mode-pending" class="hidden animate-fade-in overflow-y-auto custom-scrollbar pb-6 pr-2 h-full">
-                    <!-- Sección de Solicitudes Pendientes (requested) -->
+                    <!-- Sección de Solicitudes Pendientes -->
                     <div class="bg-[#1c2127] border border-yellow-500/30 rounded-xl p-4 mb-4">
                         <h3 class="text-white font-bold mb-4 flex items-center gap-2 border-b border-[#324d67] pb-2">
                             <span class="material-symbols-outlined text-yellow-500">pending_actions</span> Solicitudes Pendientes
                         </h3>
-                        <div id="pending-requests-list" class="space-y-3 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
+                        <div id="pending-requests-list" class="space-y-3 max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
                             <p class="text-slate-500 text-center text-xs">Cargando...</p>
                         </div>
                     </div>
 
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <!-- Recepciones Iniciales (approved_for_taller) -->
+                        <!-- Recepciones Iniciales -->
                         <div class="bg-[#1c2127] border border-orange-500/30 rounded-xl p-4">
                             <h3 class="text-white font-bold mb-4 flex items-center gap-2 border-b border-[#324d67] pb-2">
                                 <span class="material-symbols-outlined text-orange-500">engineering</span> Recepciones Iniciales
                             </h3>
-                            <div id="pending-initial-list" class="space-y-3 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
+                            <div id="pending-initial-list" class="space-y-3 max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
                                 <p class="text-slate-500 text-center text-xs">Cargando...</p>
                             </div>
                         </div>
 
-                        <!-- Recepciones Finales (awaiting_return_checklist) -->
+                        <!-- Recepciones Finales -->
                         <div class="bg-[#1c2127] border border-green-500/30 rounded-xl p-4">
                             <h3 class="text-white font-bold mb-4 flex items-center gap-2 border-b border-[#324d67] pb-2">
                                 <span class="material-symbols-outlined text-green-500">assignment_return</span> Retornos Pendientes
                             </h3>
-                            <div id="pending-final-list" class="space-y-3 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
+                            <div id="pending-final-list" class="space-y-3 max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
                                 <p class="text-slate-500 text-center text-xs">Cargando...</p>
                             </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MODO INCIDENCIAS -->
+                <div id="mode-incidents" class="hidden animate-fade-in overflow-y-auto custom-scrollbar pb-6 pr-2 h-full">
+                    <div class="bg-[#1c2127] border border-red-500/30 rounded-xl p-6">
+                        <h3 class="text-white font-bold mb-4 flex items-center gap-2 border-b border-[#324d67] pb-2">
+                            <span class="material-symbols-outlined text-red-500">warning</span> Incidencias Reportadas
+                        </h3>
+                        <div id="incidents-list" class="space-y-4 max-h-[600px] overflow-y-auto custom-scrollbar">
+                            <p class="text-slate-500 text-center text-xs">Cargando...</p>
                         </div>
                     </div>
                 </div>
@@ -240,24 +255,26 @@ export class WorkshopView {
     async onMount() {
         await this.loadPendingRequests();
         await this.loadPendingLists();
+        await this.loadIncidents();
         await this.loadCompletedTrips();
         this.switchMode('scanner');
         
         setInterval(() => {
             this.loadPendingRequests();
             this.loadPendingLists();
+            this.loadIncidents();
             this.loadCompletedTrips();
         }, 10000);
     }
 
     switchMode(mode) {
-        const modes = ['scanner', 'process', 'pending', 'completed'];
+        const modes = ['scanner', 'process', 'pending', 'incidents', 'completed'];
         modes.forEach(m => {
             const el = document.getElementById(`mode-${m}`);
             if (el) el.classList.add('hidden');
         });
 
-        ['scanner', 'pending', 'completed'].forEach(tab => {
+        ['scanner', 'pending', 'incidents', 'completed'].forEach(tab => {
             const tabEl = document.getElementById(`tab-${tab}`);
             if (tabEl) {
                 tabEl.classList.remove('text-primary', 'border-primary');
@@ -395,6 +412,7 @@ export class WorkshopView {
                     destination,
                     motivo,
                     supervisor,
+                    departamento,
                     vehicles:vehicle_id(economic_number, plate, model),
                     driver:driver_id(full_name, photo_url)
                 `)
@@ -437,7 +455,8 @@ export class WorkshopView {
                 <div class="bg-[#111a22] p-2 rounded-lg text-xs space-y-1">
                     <p><span class="text-[#92adc9]">Destino:</span> ${r.destination || 'No especificado'}</p>
                     <p><span class="text-[#92adc9]">Motivo:</span> ${r.motivo || 'No especificado'}</p>
-                    <p><span class="text-[#92adc9]">Encargado:</span> ${r.supervisor || 'No especificado'}</p>
+                    <p><span class="text-[#92adc9]">Jefe:</span> ${r.supervisor || 'No especificado'}</p>
+                    <p><span class="text-[#92adc9]">Depto:</span> ${r.departamento || 'No especificado'}</p>
                 </div>
                 <div class="flex gap-2 mt-2">
                     <button onclick="window.workshopView.approveRequest('${r.id}')" 
@@ -497,6 +516,121 @@ export class WorkshopView {
         } catch (error) {
             console.error('Error rechazando solicitud:', error);
             alert('Error: ' + error.message);
+        }
+    }
+
+    // ========== FUNCIONES PARA INCIDENCIAS ==========
+    async loadIncidents() {
+        try {
+            const { data: incidents, error } = await supabase
+                .from('trips')
+                .select(`
+                    id,
+                    created_at,
+                    incident_description,
+                    incident_status,
+                    incident_notes,
+                    workshop_notes,
+                    vehicles:vehicle_id(economic_number, plate),
+                    driver:driver_id(full_name, photo_url)
+                `)
+                .eq('status', 'incident_report')
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+
+            const list = document.getElementById('incidents-list');
+            if (!list) return;
+
+            if (!incidents || incidents.length === 0) {
+                list.innerHTML = '<p class="text-slate-500 text-center text-xs">Sin incidencias reportadas</p>';
+                return;
+            }
+
+            list.innerHTML = incidents.map(i => `
+                <div class="bg-[#151b23] p-4 rounded-lg border border-red-500/30">
+                    <div class="flex items-center gap-3 mb-3">
+                        <div class="w-10 h-10 rounded-full bg-slate-700 bg-cover bg-center" 
+                             style="background-image: url('${i.driver?.photo_url || ''}')"></div>
+                        <div class="flex-1">
+                            <p class="text-white font-bold text-sm">${i.driver?.full_name || 'Conductor'}</p>
+                            <p class="text-[10px] text-red-400">ECO-${i.vehicles?.economic_number} · ${i.vehicles?.plate}</p>
+                        </div>
+                        <span class="text-[10px] bg-red-500/20 text-red-500 px-2 py-1 rounded-full">
+                            ${i.incident_status === 'pending' ? 'Pendiente' : 'En revisión'}
+                        </span>
+                    </div>
+                    
+                    <div class="bg-[#111a22] p-3 rounded-lg mb-3">
+                        <p class="text-[10px] text-[#92adc9] uppercase mb-1">Descripción de la incidencia</p>
+                        <p class="text-white text-xs">${i.incident_description || i.incident_notes || 'No especificada'}</p>
+                    </div>
+
+                    <div class="space-y-2">
+                        <textarea id="workshop-notes-${i.id}" rows="2" 
+                                  class="w-full bg-[#1a232e] border border-[#324d67] rounded-lg p-2 text-white text-xs"
+                                  placeholder="Notas del taller...">${i.workshop_notes || ''}</textarea>
+                        
+                        <div class="flex gap-2">
+                            <button onclick="window.workshopView.resolveIncident('${i.id}', 'driver_fault')" 
+                                    class="flex-1 py-2 bg-red-600 text-white text-xs font-bold rounded-lg hover:bg-red-500">
+                                CULPA DEL CONDUCTOR
+                            </button>
+                            <button onclick="window.workshopView.resolveIncident('${i.id}', 'vehicle_fault')" 
+                                    class="flex-1 py-2 bg-orange-600 text-white text-xs font-bold rounded-lg hover:bg-orange-500">
+                                FALLA DE UNIDAD
+                            </button>
+                        </div>
+                        <button onclick="window.workshopView.resolveIncident('${i.id}', 'resolved')" 
+                                class="w-full py-2 bg-green-600 text-white text-xs font-bold rounded-lg hover:bg-green-500">
+                            MARCAR COMO RESUELTA
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+
+        } catch (error) {
+            console.error('Error cargando incidencias:', error);
+        }
+    }
+
+    async resolveIncident(tripId, resolution) {
+        const notes = document.getElementById(`workshop-notes-${tripId}`)?.value;
+        
+        let newStatus = 'completed';
+        let incidentStatus = 'resolved';
+        
+        if (resolution === 'driver_fault') {
+            incidentStatus = 'driver_fault';
+            // El viaje se completa pero queda registro de la falta
+        } else if (resolution === 'vehicle_fault') {
+            incidentStatus = 'vehicle_fault';
+            // La unidad necesita mantenimiento
+            await supabase
+                .from('vehicles')
+                .update({ status: 'maintenance' })
+                .eq('id', this.currentVehicle?.id);
+        }
+
+        const updates = {
+            status: newStatus,
+            incident_status: incidentStatus,
+            incident_resolved_at: new Date().toISOString(),
+            workshop_notes: notes,
+            completed_at: new Date().toISOString()
+        };
+
+        const { error } = await supabase
+            .from('trips')
+            .update(updates)
+            .eq('id', tripId);
+
+        if (error) {
+            alert('Error: ' + error.message);
+        } else {
+            alert('✅ Incidencia resuelta');
+            this.loadIncidents();
+            this.loadCompletedTrips();
         }
     }
 
@@ -625,7 +759,7 @@ export class WorkshopView {
                 driver:driver_id(full_name, photo_url)
             `)
             .eq('vehicle_id', vehicle.id)
-            .in('status', ['approved_for_taller', 'in_progress', 'awaiting_return_checklist'])
+            .in('status', ['approved_for_taller', 'in_progress', 'awaiting_return_checklist', 'incident_report'])
             .maybeSingle();
 
         if (error) {
@@ -649,6 +783,10 @@ export class WorkshopView {
                 receptionType = 'Recepción Final (Retorno)';
                 receptionMode = 'final';
                 document.getElementById('reception-type-badge').className = 'text-green-500 font-bold';
+            } else if (activeTrip.status === 'incident_report') {
+                receptionType = 'INCIDENCIA - En revisión';
+                receptionMode = 'incident';
+                document.getElementById('reception-type-badge').className = 'text-red-500 font-bold';
             } else {
                 receptionType = 'Vehículo en uso';
                 receptionMode = null;
@@ -659,7 +797,7 @@ export class WorkshopView {
             document.getElementById('reception-type-badge').innerText = receptionType;
             this.receptionMode = receptionMode;
 
-            if (receptionMode) {
+            if (receptionMode && receptionMode !== 'incident') {
                 document.getElementById('btn-start-process').classList.remove('hidden');
             } else {
                 document.getElementById('btn-start-process').classList.add('hidden');
@@ -817,7 +955,7 @@ export class WorkshopView {
 
             <div class="bg-[#111a22] p-4 rounded-xl border border-[#324d67]">
                 <h4 class="text-xs font-bold text-[#92adc9] uppercase mb-4">¿Detectaste alguna falla?</h4>
-                <textarea id="incident-notes" rows="3" class="w-full bg-[#1a232e] border border-[#324d67] rounded-lg p-3 text-white text-sm" placeholder="Describe la falla..."></textarea>
+                <textarea id="incident-description" rows="3" class="w-full bg-[#1a232e] border border-[#324d67] rounded-lg p-3 text-white text-sm" placeholder="Describe la falla en detalle..."></textarea>
                 <div class="mt-3 flex gap-3">
                     <button onclick="window.workshopView.reportIncident()" class="flex-1 py-2 bg-red-500/10 text-red-500 border border-red-500/30 rounded-lg text-sm font-bold hover:bg-red-500 hover:text-white transition-colors">
                         REPORTAR INCIDENCIA
@@ -908,11 +1046,11 @@ export class WorkshopView {
                 const accessCode = Math.random().toString(36).substring(2, 8).toUpperCase();
                 
                 const updateData = {
-                    status: 'driver_accepted', // Cambiamos directamente a driver_accepted
+                    status: 'driver_accepted',
                     workshop_reception_photos: this.receptionPhotos,
                     workshop_driver_photo: this.driverPhoto,
                     workshop_reception_at: new Date().toISOString(),
-                    access_code: accessCode // Guardamos el código en la base de datos
+                    access_code: accessCode
                 };
                 
                 console.log('✅ Recepción inicial completada. Código generado:', accessCode);
@@ -924,15 +1062,20 @@ export class WorkshopView {
 
                 if (error) throw error;
                 
-                // Mostrar mensaje con el código generado
                 alert(`✅ RECEPCIÓN COMPLETADA\n\nCódigo de acceso para el guardia: ${accessCode}\n\nEl conductor debe usar este código al pasar por la garita.`);
 
             } else {
-                const incidentNotes = document.getElementById('incident-notes')?.value;
-                const hasIncident = incidentNotes && incidentNotes.trim() !== '';
+                const incidentDescription = document.getElementById('incident-description')?.value;
+                const hasIncident = incidentDescription && incidentDescription.trim() !== '';
                 
-                const newStatus = hasIncident ? 'incident_report' : 'completed';
+                let newStatus = 'completed';
+                let incidentStatus = null;
                 const newKm = (this.currentVehicle.current_km || 0) + 100;
+
+                if (hasIncident) {
+                    newStatus = 'incident_report';
+                    incidentStatus = 'pending';
+                }
 
                 const updateData = {
                     status: newStatus,
@@ -940,7 +1083,8 @@ export class WorkshopView {
                     workshop_return_photos: this.deliveryPhotos,
                     workshop_completed_at: new Date().toISOString(),
                     entry_km: newKm,
-                    incident_notes: incidentNotes || null
+                    incident_description: incidentDescription || null,
+                    incident_status: incidentStatus
                 };
 
                 console.log('Actualizando viaje con:', updateData);
@@ -959,12 +1103,17 @@ export class WorkshopView {
 
                 if (vehicleError) throw vehicleError;
 
-                alert(hasIncident ? '⚠️ Incidencia reportada' : '✅ Recepción final completada');
+                if (hasIncident) {
+                    alert('⚠️ INCIDENCIA REPORTADA\n\nEl conductor deberá esperar hasta que se resuelva la incidencia.\nLa unidad quedará en revisión.');
+                } else {
+                    alert('✅ Recepción final completada');
+                }
             }
 
             this.cancelProcess();
             await this.loadPendingRequests();
             await this.loadPendingLists();
+            await this.loadIncidents();
             await this.loadCompletedTrips();
             this.switchMode('scanner');
 
@@ -977,13 +1126,13 @@ export class WorkshopView {
     }
 
     async reportIncident() {
-        const notes = document.getElementById('incident-notes')?.value;
-        if (!notes || notes.trim() === '') {
-            alert('Describe la incidencia');
+        const description = document.getElementById('incident-description')?.value;
+        if (!description || description.trim() === '') {
+            alert('Describe la incidencia en detalle');
             return;
         }
 
-        if (!confirm('¿Reportar esta incidencia?')) return;
+        if (!confirm('¿Reportar esta incidencia? El conductor deberá esperar hasta que se resuelva.')) return;
 
         try {
             const updateData = {
@@ -991,10 +1140,9 @@ export class WorkshopView {
                 workshop_return_checklist: this.checklistItems,
                 workshop_return_photos: this.deliveryPhotos,
                 workshop_completed_at: new Date().toISOString(),
-                incident_notes: notes
+                incident_description: description,
+                incident_status: 'pending'
             };
-
-            console.log('Reportando incidencia:', updateData);
 
             const { error } = await supabase
                 .from('trips')
@@ -1003,10 +1151,11 @@ export class WorkshopView {
 
             if (error) throw error;
 
-            alert('⚠️ Incidencia reportada');
+            alert('⚠️ Incidencia reportada. El conductor deberá esperar la resolución.');
             this.cancelProcess();
             await this.loadPendingRequests();
             await this.loadPendingLists();
+            await this.loadIncidents();
             await this.loadCompletedTrips();
             this.switchMode('scanner');
 
@@ -1134,7 +1283,7 @@ export class WorkshopView {
                     vehicles:vehicle_id(economic_number, plate),
                     driver:driver_id(full_name)
                 `)
-                .in('status', ['completed', 'incident_report'])
+                .in('status', ['completed'])
                 .order('completed_at', { ascending: false })
                 .limit(20);
 
