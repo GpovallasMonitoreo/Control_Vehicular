@@ -8,14 +8,14 @@ export class TrackingView {
         this.vehicleLocations = {}; 
         this.focusedTripId = null;
         this.routeLine = null; 
-        this.routeMarkers = []; // NUEVO: Para manejar múltiples paradas
+        this.routeMarkers = []; 
         this.realtimeChannel = null;
         this.updateInterval = null;
 
         // Configuración de vista inicial (Base Naucalpan - Guardia)
         this.baseCoords = [19.4326, -99.1332]; 
         this.baseZoom = 11;
-        this.baseNaucalpan = [19.4785, -99.2396]; // Punto de salida y regreso
+        this.baseNaucalpan = [19.4785, -99.2396];
 
         window.trackingModule = this;
     }
@@ -161,7 +161,6 @@ export class TrackingView {
             });
     }
 
-    // Esta función reacciona al instante cuando cambia algo en la base de datos
     async handleTripChangeRealtime(payload) {
         const tripData = payload.new || payload.old;
         if (!tripData) return;
@@ -170,7 +169,6 @@ export class TrackingView {
         const isNowActive = validStatuses.includes(tripData.status);
 
         if (!isNowActive) {
-            // El viaje terminó o se canceló: Lo quitamos al instante
             this.activeTrips = this.activeTrips.filter(t => String(t.id) !== String(tripData.id));
             if (this.map && this.markers[tripData.id]) {
                 this.map.removeLayer(this.markers[tripData.id]);
@@ -179,7 +177,6 @@ export class TrackingView {
             if (this.focusedTripId === tripData.id) this.viewAllVehicles();
             
         } else {
-            // El viaje es nuevo o cambió su estado: Traemos su info completa (con conductor y unidad)
             const { data: fullTrip } = await supabase
                 .from('trips')
                 .select(`
@@ -193,15 +190,14 @@ export class TrackingView {
             if (fullTrip) {
                 const index = this.activeTrips.findIndex(t => String(t.id) === String(tripData.id));
                 if (index >= 0) {
-                    this.activeTrips[index] = fullTrip; // Actualiza sin recargar
+                    this.activeTrips[index] = fullTrip; 
                 } else {
-                    this.activeTrips.push(fullTrip); // Aparece un viaje nuevo mágicamente
+                    this.activeTrips.push(fullTrip); 
                     this.showNotificationToast(`Nuevo viaje activo: ECO-${fullTrip.vehicles?.economic_number}`);
                 }
             }
         }
 
-        // Actualizamos la UI inmediatamente
         const activeCount = document.getElementById('track-active-count');
         if (activeCount) activeCount.innerText = this.activeTrips.length;
         
@@ -211,7 +207,6 @@ export class TrackingView {
     }
 
     showNotificationToast(msg) {
-        // Un pequeño feedback visual en el panel cuando salta algo nuevo
         const panel = document.createElement('div');
         panel.className = 'fixed top-24 right-6 bg-primary text-white text-xs font-bold px-4 py-3 rounded-lg shadow-2xl animate-fade-in-up z-50 flex items-center gap-2';
         panel.innerHTML = `<span class="material-symbols-outlined text-sm">notifications_active</span> ${msg}`;
@@ -222,7 +217,7 @@ export class TrackingView {
     setupPeriodicUpdate() {
         this.updateInterval = setInterval(() => {
             this.loadActiveTrips();
-        }, 30000); // Se puede poner a 30s ya que el WebSocket hace el trabajo pesado
+        }, 30000); 
     }
 
     handleIncomingLocation(newLoc) {
@@ -235,7 +230,6 @@ export class TrackingView {
 
         if (this.focusedTripId === newLoc.trip_id && this.map) {
             this.drawRouteAndCalculateETA(newLoc.trip_id);
-            // Solo centra la cámara si el usuario no ha arrastrado el mapa manualmente
             this.map.panTo([newLoc.lat, newLoc.lng], { animate: true, duration: 1 });
             this.updateRoutePanel(newLoc.trip_id);
         }
@@ -256,9 +250,16 @@ export class TrackingView {
             const popup = this.markers[tripId].getPopup();
             if (popup) popup.setContent(this.getMarkerPopupContent(trip, loc));
             
+            // ✅ CORRECCIÓN DEL ERROR AQUÍ: Validación estricta con IF
             if (isFocused) {
-                this.markers[tripId].getElement()?.querySelector('.marker-container')?.classList.add('marker-focused');
-                this.markers[tripId].getElement()?.querySelector('.marker-speed').innerText = `${Math.round(loc.speed || 0)} km/h`;
+                const markerEl = this.markers[tripId].getElement();
+                if (markerEl) {
+                    const container = markerEl.querySelector('.marker-container');
+                    if (container) container.classList.add('marker-focused');
+                    
+                    const speedEl = markerEl.querySelector('.marker-speed');
+                    if (speedEl) speedEl.innerText = `${Math.round(loc.speed || 0)} km/h`;
+                }
             }
         } else {
             const icon = L.divIcon({
@@ -315,7 +316,6 @@ export class TrackingView {
         const trip = this.activeTrips.find(t => String(t.id) === String(tripId));
         const loc = this.vehicleLocations[tripId];
 
-        // 1. Limpiar líneas y marcadores de parada anteriores
         if (this.routeLine) this.map.removeLayer(this.routeLine);
         if (this.routeMarkers.length > 0) {
             this.routeMarkers.forEach(m => this.map.removeLayer(m));
@@ -328,19 +328,15 @@ export class TrackingView {
         let waypoints = [start];
         let stopsInfo = [];
 
-        // 2. Extraer el plan de ruta dinámico del conductor
         if (trip.request_details?.route_plan && trip.request_details.route_plan.length > 0) {
             stopsInfo = trip.request_details.route_plan;
             stopsInfo.forEach(stop => waypoints.push([stop.lat, stop.lng]));
-        } 
-        // Fallback: Si no ha guardado un plan en el mapa, usar destino original
-        else if (trip.request_details?.destination_coords) {
+        } else if (trip.request_details?.destination_coords) {
             const d = trip.request_details.destination_coords;
             waypoints.push([d.lat, d.lon]);
             stopsInfo.push({ lat: d.lat, lng: d.lon, name: trip.destination || 'Destino', type: 'stop' });
         }
 
-        // 3. Trazar la Polyline conectando todos los puntos
         if (waypoints.length > 1) {
             this.routeLine = L.polyline(waypoints, {
                 color: '#137fec', weight: 4, opacity: 0.6, dashArray: '10, 15'
@@ -351,7 +347,6 @@ export class TrackingView {
                 totalDistanceMeters += L.latLng(waypoints[i]).distanceTo(L.latLng(waypoints[i+1]));
             }
 
-            // 4. Dibujar los pines de las paradas
             stopsInfo.forEach((stop, index) => {
                 const isReturn = stop.type === 'return';
                 const colorClass = isReturn ? 'bg-purple-500 shadow-[0_0_15px_purple]' : 'bg-red-500 shadow-[0_0_15px_red]';
@@ -364,7 +359,6 @@ export class TrackingView {
                 this.routeMarkers.push(marker);
             });
 
-            // 5. Cálculos para el panel
             const distanceKm = (totalDistanceMeters / 1000).toFixed(1);
             const speed = loc.speed || 30;
             const timeHours = distanceKm / speed;
@@ -374,7 +368,6 @@ export class TrackingView {
             document.getElementById('route-eta').innerText = timeMinutes > 0 ? `~${timeMinutes} min` : '--';
             document.getElementById('route-distance').innerText = distanceKm > 0 ? `${distanceKm} km` : '--';
             
-            // Si hay varias paradas, indicamos al administrador en qué plan está
             if (stopsInfo.length > 1) {
                 const returnIncluded = stopsInfo.some(s => s.type === 'return');
                 document.getElementById('route-dest-name').innerText = returnIncluded 
@@ -429,7 +422,6 @@ export class TrackingView {
                 'approved_for_taller': 'En taller'
             }[trip.status] || trip.status;
 
-            // Determinar si el conductor ya planeó su regreso
             const isReturning = trip.request_details?.is_returning;
             const returnBadge = isReturning ? `<span class="bg-purple-500/20 text-purple-400 text-[8px] px-1 rounded font-bold ml-1 border border-purple-500/30">RETORNO</span>` : '';
 
@@ -460,7 +452,6 @@ export class TrackingView {
         if (!this.map) return;
         this.focusedTripId = id;
         
-        // Refrescar UI (Bordes primarios en la lista)
         document.querySelectorAll('#tracking-list > div').forEach(el => {
             el.classList.remove('border-primary', 'bg-primary/10');
             el.classList.add('border-[#324d67]', 'bg-[#1c2127]');
