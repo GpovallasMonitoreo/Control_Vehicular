@@ -542,8 +542,8 @@ export class DriverView {
     // ==================== ESTADÍSTICAS DE PERFIL ====================
     async loadLastTripStats() {
         try {
-            // Cargar último viaje completado
-            const { data: lastTrip } = await supabase
+            // Cargar último viaje completado - USANDO maybeSingle()
+            const { data: lastTrip, error: lastError } = await supabase
                 .from('trips')
                 .select(`
                     created_at,
@@ -551,16 +551,19 @@ export class DriverView {
                     destination,
                     exit_km,
                     entry_km,
-                    vehicles(plate, economic_number)
+                    vehicles:vehicle_id (
+                        plate,
+                        economic_number
+                    )
                 `)
                 .eq('driver_id', this.userId)
                 .eq('status', 'completed')
                 .order('completed_at', { ascending: false })
                 .limit(1)
-                .single();
+                .maybeSingle();
 
             // Cargar total de viajes y km
-            const { data: stats } = await supabase
+            const { data: stats, error: statsError } = await supabase
                 .from('trips')
                 .select('id, entry_km, exit_km')
                 .eq('driver_id', this.userId)
@@ -572,18 +575,28 @@ export class DriverView {
             if (loading) loading.classList.add('hidden');
             if (content) content.classList.remove('hidden');
 
-            if (lastTrip) {
+            if (lastTrip && !lastError) {
                 document.getElementById('last-trip-vehicle').innerText = 
-                    `${lastTrip.vehicles?.plate} (ECO-${lastTrip.vehicles?.economic_number})`;
+                    `${lastTrip.vehicles?.plate || '---'} (ECO-${lastTrip.vehicles?.economic_number || '?'})`;
                 document.getElementById('last-trip-date').innerText = 
                     lastTrip.completed_at ? new Date(lastTrip.completed_at).toLocaleDateString() : 'N/A';
                 
                 const distancia = (lastTrip.entry_km - lastTrip.exit_km) || 0;
                 document.getElementById('last-trip-distance').innerText = `${Math.round(distancia)} km`;
                 document.getElementById('last-trip-destination').innerText = lastTrip.destination || 'No especificado';
+            } else {
+                // No hay viajes completados
+                if (content) {
+                    content.innerHTML = `
+                        <div class="text-center py-4 text-slate-400">
+                            <span class="material-symbols-outlined text-3xl mb-2">history</span>
+                            <p class="text-xs">No hay viajes completados</p>
+                        </div>
+                    `;
+                }
             }
 
-            if (stats) {
+            if (stats && !statsError) {
                 document.getElementById('total-trips').innerText = stats.length;
                 const totalKm = stats.reduce((sum, t) => sum + ((t.entry_km - t.exit_km) || 0), 0);
                 document.getElementById('total-km').innerText = Math.round(totalKm);
@@ -895,26 +908,36 @@ export class DriverView {
         try {
             console.log('Sincronizando ubicaciones:', locations);
             
+            // Preparar datos con tipos correctos
+            const dataToInsert = locations.map(loc => ({
+                trip_id: this.currentTrip.id,
+                lat: Number(loc.lat),
+                lng: Number(loc.lng),
+                speed: Math.min(999, Math.round(loc.speed || 0)), // Limitar a 999 km/h
+                accuracy: loc.accuracy ? Number(loc.accuracy.toFixed(2)) : null,
+                timestamp: loc.timestamp
+            }));
+            
             const { error } = await supabase
                 .from('trip_locations')
-                .insert(locations.map(loc => ({
-                    trip_id: this.currentTrip.id,
-                    lat: loc.lat,
-                    lng: loc.lng,
-                    speed: loc.speed,
-                    accuracy: loc.accuracy,
-                    timestamp: loc.timestamp
-                })));
+                .insert(dataToInsert);
             
             if (error) {
                 console.error('Error al sincronizar:', error);
-                this.pendingLocations = [...locations, ...this.pendingLocations];
+                // Solo reintentar si es error de red, no de datos
+                if (error.code === '23503' || error.code === '22003') {
+                    console.warn('Error de datos, descartando ubicaciones problemáticas');
+                } else {
+                    this.pendingLocations = [...locations, ...this.pendingLocations];
+                }
             } else {
-                console.log('✅ Ubicaciones sincronizadas');
+                console.log('✅ Ubicaciones sincronizadas:', dataToInsert.length);
             }
         } catch (error) {
             console.error('Error en sync:', error);
-            this.pendingLocations = [...locations, ...this.pendingLocations];
+            if (navigator.onLine) {
+                this.pendingLocations = [...locations, ...this.pendingLocations];
+            }
         }
     }
 
@@ -1027,7 +1050,7 @@ export class DriverView {
             });
         }
 
-        const speedKmh = Math.round((speed || 0) * 3.6);
+        const speedKmh = Math.min(999, Math.round((speed || 0) * 3.6));
         
         document.getElementById('gps-status-indicator').innerHTML = `
             <div class="flex items-center justify-center gap-2 text-emerald-400">
@@ -1045,7 +1068,7 @@ export class DriverView {
     handlePositionUpdate(pos) {
         const { latitude, longitude, speed, accuracy } = pos.coords;
         const now = new Date();
-        const speedKmh = Math.round((speed || 0) * 3.6);
+        const speedKmh = Math.min(999, Math.round((speed || 0) * 3.6));
 
         document.getElementById('live-speed').innerText = speedKmh;
 
@@ -1064,7 +1087,6 @@ export class DriverView {
                 document.getElementById('live-distance').innerText = this.tripLogistics.totalDistance.toFixed(1);
                 document.getElementById('live-fuel').innerText = fuel;
                 
-                // Actualizar resumen para taller final
                 document.getElementById('resumen-distancia').innerText = Math.round(this.tripLogistics.totalDistance) + ' km';
                 document.getElementById('resumen-combustible').innerText = fuel + ' L';
             }
@@ -1241,6 +1263,8 @@ export class DriverView {
     }
 
     async loadLastChecklist(vehicleId) {
+        if (!vehicleId) return;
+        
         try {
             const { data: lastTrip, error } = await supabase
                 .from('trips')
@@ -1286,7 +1310,9 @@ export class DriverView {
                 </p>
             `;
         } catch (error) {
-            console.error('Error:', error);
+            console.error('Error en loadLastChecklist:', error);
+            const container = document.getElementById('last-checklist-container');
+            if (container) container.classList.add('hidden');
         }
     }
 
