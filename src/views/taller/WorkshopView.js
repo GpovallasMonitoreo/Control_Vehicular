@@ -188,8 +188,18 @@ export class WorkshopView {
 
                 <!-- MODO PENDIENTES -->
                 <div id="mode-pending" class="hidden animate-fade-in overflow-y-auto custom-scrollbar pb-6 pr-2 h-full">
+                    <!-- Sección de Solicitudes Pendientes (requested) -->
+                    <div class="bg-[#1c2127] border border-yellow-500/30 rounded-xl p-4 mb-4">
+                        <h3 class="text-white font-bold mb-4 flex items-center gap-2 border-b border-[#324d67] pb-2">
+                            <span class="material-symbols-outlined text-yellow-500">pending_actions</span> Solicitudes Pendientes
+                        </h3>
+                        <div id="pending-requests-list" class="space-y-3 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
+                            <p class="text-slate-500 text-center text-xs">Cargando...</p>
+                        </div>
+                    </div>
+
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <!-- Recepciones Iniciales -->
+                        <!-- Recepciones Iniciales (approved_for_taller) -->
                         <div class="bg-[#1c2127] border border-orange-500/30 rounded-xl p-4">
                             <h3 class="text-white font-bold mb-4 flex items-center gap-2 border-b border-[#324d67] pb-2">
                                 <span class="material-symbols-outlined text-orange-500">engineering</span> Recepciones Iniciales
@@ -199,7 +209,7 @@ export class WorkshopView {
                             </div>
                         </div>
 
-                        <!-- Recepciones Finales -->
+                        <!-- Recepciones Finales (awaiting_return_checklist) -->
                         <div class="bg-[#1c2127] border border-green-500/30 rounded-xl p-4">
                             <h3 class="text-white font-bold mb-4 flex items-center gap-2 border-b border-[#324d67] pb-2">
                                 <span class="material-symbols-outlined text-green-500">assignment_return</span> Retornos Pendientes
@@ -228,11 +238,13 @@ export class WorkshopView {
     }
 
     async onMount() {
+        await this.loadPendingRequests();
         await this.loadPendingLists();
         await this.loadCompletedTrips();
         this.switchMode('scanner');
         
         setInterval(() => {
+            this.loadPendingRequests();
             this.loadPendingLists();
             this.loadCompletedTrips();
         }, 10000);
@@ -370,6 +382,122 @@ export class WorkshopView {
             },
             `Foto de Entrega: ${position}`
         );
+    }
+
+    // ========== FUNCIONES PARA SOLICITUDES ==========
+    async loadPendingRequests() {
+        try {
+            const { data: requests, error } = await supabase
+                .from('trips')
+                .select(`
+                    id,
+                    created_at,
+                    destination,
+                    motivo,
+                    supervisor,
+                    vehicles:vehicle_id(economic_number, plate, model),
+                    driver:driver_id(full_name, photo_url)
+                `)
+                .eq('status', 'requested')
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+            
+            this.renderRequestsList(requests);
+
+        } catch (error) {
+            console.error('Error cargando solicitudes:', error);
+            const list = document.getElementById('pending-requests-list');
+            if (list) {
+                list.innerHTML = '<p class="text-red-500 text-center text-xs">Error al cargar solicitudes</p>';
+            }
+        }
+    }
+
+    renderRequestsList(requests) {
+        const list = document.getElementById('pending-requests-list');
+        if (!list) return;
+
+        if (!requests || requests.length === 0) {
+            list.innerHTML = '<p class="text-slate-500 text-center text-xs">Sin solicitudes pendientes</p>';
+            return;
+        }
+
+        list.innerHTML = requests.map(r => `
+            <div class="bg-[#151b23] p-3 rounded-lg border border-yellow-500/30">
+                <div class="flex items-center gap-2 mb-2">
+                    <div class="w-8 h-8 rounded-full bg-slate-700 bg-cover bg-center" 
+                         style="background-image: url('${r.driver?.photo_url || ''}')"></div>
+                    <div class="flex-1">
+                        <p class="text-white font-bold text-xs">${r.driver?.full_name || 'Conductor'}</p>
+                        <p class="text-[10px] text-yellow-400">ECO-${r.vehicles?.economic_number || '?'}</p>
+                    </div>
+                    <span class="text-[10px] text-[#92adc9]">${new Date(r.created_at).toLocaleTimeString()}</span>
+                </div>
+                <div class="bg-[#111a22] p-2 rounded-lg text-xs space-y-1">
+                    <p><span class="text-[#92adc9]">Destino:</span> ${r.destination || 'No especificado'}</p>
+                    <p><span class="text-[#92adc9]">Motivo:</span> ${r.motivo || 'No especificado'}</p>
+                    <p><span class="text-[#92adc9]">Encargado:</span> ${r.supervisor || 'No especificado'}</p>
+                </div>
+                <div class="flex gap-2 mt-2">
+                    <button onclick="window.workshopView.approveRequest('${r.id}')" 
+                            class="flex-1 py-2 bg-green-600 text-white text-xs font-bold rounded-lg hover:bg-green-500">
+                        APROBAR
+                    </button>
+                    <button onclick="window.workshopView.rejectRequest('${r.id}')" 
+                            class="flex-1 py-2 bg-red-600/20 text-red-400 text-xs font-bold rounded-lg border border-red-500/30 hover:bg-red-600 hover:text-white">
+                        RECHAZAR
+                    </button>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    async approveRequest(tripId) {
+        if (!confirm('¿Aprobar esta solicitud? El conductor deberá pasar a taller.')) return;
+
+        try {
+            const { error } = await supabase
+                .from('trips')
+                .update({ 
+                    status: 'approved_for_taller',
+                    approved_at: new Date().toISOString()
+                })
+                .eq('id', tripId);
+
+            if (error) throw error;
+
+            alert('✅ Solicitud aprobada');
+            await this.loadPendingRequests();
+            await this.loadPendingLists();
+
+        } catch (error) {
+            console.error('Error aprobando solicitud:', error);
+            alert('Error: ' + error.message);
+        }
+    }
+
+    async rejectRequest(tripId) {
+        if (!confirm('¿Rechazar esta solicitud?')) return;
+
+        try {
+            const { error } = await supabase
+                .from('trips')
+                .update({ 
+                    status: 'rejected',
+                    rejected_at: new Date().toISOString()
+                })
+                .eq('id', tripId);
+
+            if (error) throw error;
+
+            alert('❌ Solicitud rechazada');
+            await this.loadPendingRequests();
+
+        } catch (error) {
+            console.error('Error rechazando solicitud:', error);
+            alert('Error: ' + error.message);
+        }
     }
 
     // ========== RESTO DE MÉTODOS ==========
@@ -776,7 +904,6 @@ export class WorkshopView {
 
         try {
             if (this.receptionMode === 'initial') {
-                // Usar los nombres correctos de columna
                 const updateData = {
                     status: 'awaiting_driver_signature',
                     workshop_reception_photos: this.receptionPhotos,
@@ -801,7 +928,6 @@ export class WorkshopView {
                 const newStatus = hasIncident ? 'incident_report' : 'completed';
                 const newKm = (this.currentVehicle.current_km || 0) + 100;
 
-                // Usar los nombres correctos de columna
                 const updateData = {
                     status: newStatus,
                     workshop_return_checklist: this.checklistItems,
@@ -831,6 +957,7 @@ export class WorkshopView {
             }
 
             this.cancelProcess();
+            await this.loadPendingRequests();
             await this.loadPendingLists();
             await this.loadCompletedTrips();
             this.switchMode('scanner');
@@ -872,6 +999,7 @@ export class WorkshopView {
 
             alert('⚠️ Incidencia reportada');
             this.cancelProcess();
+            await this.loadPendingRequests();
             await this.loadPendingLists();
             await this.loadCompletedTrips();
             this.switchMode('scanner');
