@@ -82,7 +82,7 @@ export class Layout {
         } 
         
         // ============================================
-        // MENÚ PARA TALLER (usando rutas simplificadas)
+        // MENÚ PARA TALLER (ACTUALIZADO CON WORKSHOPVIEW)
         // ============================================
         else if (this.role === 'taller') {
             menuItems = `
@@ -91,6 +91,11 @@ export class Layout {
                 <a href="#taller-dashboard" class="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-purple-600 text-white shadow-lg shadow-purple-500/20 mb-1">
                     <span class="material-symbols-outlined">engineering</span> 
                     <span class="font-medium text-sm">Panel Taller</span>
+                </a>
+                
+                <a href="#taller-workshop" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[#92adc9] hover:text-white hover:bg-purple-500/20 transition-all mb-1">
+                    <span class="material-symbols-outlined text-[22px]">qr_code_scanner</span> 
+                    <span class="font-medium text-sm">Escáner de Unidades</span>
                 </a>
                 
                 <a href="#taller-inventory" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[#92adc9] hover:text-white hover:bg-purple-500/20 transition-all mb-1">
@@ -108,7 +113,9 @@ export class Layout {
                     <span class="font-medium text-sm">Reportes Taller</span>
                 </a>
                 
-                <a href="#incident" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-red-400 hover:text-white hover:bg-red-500/20 transition-all mt-4 border border-red-500/20">
+                <div class="border-t border-[#324d67] my-4"></div>
+                
+                <a href="#incident" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-red-400 hover:text-white hover:bg-red-500/20 transition-all border border-red-500/20">
                     <span class="material-symbols-outlined text-[22px]">report_problem</span> 
                     <span class="font-medium text-sm">Reportar Incidente</span>
                 </a>
@@ -127,7 +134,9 @@ export class Layout {
                     <span class="font-medium text-sm">Escáner QR</span>
                 </a>
                 
-                <a href="#incident" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-red-400 hover:text-white hover:bg-red-500/20 transition-all mt-4 border border-red-500/20">
+                <div class="border-t border-[#324d67] my-4"></div>
+                
+                <a href="#incident" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-red-400 hover:text-white hover:bg-red-500/20 transition-all border border-red-500/20">
                     <span class="material-symbols-outlined text-[22px]">report_problem</span> 
                     <span class="font-medium text-sm">Reportar Incidente</span>
                 </a>
