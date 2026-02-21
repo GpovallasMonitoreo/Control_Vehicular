@@ -15,6 +15,7 @@ export class DriverView {
         this.signaturePad = null;
         this.realtimeChannel = null;
         this.updateInterval = null;
+        this.forceUpdateInterval = null;
         
         // Sistema de logística completo
         this.tripLogistics = {
@@ -88,7 +89,7 @@ export class DriverView {
                         </div>
                     </div>
 
-                    <!-- BANNER DE CÓDIGO DE ACCESO (aparece cuando está listo para salir) -->
+                    <!-- BANNER DE CÓDIGO DE ACCESO -->
                     <div id="access-code-banner" class="hidden mt-3 bg-gradient-to-r from-green-600 to-emerald-600 p-3 rounded-xl animate-pulse">
                         <div class="flex items-center justify-between">
                             <div>
@@ -256,7 +257,7 @@ export class DriverView {
                                     </div>
                                 </div>
                                 
-                                <!-- Fotos de recepción (se actualizan en tiempo real) -->
+                                <!-- Fotos de recepción -->
                                 <div id="reception-photos-gallery" class="hidden">
                                     <p class="text-[10px] text-[#92adc9] uppercase mb-2">Fotos tomadas</p>
                                     <div id="reception-photos-grid" class="grid grid-cols-3 gap-2"></div>
@@ -595,38 +596,30 @@ export class DriverView {
                 
                 if (payload.new) {
                     const oldStatus = this.currentTrip?.status;
+                    const newStatus = payload.new.status;
+                    
                     this.currentTrip = payload.new;
                     
                     // Actualizar UI instantáneamente
                     await this.updateUIByStatus(payload.new);
                     
                     // Mostrar notificación solo si cambió el estado
-                    if (oldStatus && oldStatus !== payload.new.status) {
-                        this.handleStatusChange(payload.new.status, payload.new);
+                    if (oldStatus && oldStatus !== newStatus) {
+                        this.handleStatusChange(newStatus, payload.new);
                     }
                     
                     // Actualizar componentes específicos
                     this.updateSpecificComponents(payload.new);
+                    
+                    // Si el nuevo estado es in_progress y estamos en la pestaña ruta, activar GPS
+                    if (newStatus === 'in_progress' && this.activeTab === 'ruta') {
+                        this.startTracking();
+                    }
                 }
             })
             .subscribe((status) => {
                 console.log('📡 Estado de suscripción:', status);
             });
-
-        // También suscribirse a cambios en vehicles (para fotos)
-        if (this.currentTrip?.vehicle_id) {
-            const vehicleChannel = supabase
-                .channel('vehicle_updates')
-                .on('postgres_changes', {
-                    event: 'UPDATE',
-                    schema: 'public',
-                    table: 'vehicles',
-                    filter: `id=eq.${this.currentTrip.vehicle_id}`
-                }, (payload) => {
-                    console.log('🚗 Vehículo actualizado:', payload);
-                })
-                .subscribe();
-        }
     }
 
     // ==================== SISTEMA DE TOAST NOTIFICATIONS ====================
@@ -681,7 +674,7 @@ export class DriverView {
             },
             'in_progress': { 
                 title: '🚗 Viaje iniciado', 
-                msg: 'El guardia ha autorizado tu salida',
+                msg: 'GPS activado - Sigue tu ruta',
                 type: 'success' 
             },
             'awaiting_return_checklist': { 
@@ -713,7 +706,14 @@ export class DriverView {
             };
             
             if (tabMap[newStatus]) {
-                setTimeout(() => this.switchTab(tabMap[newStatus]), 1500);
+                setTimeout(() => {
+                    this.switchTab(tabMap[newStatus]);
+                    
+                    // Si es in_progress, asegurar que el GPS se active
+                    if (newStatus === 'in_progress') {
+                        setTimeout(() => this.startTracking(), 1000);
+                    }
+                }, 1500);
             }
         }
     }
@@ -835,7 +835,7 @@ export class DriverView {
         document.body.appendChild(modal);
     }
 
-    // ==================== GPS PARA UBICACIÓN ====================
+    // ==================== GPS PARA UBICACIÓN DE DESTINO ====================
     getCurrentLocationForDestination() {
         if (!navigator.geolocation) {
             alert("El dispositivo no tiene GPS");
@@ -908,7 +908,7 @@ export class DriverView {
         }
     }
 
-    // ==================== GPS TRACKING ====================
+    // ==================== GPS TRACKING MEJORADO ====================
     startTracking() {
         if (!navigator.geolocation) {
             alert("El dispositivo no tiene GPS");
@@ -920,18 +920,29 @@ export class DriverView {
         }
 
         const gpsIndicator = document.getElementById('gps-status-indicator');
+        const routeWaitingMsg = document.getElementById('route-waiting-msg');
+        const activeTripPanel = document.getElementById('active-trip-panel');
+        
+        // Mostrar panel activo y ocultar mensaje de espera
+        if (routeWaitingMsg) routeWaitingMsg.classList.add('hidden');
+        if (activeTripPanel) activeTripPanel.classList.remove('hidden');
         
         gpsIndicator.innerHTML = `
             <div class="flex items-center justify-center gap-2 text-yellow-400">
-                <span class="w-2 h-2 rounded-full bg-yellow-400 animate-ping"></span>
-                <span class="text-xs font-bold">Iniciando GPS...</span>
+                <div class="relative">
+                    <div class="w-2 h-2 rounded-full bg-yellow-400 animate-ping absolute"></div>
+                    <div class="w-2 h-2 rounded-full bg-yellow-400 relative"></div>
+                </div>
+                <span class="text-xs font-bold ml-4">Iniciando GPS...</span>
             </div>
         `;
 
+        // Intentar obtener posición inicial
         navigator.geolocation.getCurrentPosition(
             (pos) => {
                 this.handleFirstPosition(pos);
                 
+                // Iniciar seguimiento continuo
                 this.watchPositionId = navigator.geolocation.watchPosition(
                     (position) => this.handlePositionUpdate(position),
                     (error) => this.handleGPSError(error),
@@ -939,31 +950,55 @@ export class DriverView {
                         enableHighAccuracy: true, 
                         maximumAge: 0,
                         timeout: 10000,
-                        distanceFilter: 10
+                        distanceFilter: 5 // Actualizar cada 5 metros
                     }
                 );
+                
+                // Forzar actualización cada 2 segundos
+                this.forceUpdateInterval = setInterval(() => {
+                    if (this.currentTrip?.status === 'in_progress') {
+                        this.updateDisplayStats();
+                    }
+                }, 2000);
+                
             },
             (err) => {
                 this.handleGPSError(err);
+                // Intentar de nuevo después de 3 segundos
+                setTimeout(() => this.startTracking(), 3000);
             },
             { enableHighAccuracy: true, timeout: 10000 }
         );
     }
 
     handleFirstPosition(pos) {
+        const { latitude, longitude, speed } = pos.coords;
+        
         if (!this.tripLogistics.startTime && this.currentTrip?.status === 'in_progress') {
             this.tripLogistics.startTime = new Date();
+            this.tripLogistics.lastPosition = { lat: latitude, lng: longitude };
+            
+            // Actualizar en la base de datos
             this.updateTripInDatabase({
-                start_time: this.tripLogistics.startTime.toISOString()
+                start_time: this.tripLogistics.startTime.toISOString(),
+                exit_km: this.currentTrip.vehicles?.current_km || 0
             });
         }
 
+        const speedKmh = Math.round((speed || 0) * 3.6);
+        
         document.getElementById('gps-status-indicator').innerHTML = `
             <div class="flex items-center justify-center gap-2 text-emerald-400">
-                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-                <span class="text-xs font-bold">GPS Activo</span>
+                <div class="relative">
+                    <div class="w-2 h-2 rounded-full bg-emerald-400 animate-ping absolute"></div>
+                    <div class="w-2 h-2 rounded-full bg-emerald-400 relative"></div>
+                </div>
+                <span class="text-xs font-bold ml-4">GPS Activo - ${speedKmh} km/h</span>
             </div>
         `;
+        
+        // Mostrar velocidad inicial
+        document.getElementById('live-speed').innerText = speedKmh;
     }
 
     handlePositionUpdate(pos) {
@@ -971,8 +1006,10 @@ export class DriverView {
         const now = new Date();
         const speedKmh = Math.round((speed || 0) * 3.6);
 
+        // Actualizar velocidad en tiempo real
         document.getElementById('live-speed').innerText = speedKmh;
 
+        // Calcular distancia si tenemos posición anterior
         if (this.tripLogistics.lastPosition) {
             const distance = this.calculateDistance(
                 this.tripLogistics.lastPosition.lat,
@@ -981,15 +1018,20 @@ export class DriverView {
                 longitude
             );
 
-            if (distance < 0.5) {
+            // Solo agregar distancia si es significativa (evitar micro-movimientos)
+            if (distance > 0.01) { // 10 metros mínimo
                 this.tripLogistics.totalDistance += distance;
-                const fuelConsumption = this.tripLogistics.totalDistance / 8;
+                const fuelConsumption = (this.tripLogistics.totalDistance / 8).toFixed(1);
                 
+                // Actualizar UI
                 document.getElementById('live-distance').innerText = this.tripLogistics.totalDistance.toFixed(1);
-                document.getElementById('live-fuel').innerText = fuelConsumption.toFixed(1);
+                document.getElementById('live-fuel').innerText = fuelConsumption;
+                document.getElementById('summary-distance').innerText = this.tripLogistics.totalDistance.toFixed(1) + ' km';
+                document.getElementById('summary-fuel').innerText = fuelConsumption + ' L';
             }
         }
 
+        // Actualizar tiempo transcurrido
         if (this.tripLogistics.startTime) {
             const duration = Math.floor((now - this.tripLogistics.startTime) / 1000);
             const hours = Math.floor(duration / 3600);
@@ -999,17 +1041,51 @@ export class DriverView {
                 `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
         }
 
+        // Guardar posición actual para próximo cálculo
         this.tripLogistics.lastPosition = { lat: latitude, lng: longitude };
         this.tripLogistics.lastUpdateTime = now;
 
+        // Actualizar indicador GPS con velocidad
+        document.getElementById('gps-status-indicator').innerHTML = `
+            <div class="flex items-center justify-center gap-2 text-emerald-400">
+                <div class="relative">
+                    <div class="w-2 h-2 rounded-full bg-emerald-400 animate-ping absolute"></div>
+                    <div class="w-2 h-2 rounded-full bg-emerald-400 relative"></div>
+                </div>
+                <span class="text-xs font-bold ml-4">${speedKmh} km/h · ${accuracy?.toFixed(0) || '?'}m</span>
+            </div>
+        `;
+
+        // Guardar ubicación para sincronización
         if (this.currentTrip?.status === 'in_progress') {
             this.pendingLocations.push({
                 lat: latitude,
                 lng: longitude,
                 speed: speedKmh,
                 accuracy: accuracy,
+                distance: this.tripLogistics.totalDistance,
                 timestamp: now.toISOString()
             });
+            
+            // Sincronizar cada 10 ubicaciones
+            if (this.pendingLocations.length >= 10) {
+                this.syncPendingLocations();
+            }
+        }
+    }
+
+    // Nueva función para actualizar display sin movimiento
+    updateDisplayStats() {
+        if (!this.currentTrip || this.currentTrip.status !== 'in_progress') return;
+        
+        if (this.tripLogistics.startTime) {
+            const now = new Date();
+            const duration = Math.floor((now - this.tripLogistics.startTime) / 1000);
+            const hours = Math.floor(duration / 3600);
+            const minutes = Math.floor((duration % 3600) / 60);
+            const seconds = duration % 60;
+            document.getElementById('trip-duration').innerText = 
+                `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
         }
     }
 
@@ -1030,6 +1106,7 @@ export class DriverView {
     }
 
     handleGPSError(err) {
+        console.error('GPS Error:', err);
         const gpsIndicator = document.getElementById('gps-status-indicator');
         
         let errorMsg = 'Error de GPS';
@@ -1055,8 +1132,15 @@ export class DriverView {
         if (this.watchPositionId) {
             navigator.geolocation.clearWatch(this.watchPositionId);
             this.watchPositionId = null;
-            
-            document.getElementById('gps-status-indicator').innerHTML = `
+        }
+        if (this.forceUpdateInterval) {
+            clearInterval(this.forceUpdateInterval);
+            this.forceUpdateInterval = null;
+        }
+        
+        const gpsIndicator = document.getElementById('gps-status-indicator');
+        if (gpsIndicator) {
+            gpsIndicator.innerHTML = `
                 <div class="flex items-center justify-center gap-2 text-slate-400">
                     <span class="material-symbols-outlined">gps_fixed</span>
                     <span class="text-xs font-bold">GPS Detenido</span>
@@ -1360,34 +1444,41 @@ export class DriverView {
         if (trip && statusMap[trip.status]) {
             const status = statusMap[trip.status];
             document.getElementById('profile-status').innerText = status.text;
-            document.getElementById('trip-status-badge').innerText = status.text;
-            document.getElementById('trip-status-badge').className = `px-3 py-1 rounded-full text-[10px] font-bold uppercase ${status.color} text-white`;
             
-            document.getElementById('current-vehicle-plate').innerText = trip.vehicles?.plate || '--';
-            document.getElementById('current-vehicle-model').innerText = `${trip.vehicles?.model || ''} ECO-${trip.vehicles?.economic_number || ''}`;
-            document.getElementById('current-trip-info').classList.remove('hidden');
+            const badge = document.getElementById('trip-status-badge');
+            if (badge) {
+                badge.innerText = status.text;
+                badge.className = `px-3 py-1 rounded-full text-[10px] font-bold uppercase ${status.color} text-white`;
+            }
+            
+            const plateEl = document.getElementById('current-vehicle-plate');
+            const modelEl = document.getElementById('current-vehicle-model');
+            if (plateEl) plateEl.innerText = trip.vehicles?.plate || '--';
+            if (modelEl) modelEl.innerText = `${trip.vehicles?.model || ''} ECO-${trip.vehicles?.economic_number || ''}`;
+            
+            document.getElementById('current-trip-info')?.classList.remove('hidden');
             
             if (trip.status === 'approved_for_taller') {
                 document.getElementById('taller-vehicle-info').innerText = 
                     `ECO-${trip.vehicles?.economic_number} - ${trip.vehicles?.plate}`;
             }
             
-            this.updateSpecificComponents(trip);
-            
-            // Actualizar la pestaña activa si es necesario
-            const currentTab = this.activeTab;
-            const suggestedTab = statusMap[trip.status].tab;
-            
-            // Solo cambiar si no estamos en una pestaña que tenga información relevante
-            if (currentTab !== suggestedTab && 
-                !(currentTab === 'unidad' && trip.status === 'driver_accepted') &&
-                !(currentTab === 'taller-inicial' && trip.status === 'approved_for_taller')) {
-                // No cambiar automáticamente para no desorientar al usuario
+            // Si el estado cambió a in_progress, activar GPS automáticamente
+            if (trip.status === 'in_progress' && this.activeTab === 'ruta') {
+                setTimeout(() => this.startTracking(), 500);
             }
             
+            // Si el estado ya no es in_progress, detener GPS
+            if (trip.status !== 'in_progress') {
+                this.stopTracking();
+            }
+            
+            this.updateSpecificComponents(trip);
+            
         } else {
-            document.getElementById('current-trip-info').classList.add('hidden');
+            document.getElementById('current-trip-info')?.classList.add('hidden');
             document.getElementById('profile-status').innerText = "Disponible";
+            this.stopTracking();
         }
     }
 
@@ -1467,9 +1558,27 @@ export class DriverView {
             }
         }
 
-        if (tabId === 'ruta' && this.currentTrip?.status === 'in_progress') {
-            setTimeout(() => this.startTracking(), 500);
+        // GESTIÓN DE GPS POR PESTAÑA
+        if (tabId === 'ruta') {
+            // Si estamos en ruta y el viaje está en progreso, iniciar GPS
+            if (this.currentTrip?.status === 'in_progress') {
+                // Mostrar panel activo y ocultar mensaje de espera
+                document.getElementById('route-waiting-msg')?.classList.add('hidden');
+                document.getElementById('active-trip-panel')?.classList.remove('hidden');
+                setTimeout(() => this.startTracking(), 500);
+            } else if (this.currentTrip?.status === 'driver_accepted') {
+                // Mostrar mensaje de espera si aún no ha salido
+                document.getElementById('route-waiting-msg')?.classList.remove('hidden');
+                document.getElementById('active-trip-panel')?.classList.add('hidden');
+                this.stopTracking();
+            } else {
+                // Si no hay viaje activo, mostrar mensaje apropiado
+                document.getElementById('route-waiting-msg')?.classList.remove('hidden');
+                document.getElementById('active-trip-panel')?.classList.add('hidden');
+                this.stopTracking();
+            }
         } else {
+            // Si salimos de la pestaña ruta, detener GPS para ahorrar batería
             this.stopTracking();
         }
 
