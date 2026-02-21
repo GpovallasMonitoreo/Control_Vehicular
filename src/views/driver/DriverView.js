@@ -10,7 +10,9 @@ export class DriverView {
         this.maxGpsRetries = 3;
         this.backgroundSyncInterval = null;
         this.pendingLocations = [];
-        this.selectedVehicleForRequest = null; // Añadir esta variable
+        this.selectedVehicleForRequest = null;
+        this.profile = null;
+        this.signaturePad = null;
         
         // Sistema de logística completo
         this.tripLogistics = {
@@ -85,9 +87,9 @@ export class DriverView {
 
                 <main class="flex-1 overflow-y-auto custom-scrollbar relative pb-24">
                     
-                    <!-- PESTAÑA UNIDAD - Solicitud de unidad -->
+                    <!-- PESTAÑA UNIDAD - Selección de unidad -->
                     <section id="tab-unidad" class="tab-content block p-5 space-y-4">
-                        <h3 class="text-white text-xs font-bold uppercase tracking-widest opacity-70">Selección de Unidad</h3>
+                        <h3 class="text-white text-xs font-bold uppercase tracking-widest opacity-70 px-1">Unidades Disponibles</h3>
                         
                         <!-- Loader -->
                         <div id="unidad-loader" class="flex justify-center py-10 hidden">
@@ -105,7 +107,7 @@ export class DriverView {
                         
                         <!-- Si hay viaje en progreso, mostrar info de la unidad actual -->
                         <div id="current-trip-info" class="hidden">
-                            <div class="bg-primary/10 border border-primary/30 p-5 rounded-2xl text-center">
+                            <div class="bg-gradient-to-br from-primary/20 to-blue-600/20 border border-primary/30 p-5 rounded-2xl text-center backdrop-blur-sm">
                                 <p class="text-[10px] font-bold text-primary uppercase tracking-widest mb-2">Unidad Actual</p>
                                 <h2 id="current-vehicle-plate" class="text-4xl font-black text-white leading-none">--</h2>
                                 <p id="current-vehicle-model" class="text-sm text-[#92adc9] mt-2">--</p>
@@ -438,54 +440,87 @@ export class DriverView {
         `;
     }
 
-    async onMount() {
-        const { data: { session } } = await supabase.auth.getSession();
-        
-        if (!session) {
-            window.location.hash = '#login';
-            return;
-        }
-        
-        this.userId = session.user.id;
-        console.log('✅ Usuario autenticado:', this.userId);
-        
-        await this.loadProfileData();
-        await this.loadDashboardState();
-        this.setupEventListeners();
-        
-        this.startBackgroundSync();
+    // ==================== MÉTODOS PRINCIPALES ====================
 
-        supabase.channel('driver_realtime')
-            .on('postgres_changes', { 
-                event: 'UPDATE', 
-                schema: 'public', 
-                table: 'trips', 
-                filter: `driver_id=eq.${this.userId}` 
-            }, (payload) => {
-                console.log('🔄 Cambio detectado en viaje:', payload);
-                this.handleTripUpdate(payload.new);
-                this.showNotification('Viaje actualizado', 'El estado del viaje ha cambiado');
-            })
-            .on('postgres_changes', { 
-                event: 'INSERT', 
-                schema: 'public', 
-                table: 'trips', 
-                filter: `driver_id=eq.${this.userId}` 
-            }, (payload) => {
-                console.log('🔄 Nuevo viaje asignado:', payload);
-                this.handleTripUpdate(payload.new);
-                this.showNotification('Nuevo viaje', 'Se te ha asignado un nuevo viaje');
-            })
-            .subscribe();
+    async onMount() {
+        try {
+            const { data: { session }, error } = await supabase.auth.getSession();
+            
+            if (error) throw error;
+            
+            if (!session) {
+                console.log('❌ No hay sesión activa, redirigiendo a login');
+                window.location.hash = '#login';
+                return;
+            }
+            
+            this.userId = session.user.id;
+            console.log('✅ Usuario autenticado:', this.userId);
+            
+            // Verificar que el userId no sea null
+            if (!this.userId) {
+                console.error('❌ userId es null después de la autenticación');
+                window.location.hash = '#login';
+                return;
+            }
+            
+            await this.loadProfileData();
+            await this.loadDashboardState();
+            this.setupEventListeners();
+            
+            this.startBackgroundSync();
+
+            // Configurar suscripción en tiempo real
+            supabase.channel('driver_realtime')
+                .on('postgres_changes', { 
+                    event: 'UPDATE', 
+                    schema: 'public', 
+                    table: 'trips', 
+                    filter: `driver_id=eq.${this.userId}` 
+                }, (payload) => {
+                    console.log('🔄 Cambio detectado en viaje:', payload);
+                    this.handleTripUpdate(payload.new);
+                    this.showNotification('Viaje actualizado', 'El estado del viaje ha cambiado');
+                })
+                .on('postgres_changes', { 
+                    event: 'INSERT', 
+                    schema: 'public', 
+                    table: 'trips', 
+                    filter: `driver_id=eq.${this.userId}` 
+                }, (payload) => {
+                    console.log('🔄 Nuevo viaje asignado:', payload);
+                    this.handleTripUpdate(payload.new);
+                    this.showNotification('Nuevo viaje', 'Se te ha asignado un nuevo viaje');
+                })
+                .subscribe();
+                
+        } catch (error) {
+            console.error('❌ Error en onMount:', error);
+            window.location.hash = '#login';
+        }
     }
 
     // ==================== SISTEMA DE NOTIFICACIONES ====================
+    
     showNotification(title, message, type = 'info') {
         const modal = document.getElementById('notification-modal');
         const content = document.getElementById('notification-content');
         
-        const colors = { info: 'primary', success: 'green-500', warning: 'orange-500', error: 'red-500' };
-        const icons = { info: 'info', success: 'check_circle', warning: 'warning', error: 'error' };
+        if (!modal || !content) return;
+        
+        const colors = { 
+            info: 'primary', 
+            success: 'green-500', 
+            warning: 'orange-500', 
+            error: 'red-500' 
+        };
+        
+        const icons = { 
+            info: 'info', 
+            success: 'check_circle', 
+            warning: 'warning', 
+            error: 'error' 
+        };
         
         content.innerHTML = `
             <div class="text-center">
@@ -511,6 +546,7 @@ export class DriverView {
     }
 
     // ==================== SISTEMA DE GPS EN BACKGROUND ====================
+    
     startBackgroundSync() {
         this.backgroundSyncInterval = setInterval(() => {
             if (this.pendingLocations.length > 0 && navigator.onLine) {
@@ -546,6 +582,7 @@ export class DriverView {
     }
 
     // ==================== MANEJADOR DE ACTUALIZACIONES ====================
+    
     async handleTripUpdate(updatedTrip) {
         const previousStatus = this.currentTrip?.status;
         this.currentTrip = updatedTrip;
@@ -586,6 +623,7 @@ export class DriverView {
     }
 
     // ==================== CONFIGURACIÓN ====================
+    
     setupEventListeners() {
         document.addEventListener('visibilitychange', () => {
             if (this.currentTrip?.status === 'in_progress') {
@@ -601,6 +639,7 @@ export class DriverView {
     }
 
     // ==================== LOGOUT ====================
+    
     async logout() {
         if (!confirm('¿Estás seguro que deseas cerrar sesión?')) return;
 
@@ -630,6 +669,7 @@ export class DriverView {
     }
 
     // ==================== GPS ====================
+    
     startTracking() {
         if (!navigator.geolocation) {
             alert("El dispositivo no tiene sensor GPS.");
@@ -642,12 +682,14 @@ export class DriverView {
 
         const gpsIndicator = document.getElementById('gps-status-indicator');
         
-        gpsIndicator.innerHTML = `
-            <div class="flex items-center justify-center gap-2 text-yellow-400">
-                <span class="w-2 h-2 rounded-full bg-yellow-400 animate-ping"></span>
-                <span class="text-xs font-bold">Iniciando GPS...</span>
-            </div>
-        `;
+        if (gpsIndicator) {
+            gpsIndicator.innerHTML = `
+                <div class="flex items-center justify-center gap-2 text-yellow-400">
+                    <span class="w-2 h-2 rounded-full bg-yellow-400 animate-ping"></span>
+                    <span class="text-xs font-bold">Iniciando GPS...</span>
+                </div>
+            `;
+        }
 
         navigator.geolocation.getCurrentPosition(
             (pos) => {
@@ -680,17 +722,23 @@ export class DriverView {
             });
         }
 
-        document.getElementById('gps-status-indicator').innerHTML = `
-            <div class="flex items-center justify-center gap-2 text-emerald-400">
-                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-                <span class="text-xs font-bold">GPS Activo - Enviando datos...</span>
-            </div>
-        `;
+        const gpsIndicator = document.getElementById('gps-status-indicator');
+        if (gpsIndicator) {
+            gpsIndicator.innerHTML = `
+                <div class="flex items-center justify-center gap-2 text-emerald-400">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                    <span class="text-xs font-bold">GPS Activo - Enviando datos...</span>
+                </div>
+            `;
+        }
 
-        document.getElementById('gps-header-indicator').innerHTML = `
-            <span class="animate-ping absolute h-full w-full rounded-full bg-green-400 opacity-75"></span>
-            <span class="relative rounded-full h-2 w-2 bg-green-500"></span>
-        `;
+        const gpsHeader = document.getElementById('gps-header-indicator');
+        if (gpsHeader) {
+            gpsHeader.innerHTML = `
+                <span class="animate-ping absolute h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                <span class="relative rounded-full h-2 w-2 bg-green-500"></span>
+            `;
+        }
     }
 
     handlePositionUpdate(pos) {
@@ -698,7 +746,8 @@ export class DriverView {
         const now = new Date();
         const speedKmh = Math.round((speed || 0) * 3.6);
 
-        document.getElementById('live-speed').innerText = `${speedKmh} km/h`;
+        const speedEl = document.getElementById('live-speed');
+        if (speedEl) speedEl.innerText = `${speedKmh} km/h`;
 
         if (this.tripLogistics.lastPosition) {
             const distance = this.calculateDistance(
@@ -713,11 +762,17 @@ export class DriverView {
                 
                 const fuelConsumption = this.tripLogistics.totalDistance / 8;
                 
-                document.getElementById('live-distance').innerText = this.tripLogistics.totalDistance.toFixed(1);
-                document.getElementById('live-fuel').innerText = fuelConsumption.toFixed(1);
+                const distanceEl = document.getElementById('live-distance');
+                if (distanceEl) distanceEl.innerText = this.tripLogistics.totalDistance.toFixed(1);
                 
-                document.getElementById('summary-distance').innerText = this.tripLogistics.totalDistance.toFixed(1) + ' km';
-                document.getElementById('summary-fuel').innerText = fuelConsumption.toFixed(1) + ' L';
+                const fuelEl = document.getElementById('live-fuel');
+                if (fuelEl) fuelEl.innerText = fuelConsumption.toFixed(1);
+                
+                const summaryDistance = document.getElementById('summary-distance');
+                if (summaryDistance) summaryDistance.innerText = this.tripLogistics.totalDistance.toFixed(1) + ' km';
+                
+                const summaryFuel = document.getElementById('summary-fuel');
+                if (summaryFuel) summaryFuel.innerText = fuelConsumption.toFixed(1) + ' L';
             }
 
             const timeDiff = (now - this.tripLogistics.lastUpdateTime) / 1000;
@@ -742,8 +797,12 @@ export class DriverView {
             const hours = Math.floor(duration / 3600);
             const minutes = Math.floor((duration % 3600) / 60);
             const seconds = duration % 60;
-            document.getElementById('trip-duration').innerText = 
-                `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            
+            const durationEl = document.getElementById('trip-duration');
+            if (durationEl) {
+                durationEl.innerText = 
+                    `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            }
         }
 
         this.tripLogistics.lastPosition = { lat: latitude, lng: longitude, timestamp: now };
@@ -786,6 +845,7 @@ export class DriverView {
     handleGPSError(err) {
         console.error("GPS Error:", err);
         const gpsIndicator = document.getElementById('gps-status-indicator');
+        if (!gpsIndicator) return;
         
         let errorMsg = 'Error de GPS';
         if (err.code === 1) errorMsg = 'Permiso denegado';
@@ -805,9 +865,12 @@ export class DriverView {
             </div>
         `;
 
-        document.getElementById('gps-header-indicator').innerHTML = `
-            <span class="relative rounded-full h-2 w-2 bg-red-500"></span>
-        `;
+        const gpsHeader = document.getElementById('gps-header-indicator');
+        if (gpsHeader) {
+            gpsHeader.innerHTML = `
+                <span class="relative rounded-full h-2 w-2 bg-red-500"></span>
+            `;
+        }
     }
 
     stopTracking() {
@@ -815,20 +878,27 @@ export class DriverView {
             navigator.geolocation.clearWatch(this.watchPositionId);
             this.watchPositionId = null;
             
-            document.getElementById('gps-status-indicator').innerHTML = `
-                <div class="flex items-center justify-center gap-2 text-slate-400">
-                    <span class="material-symbols-outlined">gps_fixed</span>
-                    <span class="text-xs font-bold">GPS Detenido</span>
-                </div>
-            `;
+            const gpsIndicator = document.getElementById('gps-status-indicator');
+            if (gpsIndicator) {
+                gpsIndicator.innerHTML = `
+                    <div class="flex items-center justify-center gap-2 text-slate-400">
+                        <span class="material-symbols-outlined">gps_fixed</span>
+                        <span class="text-xs font-bold">GPS Detenido</span>
+                    </div>
+                `;
+            }
 
-            document.getElementById('gps-header-indicator').innerHTML = `
-                <span class="relative rounded-full h-2 w-2 bg-slate-500"></span>
-            `;
+            const gpsHeader = document.getElementById('gps-header-indicator');
+            if (gpsHeader) {
+                gpsHeader.innerHTML = `
+                    <span class="relative rounded-full h-2 w-2 bg-slate-500"></span>
+                `;
+            }
         }
     }
 
     // ==================== BASE DE DATOS ====================
+    
     async sendLocationToDatabase(locationData) {
         if (!this.currentTrip) return;
 
@@ -867,229 +937,26 @@ export class DriverView {
     }
 
     // ==================== FUNCIONES DE SOLICITUD ====================
+    
     async loadAvailableUnits() {
-        const { data: vehs } = await supabase
-            .from('vehicles')
-            .select('*')
-            .eq('status', 'active');
-            
-        const select = document.getElementById('solicitud-vehicle');
-        if (select) {
-            select.innerHTML = '<option value="">Seleccionar unidad...</option>' + 
-                vehs.map(v => `<option value="${v.id}">ECO-${v.economic_number} - ${v.plate} (${v.model})</option>`).join('');
-        }
-    }
-
-    async loadLastChecklist(vehicleId) {
-        if (!vehicleId) return;
-        
-        const { data: lastTrip } = await supabase
-            .from('trips')
-            .select('workshop_checklist, completed_at')
-            .eq('vehicle_id', vehicleId)
-            .eq('status', 'completed')
-            .order('completed_at', { ascending: false })
-            .limit(1)
-            .single();
-
-        const container = document.getElementById('last-checklist-container');
-        const content = document.getElementById('last-checklist-content');
-        
-        if (!lastTrip?.workshop_checklist) {
-            container.classList.add('hidden');
-            return;
-        }
-
-        container.classList.remove('hidden');
-        const check = lastTrip.workshop_checklist;
-        
-        content.innerHTML = `
-            <div class="space-y-2">
-                <div class="grid grid-cols-2 gap-2">
-                    <span class="text-green-400 text-xs flex items-center gap-1">
-                        <span class="material-symbols-outlined text-sm">${check.liquid ? 'check_circle' : 'cancel'}</span> Líquido
-                    </span>
-                    <span class="text-green-400 text-xs flex items-center gap-1">
-                        <span class="material-symbols-outlined text-sm">${check.oil ? 'check_circle' : 'cancel'}</span> Aceite
-                    </span>
-                    <span class="text-green-400 text-xs flex items-center gap-1">
-                        <span class="material-symbols-outlined text-sm">${check.coolant ? 'check_circle' : 'cancel'}</span> Anticongelante
-                    </span>
-                    <span class="text-green-400 text-xs flex items-center gap-1">
-                        <span class="material-symbols-outlined text-sm">${check.lights ? 'check_circle' : 'cancel'}</span> Luces
-                    </span>
-                    <span class="text-green-400 text-xs flex items-center gap-1">
-                        <span class="material-symbols-outlined text-sm">${check.tires ? 'check_circle' : 'cancel'}</span> Llantas
-                    </span>
-                </div>
-                <p class="text-[10px] text-[#92adc9] mt-2">Fecha: ${new Date(lastTrip.completed_at).toLocaleDateString()}</p>
-            </div>
-        `;
-    }
-
-    async enviarSolicitud() {
-        const vehicleId = document.getElementById('solicitud-vehicle').value;
-        const destino = document.getElementById('solicitud-destino').value;
-        const motivo = document.getElementById('solicitud-motivo').value;
-        const encargado = document.getElementById('solicitud-encargado').value;
-        
-        if (!vehicleId || !destino || !motivo || !encargado) {
-            alert('Por favor completa todos los campos');
-            return;
-        }
-
-        const btn = document.querySelector('[onclick="window.conductorModule.enviarSolicitud()"]');
-        btn.disabled = true;
-        btn.innerText = 'ENVIANDO...';
-
-        const accessCode = Math.random().toString(36).substring(2, 7).toUpperCase();
-        
-        const { error } = await supabase.from('trips').insert({ 
-            driver_id: this.userId, 
-            vehicle_id: vehicleId, 
-            status: 'requested',
-            access_code: accessCode,
-            request_details: {
-                destination: destino,
-                motivo: motivo,
-                supervisor: encargado,
-                requested_at: new Date().toISOString()
-            }
-        });
-
-        if (error) {
-            alert("Error: " + error.message);
-        } else {
-            this.showNotification('Solicitud enviada', 'Espera la aprobación del supervisor', 'success');
-            this.switchTab('unidad');
-        }
-        
-        btn.disabled = false;
-        btn.innerText = 'ENVIAR SOLICITUD';
-        this.loadDashboardState();
-    }
-
-    // ==================== FIRMA DE RECEPCIÓN EN TALLER ====================
-    renderFirmaRecepcion() {
-        const container = document.getElementById('firma-recepcion-container');
-        container.classList.remove('hidden');
-        
-        setTimeout(() => {
-            const canvas = document.getElementById('signature-pad');
-            if (canvas) {
-                this.signaturePad = new SignaturePad(canvas, {
-                    backgroundColor: '#1c2127',
-                    penColor: '#ffffff',
-                    velocityFilterWeight: 0.7,
-                    minWidth: 0.5,
-                    maxWidth: 2.5
-                });
+        try {
+            const { data: vehs, error } = await supabase
+                .from('vehicles')
+                .select('*')
+                .eq('status', 'active');
                 
-                canvas.addEventListener('mouseup', () => this.validateSignature());
-                canvas.addEventListener('touchend', () => this.validateSignature());
-            }
-        }, 500);
-    }
-
-    validateSignature() {
-        const btn = document.getElementById('btn-confirmar-recepcion');
-        btn.disabled = !(this.signaturePad && !this.signaturePad.isEmpty());
-    }
-
-    clearSignature() {
-        if (this.signaturePad) {
-            this.signaturePad.clear();
-            this.validateSignature();
-        }
-    }
-
-    async confirmarRecepcionTaller() {
-        if (!this.signaturePad || this.signaturePad.isEmpty()) {
-            alert('Debes firmar de conformidad');
-            return;
-        }
-
-        const btn = document.getElementById('btn-confirmar-recepcion');
-        btn.disabled = true;
-        btn.innerText = 'PROCESANDO...';
-
-        const signatureData = this.signaturePad.toDataURL('image/png');
-
-        const { error } = await supabase
-            .from('trips')
-            .update({
-                driver_signature: signatureData,
-                reception_confirmed_at: new Date().toISOString()
-            })
-            .eq('id', this.currentTrip.id);
-
-        if (error) {
-            alert('Error: ' + error.message);
-        } else {
-            this.showNotification('Recepción confirmada', 'Ya puedes pasar con el guardia', 'success');
-            this.switchTab('unidad');
-        }
-    }
-
-    // ==================== RESUMEN POST-VIAJE ====================
-    cargarResumenViaje() {
-        document.getElementById('resumen-distancia').innerText = 
-            Math.round(this.tripLogistics.totalDistance) + ' km';
-        document.getElementById('resumen-combustible').innerText = 
-            Math.round(this.tripLogistics.totalDistance / 8) + ' L';
-    }
-
-    // ==================== PERFIL Y ESTADO ====================
-    async loadProfileData() {
-        if (!this.userId) return;
-        
-        const { data: p, error } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', this.userId)
-            .single();
+            if (error) throw error;
             
-        if (error) {
-            console.error('Error cargando perfil:', error);
-            return;
-        }
-        
-        if(p) {
-            this.profile = p;
-            document.getElementById('profile-name').innerText = p.full_name;
-            document.getElementById('profile-avatar').style.backgroundImage = `url('${p.photo_url || ''}')`;
-            document.getElementById('card-full-name').innerText = p.full_name;
-            document.getElementById('card-photo').style.backgroundImage = `url('${p.photo_url || ''}')`;
-            document.getElementById('lic-number').innerText = p.license_number || 'No Registrada';
-            document.getElementById('profile-manager').innerText = p.supervisor_name || 'Central COV';
-            document.getElementById('profile-role').innerText = 'Conductor';
+            const select = document.getElementById('solicitud-vehicle');
+            if (select) {
+                select.innerHTML = '<option value="">Seleccionar unidad...</option>' + 
+                    (vehs?.map(v => `<option value="${v.id}">ECO-${v.economic_number} - ${v.plate} (${v.model})</option>`).join('') || '');
+            }
+        } catch (error) {
+            console.error('Error cargando unidades:', error);
         }
     }
 
-    async loadDashboardState() {
-        if (!this.userId) return;
-        
-        const { data: trips } = await supabase
-            .from('trips')
-            .select(`*, vehicles(*)`)
-            .eq('driver_id', this.userId)
-            .neq('status', 'closed')
-            .order('created_at', { ascending: false })
-            .limit(1);
-
-        const trip = trips && trips.length > 0 ? trips[0] : null;
-        this.currentTrip = trip;
-
-        // Actualizar UI según el estado
-        await this.updateUIByStatus(trip);
-        
-        // Cargar unidades disponibles si no hay viaje
-        if (!trip) {
-            await this.loadAvailableUnitsForMainView();
-        }
-    }
-
-    // NUEVO MÉTODO: Cargar unidades para la vista principal
     async loadAvailableUnitsForMainView() {
         const container = document.getElementById('unidad-content');
         const loader = document.getElementById('unidad-loader');
@@ -1097,7 +964,6 @@ export class DriverView {
         
         if (!container) return;
         
-        // Mostrar loader
         if (loader) loader.classList.remove('hidden');
         if (container) container.classList.add('hidden');
         if (noUnitsMsg) noUnitsMsg.classList.add('hidden');
@@ -1140,7 +1006,61 @@ export class DriverView {
         }
     }
 
-    // MÉTODO MODIFICADO: Seleccionar vehículo para solicitud
+    async loadLastChecklist(vehicleId) {
+        if (!vehicleId) return;
+        
+        try {
+            const { data: lastTrip, error } = await supabase
+                .from('trips')
+                .select('workshop_checklist, completed_at')
+                .eq('vehicle_id', vehicleId)
+                .eq('status', 'completed')
+                .order('completed_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+            const container = document.getElementById('last-checklist-container');
+            const content = document.getElementById('last-checklist-content');
+            
+            if (!container || !content) return;
+            
+            if (error || !lastTrip?.workshop_checklist) {
+                container.classList.add('hidden');
+                return;
+            }
+
+            container.classList.remove('hidden');
+            const check = lastTrip.workshop_checklist;
+            
+            content.innerHTML = `
+                <div class="space-y-2">
+                    <div class="grid grid-cols-2 gap-2">
+                        <span class="text-${check.liquid ? 'green' : 'red'}-400 text-xs flex items-center gap-1">
+                            <span class="material-symbols-outlined text-sm">${check.liquid ? 'check_circle' : 'cancel'}</span> Líquido
+                        </span>
+                        <span class="text-${check.oil ? 'green' : 'red'}-400 text-xs flex items-center gap-1">
+                            <span class="material-symbols-outlined text-sm">${check.oil ? 'check_circle' : 'cancel'}</span> Aceite
+                        </span>
+                        <span class="text-${check.coolant ? 'green' : 'red'}-400 text-xs flex items-center gap-1">
+                            <span class="material-symbols-outlined text-sm">${check.coolant ? 'check_circle' : 'cancel'}</span> Anticongelante
+                        </span>
+                        <span class="text-${check.lights ? 'green' : 'red'}-400 text-xs flex items-center gap-1">
+                            <span class="material-symbols-outlined text-sm">${check.lights ? 'check_circle' : 'cancel'}</span> Luces
+                        </span>
+                        <span class="text-${check.tires ? 'green' : 'red'}-400 text-xs flex items-center gap-1">
+                            <span class="material-symbols-outlined text-sm">${check.tires ? 'check_circle' : 'cancel'}</span> Llantas
+                        </span>
+                    </div>
+                    <p class="text-[10px] text-[#92adc9] mt-2">Fecha: ${new Date(lastTrip.completed_at).toLocaleDateString()}</p>
+                </div>
+            `;
+        } catch (error) {
+            console.error('Error cargando checklist:', error);
+            const container = document.getElementById('last-checklist-container');
+            if (container) container.classList.add('hidden');
+        }
+    }
+
     selectVehicleForRequest(vehicleId, plate, model, eco) {
         this.selectedVehicleForRequest = { id: vehicleId, plate, model, eco };
         this.switchTab('solicitud');
@@ -1152,6 +1072,304 @@ export class DriverView {
                 this.loadLastChecklist(vehicleId);
             }
         }, 500);
+    }
+
+    // ==================== MÉTODO ENVIAR SOLICITUD CORREGIDO ====================
+
+    async enviarSolicitud() {
+        // VERIFICACIÓN CRÍTICA: Asegurar que userId existe
+        if (!this.userId) {
+            console.error('❌ Error: userId es null');
+            alert('Error de sesión. Por favor, recarga la página.');
+            return;
+        }
+
+        const vehicleId = document.getElementById('solicitud-vehicle').value;
+        const destino = document.getElementById('solicitud-destino').value;
+        const motivo = document.getElementById('solicitud-motivo').value;
+        const encargado = document.getElementById('solicitud-encargado').value;
+        
+        // Validaciones
+        if (!vehicleId) {
+            alert('Por favor selecciona una unidad');
+            return;
+        }
+        
+        if (!destino) {
+            alert('Por favor ingresa el destino');
+            document.getElementById('solicitud-destino').focus();
+            return;
+        }
+        
+        if (!motivo) {
+            alert('Por favor selecciona el motivo del viaje');
+            document.getElementById('solicitud-motivo').focus();
+            return;
+        }
+        
+        if (!encargado) {
+            alert('Por favor selecciona el encargado de área');
+            document.getElementById('solicitud-encargado').focus();
+            return;
+        }
+
+        // Deshabilitar botón mientras se procesa
+        const btn = document.querySelector('[onclick="window.conductorModule.enviarSolicitud()"]');
+        if (btn) {
+            btn.disabled = true;
+            btn.innerText = 'ENVIANDO...';
+        }
+
+        try {
+            // Generar código de acceso
+            const accessCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+            
+            // Crear objeto de solicitud - IMPORTANTE: la estructura debe coincidir con la tabla
+            const newTrip = {
+                driver_id: this.userId, // Asegurar que esto no sea null
+                vehicle_id: vehicleId,
+                status: 'requested',
+                access_code: accessCode,
+                destination: destino,
+                reason: motivo,
+                supervisor: encargado,
+                request_details: {
+                    destination: destino,
+                    motivo: motivo,
+                    supervisor: encargado,
+                    requested_at: new Date().toISOString(),
+                    vehicle_id: vehicleId
+                },
+                created_at: new Date().toISOString()
+            };
+
+            console.log('📤 Enviando solicitud:', newTrip); // Para debugging
+
+            const { data, error } = await supabase
+                .from('trips')
+                .insert([newTrip])
+                .select();
+
+            if (error) {
+                console.error('❌ Error de Supabase:', error);
+                throw error;
+            }
+
+            console.log('✅ Solicitud creada:', data);
+            
+            // Limpiar formulario
+            document.getElementById('solicitud-destino').value = '';
+            document.getElementById('solicitud-vehicle').value = '';
+            document.getElementById('solicitud-motivo').value = '';
+            document.getElementById('solicitud-encargado').value = '';
+            
+            // Ocultar el checklist
+            const checklistContainer = document.getElementById('last-checklist-container');
+            if (checklistContainer) checklistContainer.classList.add('hidden');
+            
+            this.showNotification('✅ Solicitud enviada', 'Espera la aprobación del supervisor', 'success');
+            
+            // Cambiar a la pestaña de unidad para ver el estado
+            this.switchTab('unidad');
+            
+            // Recargar el estado del dashboard
+            await this.loadDashboardState();
+
+        } catch (error) {
+            console.error('❌ Error enviando solicitud:', error);
+            
+            // Mostrar mensaje de error más específico
+            let errorMessage = 'Error al enviar la solicitud';
+            if (error.message) {
+                errorMessage += ': ' + error.message;
+            }
+            if (error.details) {
+                errorMessage += ' (' + error.details + ')';
+            }
+            if (error.code) {
+                errorMessage += ` (Código: ${error.code})`;
+            }
+            
+            alert(errorMessage);
+            this.showNotification('❌ Error', 'No se pudo enviar la solicitud', 'error');
+            
+        } finally {
+            // Restaurar botón
+            if (btn) {
+                btn.disabled = false;
+                btn.innerText = 'ENVIAR SOLICITUD';
+            }
+        }
+    }
+
+    // ==================== FIRMA DE RECEPCIÓN EN TALLER ====================
+    
+    renderFirmaRecepcion() {
+        const container = document.getElementById('firma-recepcion-container');
+        if (!container) return;
+        
+        container.classList.remove('hidden');
+        
+        setTimeout(() => {
+            const canvas = document.getElementById('signature-pad');
+            if (canvas && window.SignaturePad) {
+                this.signaturePad = new window.SignaturePad(canvas, {
+                    backgroundColor: '#1c2127',
+                    penColor: '#ffffff',
+                    velocityFilterWeight: 0.7,
+                    minWidth: 0.5,
+                    maxWidth: 2.5
+                });
+                
+                canvas.addEventListener('mouseup', () => this.validateSignature());
+                canvas.addEventListener('touchend', () => this.validateSignature());
+            }
+        }, 500);
+    }
+
+    validateSignature() {
+        const btn = document.getElementById('btn-confirmar-recepcion');
+        if (btn) {
+            btn.disabled = !(this.signaturePad && !this.signaturePad.isEmpty());
+        }
+    }
+
+    clearSignature() {
+        if (this.signaturePad) {
+            this.signaturePad.clear();
+            this.validateSignature();
+        }
+    }
+
+    async confirmarRecepcionTaller() {
+        if (!this.signaturePad || this.signaturePad.isEmpty()) {
+            alert('Debes firmar de conformidad');
+            return;
+        }
+
+        const btn = document.getElementById('btn-confirmar-recepcion');
+        if (!btn) return;
+        
+        btn.disabled = true;
+        btn.innerText = 'PROCESANDO...';
+
+        try {
+            const signatureData = this.signaturePad.toDataURL('image/png');
+
+            const { error } = await supabase
+                .from('trips')
+                .update({
+                    driver_signature: signatureData,
+                    reception_confirmed_at: new Date().toISOString()
+                })
+                .eq('id', this.currentTrip.id);
+
+            if (error) throw error;
+
+            this.showNotification('Recepción confirmada', 'Ya puedes pasar con el guardia', 'success');
+            this.switchTab('unidad');
+            
+        } catch (error) {
+            console.error('Error confirmando recepción:', error);
+            alert('Error: ' + error.message);
+        } finally {
+            btn.disabled = false;
+            btn.innerText = 'FIRMAR RECEPCIÓN';
+        }
+    }
+
+    // ==================== RESUMEN POST-VIAJE ====================
+    
+    cargarResumenViaje() {
+        const distanciaEl = document.getElementById('resumen-distancia');
+        const combustibleEl = document.getElementById('resumen-combustible');
+        
+        if (distanciaEl) {
+            distanciaEl.innerText = Math.round(this.tripLogistics.totalDistance) + ' km';
+        }
+        
+        if (combustibleEl) {
+            combustibleEl.innerText = Math.round(this.tripLogistics.totalDistance / 8) + ' L';
+        }
+    }
+
+    // ==================== PERFIL Y ESTADO ====================
+    
+    async loadProfileData() {
+        if (!this.userId) return;
+        
+        try {
+            const { data: p, error } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('id', this.userId)
+                .single();
+                
+            if (error) {
+                console.error('Error cargando perfil:', error);
+                return;
+            }
+            
+            if(p) {
+                this.profile = p;
+                
+                const profileName = document.getElementById('profile-name');
+                if (profileName) profileName.innerText = p.full_name || 'Conductor';
+                
+                const profileAvatar = document.getElementById('profile-avatar');
+                if (profileAvatar) profileAvatar.style.backgroundImage = `url('${p.photo_url || ''}')`;
+                
+                const cardName = document.getElementById('card-full-name');
+                if (cardName) cardName.innerText = p.full_name || 'Conductor';
+                
+                const cardPhoto = document.getElementById('card-photo');
+                if (cardPhoto) cardPhoto.style.backgroundImage = `url('${p.photo_url || ''}')`;
+                
+                const licNumber = document.getElementById('lic-number');
+                if (licNumber) licNumber.innerText = p.license_number || 'No Registrada';
+                
+                const profileManager = document.getElementById('profile-manager');
+                if (profileManager) profileManager.innerText = p.supervisor_name || 'Central COV';
+                
+                const profileRole = document.getElementById('profile-role');
+                if (profileRole) profileRole.innerText = 'Conductor';
+            }
+        } catch (error) {
+            console.error('Error en loadProfileData:', error);
+        }
+    }
+
+    async loadDashboardState() {
+        if (!this.userId) {
+            console.log('No hay userId, no se puede cargar dashboard');
+            return;
+        }
+        
+        try {
+            const { data: trips, error } = await supabase
+                .from('trips')
+                .select(`*, vehicles(*)`)
+                .eq('driver_id', this.userId)
+                .neq('status', 'closed')
+                .order('created_at', { ascending: false })
+                .limit(1);
+
+            if (error) throw error;
+
+            const trip = trips && trips.length > 0 ? trips[0] : null;
+            this.currentTrip = trip;
+
+            // Actualizar UI según el estado
+            await this.updateUIByStatus(trip);
+            
+            // Cargar unidades disponibles si no hay viaje
+            if (!trip) {
+                await this.loadAvailableUnitsForMainView();
+            }
+            
+        } catch (error) {
+            console.error('Error cargando dashboard:', error);
+        }
     }
 
     async updateUIByStatus(trip) {
@@ -1167,10 +1385,11 @@ export class DriverView {
         const titleUnits = document.querySelector('#tab-unidad h3');
         const unitsContent = document.getElementById('unidad-content');
         const noUnitsMsg = document.getElementById('no-units-message');
+        const profileStatus = document.getElementById('profile-status');
 
         if (trip && statusMap[trip.status]) {
             const status = statusMap[trip.status];
-            document.getElementById('profile-status').innerText = status.text;
+            if (profileStatus) profileStatus.innerText = status.text;
             
             const badge = document.getElementById('trip-status-badge');
             if (badge) { 
@@ -1178,25 +1397,36 @@ export class DriverView {
                 badge.className = `px-3 py-1 rounded-full text-[10px] font-bold uppercase ${status.color} text-white`; 
             }
             
-            document.getElementById('current-vehicle-plate').innerText = trip.vehicles?.plate || '--';
-            document.getElementById('current-vehicle-model').innerText = `${trip.vehicles?.model || ''} ECO-${trip.vehicles?.economic_number || ''}`;
-            document.getElementById('current-trip-info').classList.remove('hidden');
+            const plateEl = document.getElementById('current-vehicle-plate');
+            if (plateEl) plateEl.innerText = trip.vehicles?.plate || '--';
+            
+            const modelEl = document.getElementById('current-vehicle-model');
+            if (modelEl) modelEl.innerText = `${trip.vehicles?.model || ''} ECO-${trip.vehicles?.economic_number || ''}`;
+            
+            const currentTripInfo = document.getElementById('current-trip-info');
+            if (currentTripInfo) currentTripInfo.classList.remove('hidden');
             
             if (titleUnits) titleUnits.classList.add('hidden');
             if (unitsContent) unitsContent.classList.add('hidden');
             if (noUnitsMsg) noUnitsMsg.classList.add('hidden');
             
             if (trip.status === 'approved_for_taller') {
-                document.getElementById('taller-vehicle-info').innerText = 
-                    `ECO-${trip.vehicles?.economic_number} - ${trip.vehicles?.plate}`;
+                const tInfo = document.getElementById('taller-vehicle-info');
+                if (tInfo) tInfo.innerText = `ECO-${trip.vehicles?.economic_number} - ${trip.vehicles?.plate}`;
             }
             
-            if (trip.status === 'in_progress' && this.activeTab === 'ruta') setTimeout(() => this.startTracking(), 500);
-            if (trip.status !== 'in_progress') this.stopTracking();
+            if (trip.status === 'in_progress' && this.activeTab === 'ruta') {
+                setTimeout(() => this.startTracking(), 500);
+            }
+            if (trip.status !== 'in_progress') {
+                this.stopTracking();
+            }
             
         } else {
-            document.getElementById('current-trip-info').classList.add('hidden');
-            document.getElementById('profile-status').innerText = "Disponible";
+            const currentTripInfo = document.getElementById('current-trip-info');
+            if (currentTripInfo) currentTripInfo.classList.add('hidden');
+            
+            if (profileStatus) profileStatus.innerText = "Disponible";
             this.stopTracking();
             
             if (titleUnits) titleUnits.classList.remove('hidden');
@@ -1205,8 +1435,9 @@ export class DriverView {
     }
 
     // ==================== FUNCIONES DEL VIAJE ====================
+    
     async saveTripNotes() {
-        const notes = document.getElementById('trip-notes').value;
+        const notes = document.getElementById('trip-notes')?.value;
         if (!notes || !this.currentTrip) return;
 
         if (!this.tripLogistics.notes) this.tripLogistics.notes = [];
@@ -1218,30 +1449,60 @@ export class DriverView {
         await this.updateTripInDatabase({
             notes: this.tripLogistics.notes
         });
+        
+        // Limpiar el textarea después de guardar
+        const notesEl = document.getElementById('trip-notes');
+        if (notesEl) notesEl.value = '';
+        
+        this.showNotification('Nota guardada', 'Se agregó al registro del viaje', 'success');
     }
 
     async activateEmergency() {
-        const description = document.getElementById('emergency-desc').value;
+        const description = document.getElementById('emergency-desc')?.value;
+        
+        if (!description) {
+            alert('Por favor describe la emergencia');
+            return;
+        }
+        
+        if (!this.currentTrip) {
+            alert('No hay un viaje activo');
+            return;
+        }
         
         const emergencyCode = 'EMG-' + Math.random().toString(36).substring(2, 8).toUpperCase();
         const expiryTime = new Date(Date.now() + 30 * 60000);
 
-        await this.updateTripInDatabase({
-            emergency_code: emergencyCode,
-            emergency_expiry: expiryTime.toISOString(),
-            notes: [...(this.tripLogistics.notes || []), {
-                type: 'emergency',
-                description: description,
-                code: emergencyCode,
-                timestamp: new Date().toISOString()
-            }]
-        });
+        try {
+            await this.updateTripInDatabase({
+                emergency_code: emergencyCode,
+                emergency_expiry: expiryTime.toISOString(),
+                notes: [...(this.tripLogistics.notes || []), {
+                    type: 'emergency',
+                    description: description,
+                    code: emergencyCode,
+                    timestamp: new Date().toISOString()
+                }]
+            });
 
-        alert(`EMERGENCIA REGISTRADA\nCódigo: ${emergencyCode}\nMantén la calma, ayuda en camino.`);
-        document.getElementById('modal-emergency').classList.add('hidden');
+            alert(`🚨 EMERGENCIA REGISTRADA\nCódigo: ${emergencyCode}\nMantén la calma, ayuda en camino.`);
+            
+            // Cerrar modal
+            const modal = document.getElementById('modal-emergency');
+            if (modal) modal.classList.add('hidden');
+            
+            // Limpiar textarea
+            const descEl = document.getElementById('emergency-desc');
+            if (descEl) descEl.value = '';
+            
+        } catch (error) {
+            console.error('Error reportando emergencia:', error);
+            alert('Error al reportar emergencia');
+        }
     }
 
     // ==================== NAVEGACIÓN ====================
+    
     switchTab(tabId) {
         this.activeTab = tabId;
         
@@ -1251,8 +1512,11 @@ export class DriverView {
             el.classList.add('text-slate-500');
         });
         
-        document.getElementById(`tab-${tabId}`).classList.remove('hidden');
-        document.getElementById(`nav-${tabId}`).classList.add('active', 'text-primary');
+        const tabEl = document.getElementById(`tab-${tabId}`);
+        if (tabEl) tabEl.classList.remove('hidden');
+        
+        const navEl = document.getElementById(`nav-${tabId}`);
+        if (navEl) navEl.classList.add('active', 'text-primary');
 
         if (tabId === 'solicitud') {
             this.loadAvailableUnits();
@@ -1264,6 +1528,10 @@ export class DriverView {
 
         if (tabId === 'ruta' && this.currentTrip?.status === 'in_progress') {
             setTimeout(() => this.startTracking(), 500);
+        }
+        
+        if (tabId === 'perfil') {
+            this.loadProfileData();
         }
     }
 }
