@@ -9,6 +9,8 @@ export class TrackingView {
         this.focusedTripId = null;
         this.routeLine = null; 
         this.destinationMarker = null; 
+        this.realtimeChannel = null;
+        this.updateInterval = null;
 
         // Configuración de vista inicial (CDMX y EdoMex)
         this.baseCoords = [19.4326, -99.1332]; 
@@ -33,11 +35,11 @@ export class TrackingView {
         this.initMap();
         await this.loadActiveTrips();
         this.setupRealtimeSubscription();
+        this.setupPeriodicUpdate();
     }
 
     initMap() {
         const L = window.L; 
-        // Inicializamos el mapa en el contenedor 'tracking-map'
         this.map = L.map('tracking-map', { 
             zoomControl: false,
             attributionControl: false 
@@ -47,149 +49,373 @@ export class TrackingView {
 
         // Capa de mapa oscura estilo logístico
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-            maxZoom: 19
+            maxZoom: 19,
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         }).addTo(this.map);
     }
 
     async loadActiveTrips() {
-        // Traemos viajes activos con sus relaciones
-        const { data: trips, error } = await supabase
-            .from('trips')
-            .select('*, profiles(full_name, photo_url), vehicles(economic_number, plate, model)')
-            .in('status', ['in_progress', 'open', 'approved']);
+        try {
+            // Traemos viajes activos con sus relaciones
+            const { data: trips, error } = await supabase
+                .from('trips')
+                .select(`
+                    id,
+                    status,
+                    destination,
+                    motivo,
+                    start_time,
+                    exit_km,
+                    profiles:driver_id (
+                        id,
+                        full_name, 
+                        photo_url
+                    ),
+                    vehicles:vehicle_id (
+                        economic_number, 
+                        plate, 
+                        model,
+                        current_km
+                    )
+                `)
+                .in('status', ['in_progress', 'driver_accepted', 'approved_for_taller'])
+                .order('created_at', { ascending: false });
+                
+            if (error) throw error;
+
+            this.activeTrips = trips || [];
             
-        if (error) return console.error("Error:", error);
+            const activeCount = document.getElementById('track-active-count');
+            if (activeCount) activeCount.innerText = this.activeTrips.length;
 
-        this.activeTrips = trips || [];
-        document.getElementById('track-active-count').innerText = this.activeTrips.length;
+            // Obtener última ubicación de cada viaje activo
+            if (this.activeTrips.length > 0) {
+                await this.loadLatestLocations();
+            }
+            
+            this.renderSidebarList();
+            this.updateMapMarkers();
 
-        if (this.activeTrips.length > 0) {
+        } catch (error) {
+            console.error("Error cargando viajes activos:", error);
+        }
+    }
+
+    async loadLatestLocations() {
+        try {
             const tripIds = this.activeTrips.map(t => t.id);
-            // Obtenemos la última posición conocida de cada uno
-            const { data: locations } = await supabase
+            
+            // Obtener la última ubicación de cada viaje
+            const { data: locations, error } = await supabase
                 .from('trip_locations')
                 .select('*')
                 .in('trip_id', tripIds)
-                .order('created_at', { ascending: false });
+                .order('timestamp', { ascending: false });
+
+            if (error) throw error;
 
             if (locations) {
+                // Limpiar ubicaciones anteriores
+                this.vehicleLocations = {};
+                
+                // Guardar solo la más reciente de cada viaje
                 locations.forEach(loc => {
-                    if (!this.vehicleLocations[loc.trip_id]) this.vehicleLocations[loc.trip_id] = loc;
+                    if (!this.vehicleLocations[loc.trip_id] || 
+                        new Date(loc.timestamp) > new Date(this.vehicleLocations[loc.trip_id].timestamp)) {
+                        this.vehicleLocations[loc.trip_id] = loc;
+                    }
                 });
             }
+        } catch (error) {
+            console.error("Error cargando ubicaciones:", error);
         }
-        this.renderSidebarList();
-        this.updateMapMarkers();
     }
 
     setupRealtimeSubscription() {
-        // Escuchamos nuevas coordenadas enviadas por los conductores
-        supabase.channel('tracking_realtime')
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'trip_locations' }, payload => {
-                this.handleIncomingLocation(payload.new);
-            }).subscribe();
+        // Escuchar nuevas ubicaciones en tiempo real
+        this.realtimeChannel = supabase
+            .channel('tracking_realtime')
+            .on('postgres_changes', 
+                { 
+                    event: 'INSERT', 
+                    schema: 'public', 
+                    table: 'trip_locations' 
+                }, 
+                payload => {
+                    this.handleIncomingLocation(payload.new);
+                }
+            )
+            .on('postgres_changes',
+                {
+                    event: 'UPDATE',
+                    schema: 'public',
+                    table: 'trips',
+                    filter: `status=in.(in_progress,driver_accepted,approved_for_taller)`
+                },
+                payload => {
+                    this.handleTripUpdate(payload.new);
+                }
+            )
+            .subscribe((status) => {
+                console.log('📡 Tracking Realtime:', status);
+            });
+    }
+
+    setupPeriodicUpdate() {
+        // Actualizar cada 10 segundos por si acaso
+        this.updateInterval = setInterval(() => {
+            this.loadActiveTrips();
+        }, 10000);
     }
 
     handleIncomingLocation(newLoc) {
-        if (!this.activeTrips.find(t => t.id === newLoc.trip_id)) return;
+        // Verificar si el viaje sigue activo
+        const tripExists = this.activeTrips.some(t => t.id === newLoc.trip_id);
+        if (!tripExists) return;
+
+        // Actualizar ubicación
         this.vehicleLocations[newLoc.trip_id] = newLoc;
         
-        this.updateMapMarkers();
+        // Actualizar marcador en el mapa
+        this.updateSingleMarker(newLoc.trip_id);
+        
+        // Actualizar lista lateral
         this.renderSidebarList();
 
-        // Si estamos siguiendo a este conductor, actualizamos su ruta y panel
+        // Si estamos siguiendo a este conductor, actualizar ruta y panel
         if (this.focusedTripId === newLoc.trip_id) {
             this.drawRouteAndCalculateETA(newLoc.trip_id);
             this.map.panTo([newLoc.lat, newLoc.lng], { animate: true });
+            this.updateRoutePanel(newLoc.trip_id);
         }
     }
 
-    // --- CÁLCULO DE RUTA, DISTANCIA Y TIEMPO (SLA) ---
-    drawRouteAndCalculateETA(tripId) {
+    handleTripUpdate(updatedTrip) {
+        // Si el viaje ya no está activo, removerlo
+        if (!['in_progress', 'driver_accepted', 'approved_for_taller'].includes(updatedTrip.status)) {
+            this.activeTrips = this.activeTrips.filter(t => t.id !== updatedTrip.id);
+            
+            // Remover marcador del mapa
+            if (this.markers[updatedTrip.id]) {
+                this.map.removeLayer(this.markers[updatedTrip.id]);
+                delete this.markers[updatedTrip.id];
+            }
+            
+            // Limpiar ruta si era el enfocado
+            if (this.focusedTripId === updatedTrip.id) {
+                this.viewAllVehicles();
+            }
+        } else {
+            // Actualizar información del viaje
+            const index = this.activeTrips.findIndex(t => t.id === updatedTrip.id);
+            if (index >= 0) {
+                this.activeTrips[index] = updatedTrip;
+            } else {
+                this.activeTrips.push(updatedTrip);
+            }
+        }
+        
+        const activeCount = document.getElementById('track-active-count');
+        if (activeCount) activeCount.innerText = this.activeTrips.length;
+        
+        this.renderSidebarList();
+    }
+
+    updateSingleMarker(tripId) {
+        const L = window.L;
+        const trip = this.activeTrips.find(t => t.id === tripId);
+        const loc = this.vehicleLocations[tripId];
+        
+        if (!trip || !loc) return;
+
+        const coords = [loc.lat, loc.lng];
+        const isFocused = this.focusedTripId === tripId;
+
+        if (this.markers[tripId]) {
+            // Actualizar posición
+            this.markers[tripId].setLatLng(coords);
+            
+            // Actualizar popup si existe
+            const popup = this.markers[tripId].getPopup();
+            if (popup) {
+                popup.setContent(this.getMarkerPopupContent(trip, loc));
+            }
+        } else {
+            // Crear nuevo marcador
+            const icon = L.divIcon({
+                className: 'custom-marker',
+                html: this.getMarkerHtml(trip, loc, isFocused),
+                iconSize: [80, 50],
+                iconAnchor: [40, 50]
+            });
+            
+            this.markers[tripId] = L.marker(coords, { icon })
+                .addTo(this.map)
+                .on('click', () => this.focusVehicle(tripId))
+                .bindPopup(this.getMarkerPopupContent(trip, loc));
+        }
+    }
+
+    getMarkerHtml(trip, loc, isFocused) {
+        const speed = Math.round(loc?.speed || 0);
+        const eco = trip.vehicles?.economic_number || '?';
+        const focusedClass = isFocused ? 'marker-focused' : '';
+        
+        return `
+            <div class="marker-container ${focusedClass}">
+                <div class="marker-label">ECO-${eco}</div>
+                <div class="marker-dot"></div>
+                <div class="marker-speed">${speed} km/h</div>
+            </div>
+        `;
+    }
+
+    getMarkerPopupContent(trip, loc) {
+        const speed = Math.round(loc?.speed || 0);
+        const lastUpdate = loc?.timestamp ? new Date(loc.timestamp).toLocaleTimeString() : 'Desconocido';
+        
+        return `
+            <div class="text-center min-w-[150px]">
+                <p class="font-bold text-sm">${trip.profiles?.full_name || 'Conductor'}</p>
+                <p class="text-xs text-gray-600">ECO-${trip.vehicles?.economic_number} · ${trip.vehicles?.plate}</p>
+                <div class="mt-2 text-xs">
+                    <p>📍 ${trip.destination?.substring(0, 30) || 'Sin destino'}</p>
+                    <p class="text-primary font-bold mt-1">⚡ ${speed} km/h</p>
+                    <p class="text-gray-500 text-[9px] mt-1">🕐 ${lastUpdate}</p>
+                </div>
+            </div>
+        `;
+    }
+
+    updateMapMarkers() {
+        this.activeTrips.forEach(trip => {
+            this.updateSingleMarker(trip.id);
+        });
+    }
+
+    // --- CÁLCULO DE RUTA, DISTANCIA Y TIEMPO ---
+    async drawRouteAndCalculateETA(tripId) {
         const L = window.L;
         const trip = this.activeTrips.find(t => t.id === tripId);
         const loc = this.vehicleLocations[tripId];
 
+        // Limpiar capas anteriores
         if (this.routeLine) this.map.removeLayer(this.routeLine);
         if (this.destinationMarker) this.map.removeLayer(this.destinationMarker);
 
-        if (!loc || !trip || !trip.dest_lat) return;
+        if (!loc || !trip || !trip.destination) return;
 
         const start = [loc.lat, loc.lng];
-        const end = [trip.dest_lat, trip.dest_lng];
+        
+        // Si tenemos coordenadas de destino guardadas
+        let end = null;
+        if (trip.request_details?.destination_coords) {
+            end = [
+                trip.request_details.destination_coords.lat,
+                trip.request_details.destination_coords.lon
+            ];
+        }
 
         // Dibujar línea de trayectoria
-        this.routeLine = L.polyline([start, end], {
-            color: '#137fec',
-            weight: 4,
-            opacity: 0.5,
-            dashArray: '10, 15'
-        }).addTo(this.map);
+        if (end) {
+            this.routeLine = L.polyline([start, end], {
+                color: '#137fec',
+                weight: 4,
+                opacity: 0.5,
+                dashArray: '10, 15'
+            }).addTo(this.map);
 
-        // Pin de Destino
-        const destIcon = L.divIcon({
-            className: 'dest-marker',
-            html: `<div class="bg-red-500 w-4 h-4 rounded-full border-2 border-white shadow-[0_0_15px_red] animate-pulse"></div>`
-        });
-        this.destinationMarker = L.marker(end, { icon: destIcon }).addTo(this.map);
+            // Pin de Destino
+            const destIcon = L.divIcon({
+                className: 'dest-marker',
+                html: `<div class="bg-red-500 w-4 h-4 rounded-full border-2 border-white shadow-[0_0_15px_red] animate-pulse"></div>`,
+                iconSize: [16, 16],
+                iconAnchor: [8, 8]
+            });
+            this.destinationMarker = L.marker(end, { icon: destIcon }).addTo(this.map);
 
-        // Cálculos matemáticos de llegada
-        const distanceMeters = L.latLng(start).distanceTo(L.latLng(end));
-        const distanceKm = (distanceMeters / 1000).toFixed(1);
-        const speed = loc.speed || 30; // 30km/h por defecto si está parado
-        const timeHours = distanceKm / speed;
-        const timeMinutes = Math.round(timeHours * 60);
+            // Calcular distancia y tiempo
+            const distanceMeters = L.latLng(start).distanceTo(L.latLng(end));
+            const distanceKm = (distanceMeters / 1000).toFixed(1);
+            const speed = loc.speed || 30;
+            const timeHours = distanceKm / speed;
+            const timeMinutes = Math.round(timeHours * 60);
 
-        // Actualizar panel inferior
-        document.getElementById('route-speed').innerText = `${Math.round(speed)} km/h`;
-        document.getElementById('route-eta').innerText = `Llegada aprox: ${timeMinutes} min`;
-        document.getElementById('route-distance').innerText = `Faltan ${distanceKm} km`;
-        document.getElementById('route-dest-name').innerText = trip.destination_name || "Destino Final";
+            // Actualizar panel
+            document.getElementById('route-speed').innerText = `${Math.round(speed)} km/h`;
+            document.getElementById('route-eta').innerText = timeMinutes > 0 ? `~${timeMinutes} min` : '--';
+            document.getElementById('route-distance').innerText = distanceKm > 0 ? `${distanceKm} km` : '--';
+        }
+        
+        document.getElementById('route-dest-name').innerText = trip.destination || "Destino no especificado";
+    }
+
+    updateRoutePanel(tripId) {
+        const trip = this.activeTrips.find(t => t.id === tripId);
+        const loc = this.vehicleLocations[tripId];
+        
+        if (trip) {
+            document.getElementById('route-driver-name').innerText = trip.profiles?.full_name || '--';
+            document.getElementById('route-vehicle-info').innerText = 
+                `ECO-${trip.vehicles?.economic_number || '?'} • ${trip.vehicles?.plate || '--'}`;
+            
+            const imgEl = document.getElementById('route-driver-img');
+            if (imgEl) {
+                imgEl.style.backgroundImage = `url('${trip.profiles?.photo_url || ''}')`;
+            }
+        }
+        
+        if (loc) {
+            document.getElementById('route-speed').innerText = `${Math.round(loc.speed || 0)} km/h`;
+        }
     }
 
     renderSidebarList() {
         const list = document.getElementById('tracking-list');
+        if (!list) return;
+
+        if (this.activeTrips.length === 0) {
+            list.innerHTML = `
+                <div class="text-center py-8 text-slate-500">
+                    <span class="material-symbols-outlined text-4xl mb-2">route</span>
+                    <p class="text-xs">Sin viajes activos</p>
+                </div>
+            `;
+            return;
+        }
+
         list.innerHTML = this.activeTrips.map(trip => {
             const loc = this.vehicleLocations[trip.id];
             const isFocused = this.focusedTripId === trip.id;
+            const speed = Math.round(loc?.speed || 0);
+            const statusText = {
+                'in_progress': 'En ruta',
+                'driver_accepted': 'Listo para salir',
+                'approved_for_taller': 'En taller'
+            }[trip.status] || trip.status;
+
             return `
-            <div class="p-3 rounded-xl border ${isFocused ? 'border-primary bg-primary/10 shadow-lg' : 'border-[#324d67] bg-[#1c2127]'} cursor-pointer mb-2 transition-all" 
+            <div class="p-3 rounded-xl border ${isFocused ? 'border-primary bg-primary/10 shadow-lg' : 'border-[#324d67] bg-[#1c2127] hover:border-primary/50'} cursor-pointer mb-2 transition-all" 
                  onclick="window.trackingModule.focusVehicle('${trip.id}')">
                 <div class="flex items-center gap-3">
                     <div class="size-10 rounded-full bg-slate-800 bg-cover bg-center border border-[#324d67]" 
                          style="background-image: url('${trip.profiles?.photo_url || ''}')"></div>
-                    <div class="flex-1">
-                        <h4 class="text-white text-xs font-bold">${trip.profiles?.full_name}</h4>
-                        <p class="text-[9px] text-primary font-black uppercase">ECO-${trip.vehicles?.economic_number}</p>
-                    </div>
-                    <div class="text-right">
-                        <span class="text-[10px] font-mono ${loc?.speed > 0 ? 'text-emerald-400' : 'text-slate-500'} font-bold">
-                            ${Math.round(loc?.speed || 0)} km/h
-                        </span>
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2">
+                            <h4 class="text-white text-xs font-bold truncate">${trip.profiles?.full_name}</h4>
+                            <span class="text-[8px] ${loc ? 'text-emerald-400' : 'text-slate-500'} font-mono">
+                                ${speed} km/h
+                            </span>
+                        </div>
+                        <div class="flex items-center gap-2 mt-0.5">
+                            <p class="text-[9px] text-primary font-black">ECO-${trip.vehicles?.economic_number}</p>
+                            <span class="text-[8px] text-[#92adc9]">${statusText}</span>
+                        </div>
+                        <p class="text-[8px] text-[#92adc9] truncate mt-1">📍 ${trip.destination?.substring(0, 30) || 'Sin destino'}</p>
                     </div>
                 </div>
             </div>`;
         }).join('');
-    }
-
-    updateMapMarkers() {
-        const L = window.L;
-        this.activeTrips.forEach(trip => {
-            const loc = this.vehicleLocations[trip.id];
-            const coords = loc ? [loc.lat, loc.lng] : this.baseNaucalpan;
-            const isFocused = this.focusedTripId === trip.id;
-
-            if (this.markers[trip.id]) {
-                this.markers[trip.id].setLatLng(coords);
-            } else {
-                const icon = L.divIcon({
-                    className: 'custom-marker',
-                    html: `<div class="marker-container ${isFocused ? 'marker-focused' : ''}"><div class="marker-label">ECO-${trip.vehicles?.economic_number}</div><div class="marker-dot"></div></div>`,
-                    iconSize: [60, 40], iconAnchor: [30, 40]
-                });
-                this.markers[trip.id] = L.marker(coords, { icon }).addTo(this.map).on('click', () => this.focusVehicle(trip.id));
-            }
-        });
     }
 
     focusVehicle(id) {
@@ -198,21 +424,44 @@ export class TrackingView {
         const coords = loc ? [loc.lat, loc.lng] : this.baseNaucalpan;
         
         this.map.flyTo(coords, 16, { duration: 1.5 });
-        document.getElementById('btn-view-all').classList.remove('hidden');
         
-        this.showRoutePanel(id);
+        const viewAllBtn = document.getElementById('btn-view-all');
+        if (viewAllBtn) viewAllBtn.classList.remove('hidden');
+        
+        // Mostrar panel de ruta
+        const routePanel = document.getElementById('route-panel');
+        routePanel.classList.remove('opacity-0', 'pointer-events-none', 'translate-y-10');
+        
         this.drawRouteAndCalculateETA(id);
+        this.updateRoutePanel(id);
         this.renderSidebarList();
+        
+        // Destacar marcador
+        this.updateMapMarkers();
     }
 
     viewAllVehicles() {
         this.focusedTripId = null;
-        if (this.routeLine) this.map.removeLayer(this.routeLine);
-        if (this.destinationMarker) this.map.removeLayer(this.destinationMarker);
         
-        this.map.flyTo(this.baseCoords, this.baseZoom);
-        document.getElementById('btn-view-all').classList.add('hidden');
-        document.getElementById('route-panel').classList.add('opacity-0', 'pointer-events-none');
+        // Limpiar línea de ruta
+        if (this.routeLine) {
+            this.map.removeLayer(this.routeLine);
+            this.routeLine = null;
+        }
+        if (this.destinationMarker) {
+            this.map.removeLayer(this.destinationMarker);
+            this.destinationMarker = null;
+        }
+        
+        this.map.flyTo(this.baseCoords, this.baseZoom, { duration: 1.5 });
+        
+        const viewAllBtn = document.getElementById('btn-view-all');
+        if (viewAllBtn) viewAllBtn.classList.add('hidden');
+        
+        // Ocultar panel de ruta
+        const routePanel = document.getElementById('route-panel');
+        routePanel.classList.add('opacity-0', 'pointer-events-none', 'translate-y-10');
+        
         this.renderSidebarList();
         this.updateMapMarkers();
     }
@@ -220,10 +469,27 @@ export class TrackingView {
     showRoutePanel(id) {
         const trip = this.activeTrips.find(t => t.id === id);
         const panel = document.getElementById('route-panel');
+        
         panel.classList.remove('opacity-0', 'pointer-events-none', 'translate-y-10');
-        document.getElementById('route-driver-name').innerText = trip.profiles?.full_name;
-        document.getElementById('route-vehicle-info').innerText = `ECO-${trip.vehicles?.economic_number} • ${trip.vehicles?.plate}`;
-        document.getElementById('route-driver-img').style.backgroundImage = `url('${trip.profiles?.photo_url || ''}')`;
+        
+        document.getElementById('route-driver-name').innerText = trip.profiles?.full_name || '--';
+        document.getElementById('route-vehicle-info').innerText = 
+            `ECO-${trip.vehicles?.economic_number || '?'} • ${trip.vehicles?.plate || '--'}`;
+        
+        const imgEl = document.getElementById('route-driver-img');
+        if (imgEl) {
+            imgEl.style.backgroundImage = `url('${trip.profiles?.photo_url || ''}')`;
+        }
+    }
+
+    // Limpiar recursos al salir
+    destroy() {
+        if (this.realtimeChannel) {
+            supabase.removeChannel(this.realtimeChannel);
+        }
+        if (this.updateInterval) {
+            clearInterval(this.updateInterval);
+        }
     }
 
     render() {
@@ -240,9 +506,11 @@ export class TrackingView {
                     </p>
                 </div>
                 <div class="bg-[#111a22]/90 backdrop-blur-md border border-[#324d67] rounded-2xl p-4 shadow-2xl pointer-events-auto flex items-center gap-4">
-                    <div class="bg-primary/20 p-2 rounded-lg text-primary"><span class="material-symbols-outlined">local_shipping</span></div>
+                    <div class="bg-primary/20 p-2 rounded-lg text-primary">
+                        <span class="material-symbols-outlined">local_shipping</span>
+                    </div>
                     <div>
-                        <p class="text-[9px] font-bold text-[#92adc9] uppercase">Unidades Fuera</p>
+                        <p class="text-[9px] font-bold text-[#92adc9] uppercase">Unidades Activas</p>
                         <p id="track-active-count" class="text-xl font-black text-white leading-none">0</p>
                     </div>
                 </div>
@@ -250,27 +518,35 @@ export class TrackingView {
 
             <div class="absolute top-32 bottom-6 left-6 w-72 bg-[#111a22]/90 backdrop-blur-xl border border-[#324d67] rounded-2xl z-20 flex flex-col shadow-2xl pointer-events-auto" id="tracking-sidebar">
                 <div class="p-4 border-b border-[#324d67] flex justify-between items-center bg-[#151b23]/50">
-                    <h3 class="font-bold text-white text-xs uppercase tracking-widest">Conductores</h3>
-                    <button id="btn-view-all" class="hidden bg-primary text-white text-[10px] font-black px-2 py-1 rounded uppercase shadow-lg shadow-primary/20" onclick="window.trackingModule.viewAllVehicles()">Ver Todo</button>
+                    <h3 class="font-bold text-white text-xs uppercase tracking-widest">Viajes Activos</h3>
+                    <button id="btn-view-all" class="hidden bg-primary text-white text-[10px] font-black px-2 py-1 rounded uppercase shadow-lg shadow-primary/20 hover:bg-primary/80 transition-colors" 
+                            onclick="window.trackingModule.viewAllVehicles()">
+                        Ver Todo
+                    </button>
                 </div>
-                <div id="tracking-list" class="flex-1 overflow-y-auto custom-scrollbar p-3"></div>
+                <div id="tracking-list" class="flex-1 overflow-y-auto custom-scrollbar p-3">
+                    <div class="text-center py-8 text-slate-500">
+                        <span class="material-symbols-outlined text-4xl mb-2">route</span>
+                        <p class="text-xs">Cargando viajes activos...</p>
+                    </div>
+                </div>
             </div>
 
             <div id="route-panel" class="absolute bottom-6 right-6 w-80 bg-[#111a22]/95 backdrop-blur-xl border border-primary/40 rounded-2xl z-20 flex flex-col shadow-2xl pointer-events-auto transform translate-y-10 opacity-0 transition-all duration-300 pointer-events-none">
                 <div class="p-4 border-b border-[#324d67] flex items-center gap-3">
                     <div class="size-12 rounded-full bg-slate-700 bg-cover bg-center border-2 border-primary" id="route-driver-img"></div>
-                    <div>
-                        <h4 class="font-bold text-white text-sm" id="route-driver-name">--</h4>
+                    <div class="flex-1 min-w-0">
+                        <h4 class="font-bold text-white text-sm truncate" id="route-driver-name">--</h4>
                         <p class="text-[9px] text-[#92adc9] font-bold uppercase tracking-tighter" id="route-vehicle-info">--</p>
                     </div>
                 </div>
                 <div class="p-5 space-y-4">
                     <div class="flex justify-between items-center">
-                        <div class="flex flex-col">
+                        <div class="flex flex-col flex-1 min-w-0">
                             <span class="text-[10px] text-slate-500 uppercase font-black">Destino</span>
-                            <span id="route-dest-name" class="text-white text-xs font-bold truncate max-w-[150px]">--</span>
+                            <span id="route-dest-name" class="text-white text-xs font-bold truncate" title="--">--</span>
                         </div>
-                        <span id="route-speed" class="text-emerald-400 font-mono font-black text-lg">0 km/h</span>
+                        <span id="route-speed" class="text-emerald-400 font-mono font-black text-lg ml-2">0</span>
                     </div>
                     <div class="grid grid-cols-2 gap-3 pt-2">
                         <div class="bg-[#1c2127] p-2 rounded-lg border border-[#324d67] text-center">
@@ -287,11 +563,76 @@ export class TrackingView {
         </div>
 
         <style>
-            .marker-container { position: relative; display: flex; flex-direction: column; align-items: center; }
-            .marker-dot { width: 14px; height: 14px; background: #10b981; border: 2px solid white; border-radius: 50%; box-shadow: 0 0 10px #10b981; }
-            .marker-label { background: #111a22; border: 1px solid #324d67; color: white; font-size: 8px; font-weight: 900; padding: 1px 5px; border-radius: 4px; margin-bottom: 3px; white-space: nowrap; shadow: 0 4px 6px rgba(0,0,0,0.3); }
-            .marker-focused .marker-dot { background: #137fec; width: 18px; height: 18px; box-shadow: 0 0 20px #137fec; border-width: 3px; }
-            .marker-focused .marker-label { background: #137fec; font-size: 10px; border-color: white; }
+            .marker-container { 
+                position: relative; 
+                display: flex; 
+                flex-direction: column; 
+                align-items: center;
+                filter: drop-shadow(0 4px 6px rgba(0,0,0,0.3));
+            }
+            .marker-dot { 
+                width: 14px; 
+                height: 14px; 
+                background: #10b981; 
+                border: 2px solid white; 
+                border-radius: 50%; 
+                box-shadow: 0 0 15px #10b981;
+                transition: all 0.3s ease;
+            }
+            .marker-label { 
+                background: #111a22; 
+                border: 1px solid #324d67; 
+                color: white; 
+                font-size: 9px; 
+                font-weight: 900; 
+                padding: 2px 8px; 
+                border-radius: 12px; 
+                margin-bottom: 4px; 
+                white-space: nowrap;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+                letter-spacing: 0.5px;
+            }
+            .marker-speed {
+                background: #1c2127;
+                border: 1px solid #10b981;
+                color: #10b981;
+                font-size: 8px;
+                font-weight: 900;
+                padding: 1px 6px;
+                border-radius: 10px;
+                margin-top: 2px;
+                white-space: nowrap;
+                font-family: monospace;
+            }
+            .marker-focused .marker-dot { 
+                background: #137fec; 
+                width: 18px; 
+                height: 18px; 
+                box-shadow: 0 0 25px #137fec; 
+                border-width: 3px; 
+            }
+            .marker-focused .marker-label { 
+                background: #137fec; 
+                font-size: 10px; 
+                border-color: white;
+                box-shadow: 0 0 15px #137fec;
+            }
+            .marker-focused .marker-speed {
+                border-color: #137fec;
+                color: #137fec;
+            }
+            .leaflet-popup-content {
+                margin: 10px;
+                min-width: 180px;
+            }
+            .dest-marker {
+                animation: pulse 2s infinite;
+            }
+            @keyframes pulse {
+                0% { opacity: 1; transform: scale(1); }
+                50% { opacity: 0.8; transform: scale(1.2); }
+                100% { opacity: 1; transform: scale(1); }
+            }
         </style>
         `;
     }
