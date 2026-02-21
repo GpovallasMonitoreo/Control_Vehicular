@@ -27,7 +27,7 @@ export class DriverView {
         this.routeStops = [];
         this.isReturning = false;
         
-        // --- NUEVO: Variables para Vehículo Local y Segundo Plano ---
+        // Variables para Vehículo Local y Segundo Plano
         this.myLocationMarker = null; 
         this.wakeLock = null;
         
@@ -63,8 +63,6 @@ export class DriverView {
     }
 
     render() {
-        // ... (El render de HTML se mantiene EXACTAMENTE IGUAL que en el mensaje anterior)
-        // No he modificado el HTML para ahorrar espacio en la respuesta, puedes mantener el que ya tienes.
         return `
         <div class="fixed inset-0 w-full h-full bg-[#0d141c] font-display flex justify-center overflow-hidden">
             <div class="w-full md:max-w-md bg-[#111a22] h-full relative shadow-2xl border-x border-[#233648] flex flex-col">
@@ -551,7 +549,7 @@ export class DriverView {
         `;
     }
 
-    // --- NUEVO: SOLICITAR MANTENER PANTALLA ENCENDIDA (SEGUNDO PLANO WEB) ---
+    // --- SOLICITAR MANTENER PANTALLA ENCENDIDA (SEGUNDO PLANO WEB) ---
     async requestWakeLock() {
         try {
             if ('wakeLock' in navigator && !this.wakeLock) {
@@ -580,9 +578,10 @@ export class DriverView {
         
         try {
             const L = window.L;
+            // Coordenadas iniciales base (C. Hormona 2) o la última posición
             const center = this.tripLogistics.lastPosition 
                 ? [this.tripLogistics.lastPosition.lat, this.tripLogistics.lastPosition.lng] 
-                : [19.4785, -99.2396];
+                : [19.4683, -99.2360]; 
                 
             this.driverMap = L.map('driver-map', {
                 zoomControl: false,
@@ -606,12 +605,11 @@ export class DriverView {
                 this.addStopFromMap(e.latlng.lat, e.latlng.lng);
             });
             
-            // --- NUEVO: Auto-cargar destino si no hay ruta planeada aún ---
+            // Auto-cargar destino si no hay ruta planeada aún
             if (this.currentTrip?.request_details?.route_plan) {
                 this.routeStops = this.currentTrip.request_details.route_plan;
                 this.isReturning = this.currentTrip.request_details.is_returning || false;
             } else if (this.currentTrip?.request_details?.destination_coords) {
-                // Agregar destino original automáticamente
                 const destLat = this.currentTrip.request_details.destination_coords.lat;
                 const destLon = this.currentTrip.request_details.destination_coords.lon;
                 const destName = this.currentTrip.destination || 'Destino Inicial';
@@ -624,7 +622,6 @@ export class DriverView {
                     type: 'stop',
                     timestamp: new Date().toISOString()
                 }];
-                // Guardar auto-destino en BD
                 this.saveRoutePlanSilently(); 
             }
 
@@ -705,10 +702,12 @@ export class DriverView {
         this.updateMapMarkers();
     }
 
+    // MODIFICADO: Ahora agrega las coordenadas y dirección correctas de C. Hormona 2
     toggleReturnTrip() {
         this.isReturning = !this.isReturning;
         if (this.isReturning) {
-            this.addRouteStop(19.4785, -99.2396, 'Regreso a Base/Taller', 'return');
+            // Coordenadas aproximadas y dirección exacta de la base del guardia
+            this.addRouteStop(19.4683, -99.2360, 'C. Hormona 2, Naucalpan, 53489 Naucalpan de Juárez, Méx.', 'return');
             this.showToast('Regreso marcado', 'Ruta hacia la base añadida', 'success');
         } else {
             this.routeStops = this.routeStops.filter(s => s.type !== 'return');
@@ -1108,7 +1107,6 @@ export class DriverView {
 
         if (this.watchPositionId) navigator.geolocation.clearWatch(this.watchPositionId);
         
-        // --- NUEVO: Activar Wake Lock para mantener pantalla y app viva ---
         this.requestWakeLock();
 
         document.getElementById('route-waiting-msg')?.classList.add('hidden');
@@ -1178,13 +1176,11 @@ export class DriverView {
         document.getElementById('gps-status-indicator').innerHTML = `<div class="flex items-center justify-center gap-2 text-emerald-400"><div class="relative"><div class="w-2 h-2 rounded-full bg-emerald-400 animate-ping absolute"></div><div class="w-2 h-2 rounded-full bg-emerald-400 relative"></div></div><span class="text-xs font-bold ml-4">GPS Activo - ${speedKmh} km/h</span></div>`;
         document.getElementById('live-speed').innerText = speedKmh;
         
-        // Iniciar el mapa local local y centrarlo
         if (this.driverMap) {
             this.driverMap.setView([latitude, longitude], 15);
         }
     }
 
-    // --- LÓGICA DE ACTUALIZACIÓN (Visual = Inmediata, Server = Inteligente) ---
     handlePositionUpdate(pos) {
         const { latitude, longitude, speed, accuracy } = pos.coords;
         const now = new Date();
@@ -1193,17 +1189,14 @@ export class DriverView {
 
         document.getElementById('live-speed').innerText = speedKmh;
 
-        // 1. ACTUALIZAR MAPA LOCAL VISUAL (Gratis, al instante)
         if (this.myLocationMarker) {
             this.myLocationMarker.setLatLng([latitude, longitude]);
         } else if (this.driverMap && window.L) {
-            // Si por alguna razón no existía el ícono, lo creamos
             const carIconHtml = `<div class="bg-[#10b981] w-4 h-4 rounded-full border-2 border-white shadow-[0_0_15px_#10b981] animate-pulse"></div>`;
             const carIcon = window.L.divIcon({ className: 'local-car-marker', html: carIconHtml, iconSize: [16, 16], iconAnchor: [8, 8] });
             this.myLocationMarker = window.L.marker([latitude, longitude], { icon: carIcon }).addTo(this.driverMap);
         }
 
-        // Cálculos de viaje
         if (this.tripLogistics.lastPosition) {
             const distance = this.calculateDistance(this.tripLogistics.lastPosition.lat, this.tripLogistics.lastPosition.lng, latitude, longitude);
             if (distance > 0.01) {
@@ -1221,7 +1214,6 @@ export class DriverView {
 
         document.getElementById('gps-status-indicator').innerHTML = `<div class="flex items-center justify-center gap-2 text-emerald-400"><div class="relative"><div class="w-2 h-2 rounded-full bg-emerald-400 animate-ping absolute"></div><div class="w-2 h-2 rounded-full bg-emerald-400 relative"></div></div><span class="text-xs font-bold ml-4">${speedKmh} km/h · ${accuracy?.toFixed(0) || '?'}m</span></div>`;
 
-        // 2. PING INTELIGENTE PARA LA DB/BROADCAST (Solo cada 15 seg o 15 mts)
         let shouldBroadcast = false;
         if (!this.lastBroadcastPos) {
             shouldBroadcast = true;
@@ -1289,7 +1281,6 @@ export class DriverView {
             clearInterval(this.forceUpdateInterval);
             this.forceUpdateInterval = null;
         }
-        // --- NUEVO: Soltar la pantalla ---
         this.releaseWakeLock();
         
         const gpsIndicator = document.getElementById('gps-status-indicator');
