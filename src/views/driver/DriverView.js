@@ -578,7 +578,6 @@ export class DriverView {
         
         try {
             const L = window.L;
-            // Coordenadas iniciales base (C. Hormona 2) o la última posición
             const center = this.tripLogistics.lastPosition 
                 ? [this.tripLogistics.lastPosition.lat, this.tripLogistics.lastPosition.lng] 
                 : [19.4683, -99.2360]; 
@@ -592,11 +591,9 @@ export class DriverView {
                 maxZoom: 19
             }).addTo(this.driverMap);
             
-            // Icono de mi vehículo actual (animado localmente, sin costo DB)
             const carIconHtml = `<div class="bg-[#10b981] w-4 h-4 rounded-full border-2 border-white shadow-[0_0_15px_#10b981] animate-pulse"></div>`;
             const carIcon = L.divIcon({ className: 'local-car-marker', html: carIconHtml, iconSize: [16, 16], iconAnchor: [8, 8] });
             
-            // Si hay posición, ponemos el carrito
             if (this.tripLogistics.lastPosition) {
                 this.myLocationMarker = L.marker([this.tripLogistics.lastPosition.lat, this.tripLogistics.lastPosition.lng], { icon: carIcon }).addTo(this.driverMap);
             }
@@ -605,24 +602,21 @@ export class DriverView {
                 this.addStopFromMap(e.latlng.lat, e.latlng.lng);
             });
             
-            // Auto-cargar destino si no hay ruta planeada aún
+            // Auto-cargar destino si no hay ruta planeada aún (Ignorar 0,0)
             if (this.currentTrip?.request_details?.route_plan) {
                 this.routeStops = this.currentTrip.request_details.route_plan;
                 this.isReturning = this.currentTrip.request_details.is_returning || false;
             } else if (this.currentTrip?.request_details?.destination_coords) {
                 const destLat = this.currentTrip.request_details.destination_coords.lat;
                 const destLon = this.currentTrip.request_details.destination_coords.lon;
-                const destName = this.currentTrip.destination || 'Destino Inicial';
                 
-                this.routeStops = [{
-                    id: 'stop_auto',
-                    lat: destLat,
-                    lng: destLon,
-                    name: destName,
-                    type: 'stop',
-                    timestamp: new Date().toISOString()
-                }];
-                this.saveRoutePlanSilently(); 
+                if (destLat !== 0 && destLon !== 0) {
+                    const destName = this.currentTrip.destination || 'Destino Inicial';
+                    this.routeStops = [{
+                        id: 'stop_auto', lat: destLat, lng: destLon, name: destName, type: 'stop', timestamp: new Date().toISOString()
+                    }];
+                    this.saveRoutePlanSilently(); 
+                }
             }
 
             this.renderRouteStops();
@@ -702,11 +696,9 @@ export class DriverView {
         this.updateMapMarkers();
     }
 
-    // MODIFICADO: Ahora agrega las coordenadas y dirección correctas de C. Hormona 2
     toggleReturnTrip() {
         this.isReturning = !this.isReturning;
         if (this.isReturning) {
-            // Coordenadas aproximadas y dirección exacta de la base del guardia
             this.addRouteStop(19.4683, -99.2360, 'C. Hormona 2, Naucalpan, 53489 Naucalpan de Juárez, Méx.', 'return');
             this.showToast('Regreso marcado', 'Ruta hacia la base añadida', 'success');
         } else {
@@ -1024,6 +1016,7 @@ export class DriverView {
     renderReceptionPhotos(photos) {
         const gallery = document.getElementById('reception-photos-gallery');
         const grid = document.getElementById('reception-photos-grid');
+        const completeMsg = document.getElementById('taller-complete-message');
         if (gallery && grid) {
             gallery.classList.remove('hidden');
             grid.innerHTML = photos.map(p => `<div class="relative group cursor-pointer" onclick="window.conductorModule.viewPhoto('${p.url}')"><img src="${p.url}" class="w-full h-16 object-cover rounded-lg border border-primary/50" /><div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-lg"><span class="material-symbols-outlined text-white text-sm">zoom_in</span></div></div>`).join('');
@@ -1295,6 +1288,53 @@ export class DriverView {
         } catch (error) { console.error('Error:', error); }
     }
 
+    async enviarSolicitud() {
+        if (!this.selectedVehicleForRequest) { this.switchTab('unidad'); return; }
+        const destino = document.getElementById('solicitud-destino')?.value;
+        const motivo = document.getElementById('solicitud-motivo')?.value;
+        const jefe = document.getElementById('solicitud-jefe')?.value;
+        const departamento = document.getElementById('solicitud-departamento')?.value;
+        
+        if (!destino || !motivo || !jefe || !departamento) { this.showToast('Campos incompletos', 'Completa todos los campos', 'warning'); return; }
+
+        const btn = document.querySelector('[onclick="window.conductorModule.enviarSolicitud()"]');
+        btn.disabled = true; btn.innerHTML = '<span class="animate-spin inline-block mr-2">⌛</span> ENVIANDO...';
+
+        const destLat = document.getElementById('dest-lat')?.innerText;
+        const destLon = document.getElementById('dest-lon')?.innerText;
+
+        // ✅ CORRECCIÓN ISLA NULA: Validar que no mande el 0,0 al servidor
+        const parsedLat = parseFloat(destLat);
+        const parsedLon = parseFloat(destLon);
+        const hasValidCoords = parsedLat !== 0 && parsedLon !== 0 && !isNaN(parsedLat) && !isNaN(parsedLon);
+
+        const { error } = await supabase.from('trips').insert({ 
+            driver_id: this.userId, 
+            vehicle_id: this.selectedVehicleForRequest.id, 
+            status: 'requested', 
+            destination: destino, 
+            motivo: motivo, 
+            supervisor: jefe, 
+            departamento: departamento,
+            request_details: {
+                destination: destino,
+                motivo: motivo,
+                jefe_inmediato: jefe,
+                departamento: departamento,
+                requested_at: new Date().toISOString(),
+                destination_coords: hasValidCoords ? { lat: parsedLat, lon: parsedLon } : null
+            }
+        });
+
+        if (error) { this.showToast('Error', error.message, 'error'); } else {
+            this.showToast('Solicitud enviada', 'Espera la aprobación', 'success');
+            this.selectedVehicleForRequest = null;
+            await this.loadDashboardState();
+            this.switchTab('unidad');
+        }
+        btn.disabled = false; btn.innerHTML = 'ENVIAR SOLICITUD';
+    }
+
     async loadAvailableUnits() {
         try {
             const { data: vehs, error } = await supabase.from('vehicles').select('*').eq('status', 'active');
@@ -1341,30 +1381,6 @@ export class DriverView {
             if (display) display.innerHTML = `${plate} · ${model}<br><span class="text-primary text-sm">ECO-${eco}</span>`;
             this.loadLastChecklist(vehicleId);
         }, 100);
-    }
-
-    async enviarSolicitud() {
-        if (!this.selectedVehicleForRequest) { this.switchTab('unidad'); return; }
-        const destino = document.getElementById('solicitud-destino')?.value;
-        const motivo = document.getElementById('solicitud-motivo')?.value;
-        const jefe = document.getElementById('solicitud-jefe')?.value;
-        const departamento = document.getElementById('solicitud-departamento')?.value;
-        if (!destino || !motivo || !jefe || !departamento) { this.showToast('Campos incompletos', 'Completa todos los campos', 'warning'); return; }
-        const btn = document.querySelector('[onclick="window.conductorModule.enviarSolicitud()"]');
-        btn.disabled = true; btn.innerHTML = '<span class="animate-spin inline-block mr-2">⌛</span> ENVIANDO...';
-        const destLat = document.getElementById('dest-lat')?.innerText;
-        const destLon = document.getElementById('dest-lon')?.innerText;
-        const { error } = await supabase.from('trips').insert({ 
-            driver_id: this.userId, vehicle_id: this.selectedVehicleForRequest.id, status: 'requested', destination: destino, motivo: motivo, supervisor: jefe, departamento: departamento,
-            request_details: { destination: destino, motivo: motivo, jefe_inmediato: jefe, departamento: departamento, requested_at: new Date().toISOString(), destination_coords: (destLat && destLon) ? { lat: parseFloat(destLat), lon: parseFloat(destLon) } : null }
-        });
-        if (error) { this.showToast('Error', error.message, 'error'); } else {
-            this.showToast('Solicitud enviada', 'Espera la aprobación', 'success');
-            this.selectedVehicleForRequest = null;
-            await this.loadDashboardState();
-            this.switchTab('unidad');
-        }
-        btn.disabled = false; btn.innerHTML = 'ENVIAR SOLICITUD';
     }
 
     async confirmarLiberacionTaller() {
@@ -1437,17 +1453,6 @@ export class DriverView {
         await this.updateTripInDatabase({ notes: this.tripLogistics.notes });
         this.showToast('Nota guardada', 'Se agregó al registro del viaje', 'success');
         document.getElementById('trip-notes').value = '';
-    }
-
-    async activateEmergency() {
-        const description = document.getElementById('emergency-desc').value;
-        if (!description) return alert('Describe la emergencia');
-        const emergencyCode = 'EMG-' + Math.random().toString(36).substring(2, 8).toUpperCase();
-        const expiryTime = new Date(Date.now() + 30 * 60000);
-        await this.updateTripInDatabase({ emergency_code: emergencyCode, emergency_expiry: expiryTime.toISOString(), notes: [...(this.tripLogistics.notes || []), { type: 'emergency', description: description, code: emergencyCode, timestamp: new Date().toISOString() }] });
-        this.showToast('🚨 EMERGENCIA REGISTRADA', `Código: ${emergencyCode}`, 'error');
-        document.getElementById('modal-emergency').classList.add('hidden');
-        document.getElementById('emergency-desc').value = '';
     }
 
     switchTab(tabId) {
