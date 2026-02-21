@@ -1,1939 +1,1648 @@
 import { supabase } from '../../config/supabaseClient.js';
 
-export class DriverView {
+export class InventoryView {
     constructor() {
-        this.activeTab = 'unidad';
-        this.userId = null; 
-        this.currentTrip = null;
-        this.watchPositionId = null;
-        this.gpsRetryCount = 0;
-        this.maxGpsRetries = 3;
-        this.backgroundSyncInterval = null;
-        this.pendingLocations = [];
-        this.selectedVehicleForRequest = null;
-        this.profile = null;
-        this.signaturePad = null;
-        this.accessCode = null;
-        this.realtimeChannel = null;
-        this.updateInterval = null;
+        this.vehicles = [];
+        this.drivers = [];
+        this.inspections = [];
+        this.inventory = [];
+        this.services = []; 
+        this.vehicleLogs = [];
+        this.vehicleTrips = [];
+        this.vehicleDocuments = [];
+        this.allAppTrips = []; // Todos los viajes de la app
+        this.vehicleAppTrips = []; // Viajes de la unidad seleccionada
+        this.vehicleInspectionsPhotos = []; 
+        this.selectedVehicle = null;
+        this.pendingStockDeduction = [];
+        this.realtimeChannel = null; 
         
-        // Variables para la ruta
-        this.routeStops = [];
-        this.isReturning = false;
-        this.driverMap = null;
-        this.myLocationMarker = null;
-        this.driverMarkers = [];
-        
-        // Sistema de logística completo
-        this.tripLogistics = {
-            startTime: null,
-            exitTime: null,
-            entryTime: null,
-            exitGateTime: null,
-            entryGateTime: null,
-            exitKm: null,
-            entryKm: null,
-            totalDistance: 0,
-            averageSpeed: 0,
-            maxSpeed: 0,
-            idleTime: 0,
-            movingTime: 0,
-            lastSpeed: 0,
-            lastUpdateTime: null,
-            lastPosition: null,
-            requestDetails: {},
-            returnDetails: null,
-            emergencyCode: null,
-            emergencyExpiry: null,
-            driverSignature: null,
-            guardSignature: null,
-            checklistExit: {},
-            notes: [],
-            supervisor: null,
-            deliveryPhotoFile: null,
-            deliverySignature: null,
-            deliveryTime: null,
-            deliveryKm: null,
-            deliveryFuel: null,
-            workshopAccepted: false
-        };
-        
-        // Archivos de fotos
-        this.receptionPhotoFile = null;
-        this.deliveryPhotoFile = null;
-        
-        window.conductorModule = this;
+        window.invModule = this;
     }
 
     render() {
         return `
-        <div class="fixed inset-0 w-full h-full bg-[#0d141c] font-display flex justify-center overflow-hidden">
-            <div class="w-full md:max-w-md bg-[#111a22] h-full relative shadow-2xl border-x border-[#233648] flex flex-col">
-                
-                <!-- HEADER -->
-                <header class="w-full shrink-0 flex items-center justify-between border-b border-[#233648] px-5 py-4 bg-[#111a22] z-20">
-                    <div class="flex items-center gap-4 flex-1 min-w-0">
-                        <div id="profile-avatar" class="shrink-0 h-12 w-12 rounded-full border-2 border-primary bg-slate-700 bg-cover bg-center shadow-lg"></div>
-                        <div class="flex-1 min-w-0">
-                            <h2 id="profile-name" class="text-white text-sm font-bold truncate">Cargando...</h2>
-                            <div class="flex items-center gap-2 mt-0.5">
-                                <span id="gps-header-indicator" class="relative flex h-2 w-2">
-                                    <span class="animate-ping absolute h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                                    <span class="relative rounded-full h-2 w-2 bg-green-500"></span>
-                                </span>
-                                <span id="profile-status" class="text-[#92adc9] text-[10px] font-bold uppercase">Sincronizado</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="flex gap-2">
-                        <button onclick="document.getElementById('modal-emergency').classList.remove('hidden')" class="h-10 w-10 bg-red-900/20 border border-red-500/30 text-red-500 rounded-full flex items-center justify-center transition-colors hover:bg-red-500 hover:text-white">
-                            <span class="material-symbols-outlined text-sm">emergency</span>
-                        </button>
-                        <button onclick="window.conductorModule.logout()" class="h-10 w-10 bg-[#233648] border border-[#324d67] rounded-full text-white flex items-center justify-center hover:text-red-400">
-                            <span class="material-symbols-outlined text-sm">logout</span>
-                        </button>
-                    </div>
-                </header>
-
-                <main class="flex-1 overflow-y-auto custom-scrollbar relative pb-24">
-                    
-                    <!-- PESTAÑA UNIDAD - Selección de unidad -->
-                    <section id="tab-unidad" class="tab-content block p-5 space-y-4">
-                        <h3 class="text-white text-xs font-bold uppercase tracking-widest opacity-70 px-1">Unidades Disponibles</h3>
-                        
-                        <!-- Loader -->
-                        <div id="unidad-loader" class="flex justify-center py-10 hidden">
-                            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                        </div>
-                        
-                        <!-- Si no hay viaje activo, mostrar selector de unidades -->
-                        <div id="unidad-content" class="space-y-3"></div>
-                        
-                        <!-- Mensaje cuando no hay unidades -->
-                        <div id="no-units-message" class="hidden text-slate-500 text-center py-10 border border-dashed border-[#233648] rounded-xl">
-                            <span class="material-symbols-outlined text-4xl mb-2">directions_car_off</span>
-                            <p class="text-sm">Sin unidades activas</p>
-                        </div>
-                        
-                        <!-- Si hay viaje en progreso, mostrar info de la unidad actual -->
-                        <div id="current-trip-info" class="hidden">
-                            <div class="bg-gradient-to-br from-primary/20 to-blue-600/20 border border-primary/30 p-5 rounded-2xl text-center backdrop-blur-sm">
-                                <p class="text-[10px] font-bold text-primary uppercase tracking-widest mb-2">Unidad Actual</p>
-                                <h2 id="current-vehicle-plate" class="text-4xl font-black text-white leading-none">--</h2>
-                                <p id="current-vehicle-model" class="text-sm text-[#92adc9] mt-2">--</p>
-                                <div class="mt-4 flex justify-center">
-                                    <span id="trip-status-badge" class="px-3 py-1 rounded-full text-[10px] font-bold uppercase"></span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Código de acceso para mostrar cuando el viaje está aprobado -->
-                        <div id="access-code-container" class="hidden mt-4 bg-gradient-to-r from-green-600 to-emerald-600 p-5 rounded-2xl animate-pulse">
-                            <div class="flex items-center justify-between">
-                                <div>
-                                    <p class="text-white text-[8px] font-bold uppercase opacity-80">Código de acceso para guardia</p>
-                                    <p id="access-code-display" class="text-white text-3xl font-mono font-black tracking-widest">------</p>
-                                </div>
-                                <span class="material-symbols-outlined text-4xl text-white/50">qr_code_scanner</span>
-                            </div>
-                            <p class="text-green-200 text-[8px] mt-2">Muestra este código al guardia al salir</p>
-                        </div>
-                    </section>
-
-                    <!-- PESTAÑA SOLICITUD - Formulario para pedir unidad -->
-                    <section id="tab-solicitud" class="tab-content hidden p-5 space-y-4">
-                        <div class="bg-[#192633] border border-[#233648] rounded-2xl p-5 shadow-xl">
-                            <h3 class="text-white font-bold mb-4 flex items-center gap-2 border-b border-[#233648] pb-3">
-                                <span class="material-symbols-outlined text-primary">assignment</span> Solicitar Unidad
-                            </h3>
-                            
-                            <div id="solicitud-form" class="space-y-4">
-                                <div class="bg-primary/10 p-3 rounded-xl border border-primary/30 mb-2">
-                                    <p class="text-[10px] text-primary uppercase font-bold">Conductor</p>
-                                    <p id="conductor-nombre" class="text-white font-bold">Cargando...</p>
-                                </div>
-
-                                <div>
-                                    <label class="block text-xs font-bold text-[#92adc9] uppercase mb-2">Seleccionar Unidad *</label>
-                                    <select id="solicitud-vehicle" class="w-full bg-[#111a22] border border-[#233648] text-white p-3 rounded-xl">
-                                        <option value="">Seleccionar unidad...</option>
-                                    </select>
-                                </div>
-                                
-                                <div>
-                                    <label class="block text-xs font-bold text-[#92adc9] uppercase mb-2">Ubicación de Destino *</label>
-                                    <input type="text" id="solicitud-destino" class="w-full bg-[#111a22] border border-[#233648] text-white p-3 rounded-xl" 
-                                           placeholder="Ej: Zona industrial, Centro, etc.">
-                                </div>
-                                
-                                <div>
-                                    <label class="block text-xs font-bold text-[#92adc9] uppercase mb-2">Motivo del Viaje *</label>
-                                    <input type="text" id="solicitud-motivo" class="w-full bg-[#111a22] border border-[#233648] text-white p-3 rounded-xl" 
-                                           placeholder="Ej: Entrega de mercancía, Reunión, etc.">
-                                </div>
-                                
-                                <div>
-                                    <label class="block text-xs font-bold text-[#92adc9] uppercase mb-2">Jefe Directo *</label>
-                                    <input type="text" id="solicitud-jefe" class="w-full bg-[#111a22] border border-[#233648] text-white p-3 rounded-xl" 
-                                           placeholder="Nombre del jefe directo">
-                                </div>
-                                
-                                <!-- Último checklist de la unidad seleccionada -->
-                                <div id="last-checklist-container" class="hidden bg-[#111a22] p-4 rounded-xl border border-[#324d67] mt-4">
-                                    <h4 class="text-xs font-bold text-[#92adc9] uppercase mb-3">Último checklist de esta unidad</h4>
-                                    <div id="last-checklist-content" class="text-sm text-white">
-                                        Selecciona una unidad para ver su último checklist
-                                    </div>
-                                </div>
-                                
-                                <button onclick="window.conductorModule.enviarSolicitud()" 
-                                        class="w-full py-5 bg-primary text-white font-black rounded-xl uppercase text-lg shadow-[0_0_30px_rgba(19,127,236,0.3)] mt-4">
-                                    ENVIAR SOLICITUD
-                                </button>
-                            </div>
-                        </div>
-                    </section>
-
-                    <!-- PESTAÑA TALLER - Recepción inicial en taller -->
-                    <section id="tab-taller-inicial" class="tab-content hidden p-5 space-y-4">
-                        <div class="bg-[#192633] border border-[#233648] rounded-2xl p-5 shadow-xl">
-                            <h3 class="text-white font-bold mb-4 flex items-center gap-2 border-b border-[#233648] pb-3">
-                                <span class="material-symbols-outlined text-orange-500">engineering</span> Recepción en Taller
-                            </h3>
-                            
-                            <div id="taller-inicial-content" class="space-y-4">
-                                <div class="bg-orange-500/10 border border-orange-500/30 p-4 rounded-xl text-center">
-                                    <span class="material-symbols-outlined text-4xl text-orange-500 mb-2">info</span>
-                                    <p class="text-white text-sm">Tu solicitud fue aprobada. Debes pasar a taller para la revisión inicial.</p>
-                                </div>
-                                
-                                <div class="bg-[#111a22] border border-[#324d67] p-4 rounded-xl">
-                                    <p class="text-[10px] text-[#92adc9] uppercase mb-2">Unidad asignada</p>
-                                    <h4 id="taller-vehicle-info" class="text-white font-bold text-lg">--</h4>
-                                </div>
-                                
-                                <div class="bg-[#111a22] border border-[#324d67] p-4 rounded-xl">
-                                    <p class="text-[10px] text-[#92adc9] uppercase mb-2">Instrucciones</p>
-                                    <p class="text-white text-sm">Espera a que el mecánico realice la revisión y tome las fotos correspondientes.</p>
-                                    <p class="text-[#92adc9] text-xs mt-2">Una vez completada la recepción, podrás firmar y continuar.</p>
-                                </div>
-                                
-                                <div id="firma-recepcion-container" class="hidden mt-4">
-                                    <label class="block text-xs font-bold text-[#92adc9] uppercase mb-2">Firma de recepción</label>
-                                    <canvas id="signature-pad" class="w-full h-32 bg-[#1c2127] border border-[#324d67] rounded-xl touch-none"></canvas>
-                                    <div class="flex gap-2 mt-2">
-                                        <button onclick="window.conductorModule.clearSignature()" 
-                                                class="flex-1 py-2 bg-[#233648] text-white rounded-lg text-xs uppercase">
-                                            Limpiar
-                                        </button>
-                                    </div>
-                                    
-                                    <button id="btn-confirmar-recepcion" 
-                                            onclick="window.conductorModule.confirmarRecepcionTaller()" 
-                                            class="w-full mt-4 py-5 bg-orange-600 text-white font-black rounded-xl uppercase text-lg disabled:opacity-50"
-                                            disabled>
-                                        FIRMAR RECEPCIÓN
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </section>
-
-                    <!-- PESTAÑA RUTA - Panel de ruta con mapa -->
-                    <section id="tab-ruta" class="tab-content hidden h-full flex flex-col">
-                        <div class="p-5 space-y-4">
-                            <!-- Mensaje de espera cuando el viaje no ha iniciado -->
-                            <div id="route-waiting-msg" class="bg-[#192633] border border-[#233648] rounded-2xl p-8 text-center">
-                                <span class="material-symbols-outlined text-5xl text-[#324d67] mb-3">gpp_maybe</span>
-                                <h3 class="text-white font-bold text-lg">Esperando Salida</h3>
-                                <p class="text-[#92adc9] text-xs mt-2">Esperando autorización del guardia...</p>
-                                <div class="mt-4 flex justify-center">
-                                    <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                                </div>
-                            </div>
-
-                            <!-- Panel de viaje activo con mapa y controles -->
-                            <div id="active-trip-panel" class="hidden space-y-4">
-                                <!-- Contenedor del mapa -->
-                                <div class="bg-[#192633] rounded-xl overflow-hidden border border-[#233648] flex flex-col shadow-lg">
-                                    <div id="driver-map" class="w-full h-48 z-0 relative bg-[#111a22]"></div>
-                                    
-                                    <!-- Controles de ruta -->
-                                    <div class="p-3 bg-[#111a22]">
-                                        <div class="flex justify-between items-center mb-2">
-                                            <p class="text-[10px] text-[#92adc9] uppercase font-bold flex items-center gap-1">
-                                                <span class="material-symbols-outlined text-[12px]">format_list_bulleted</span> Puntos de Ruta
-                                            </p>
-                                            <button onclick="window.conductorModule.toggleReturnTrip()" 
-                                                    id="btn-return-trip" 
-                                                    class="text-[9px] bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded font-bold uppercase transition-colors shadow-md">
-                                                Marcar Regreso
-                                            </button>
-                                        </div>
-                                        
-                                        <ul id="route-stops-list" class="space-y-2 text-xs text-white mb-3 max-h-32 overflow-y-auto custom-scrollbar">
-                                            <li class="text-slate-500 text-center py-2 text-[10px] border border-dashed border-[#324d67] rounded-lg">
-                                                Agrega puntos a tu ruta tocando el mapa
-                                            </li>
-                                        </ul>
-                                        
-                                        <button onclick="window.conductorModule.saveRoutePlan()" 
-                                                class="w-full py-2.5 bg-green-600 text-white rounded-lg text-xs uppercase font-black shadow-lg transition-colors hover:bg-green-500 flex justify-center items-center gap-2">
-                                            <span class="material-symbols-outlined text-[16px]">save</span> Guardar Ruta
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <!-- Panel de estadísticas en vivo -->
-                                <div class="bg-[#192633] rounded-2xl p-5 border border-primary/30">
-                                    <div class="grid grid-cols-2 gap-4 mb-4">
-                                        <div class="bg-[#111a22] p-3 rounded-xl shadow-inner">
-                                            <p class="text-[8px] text-[#92adc9] uppercase font-bold">Velocidad</p>
-                                            <p id="live-speed" class="text-2xl font-black text-primary">0</p>
-                                            <p class="text-[8px] text-[#92adc9]">km/h</p>
-                                        </div>
-                                        <div class="bg-[#111a22] p-3 rounded-xl shadow-inner">
-                                            <p class="text-[8px] text-[#92adc9] uppercase font-bold">Distancia</p>
-                                            <p id="live-distance" class="text-2xl font-black text-primary">0.0</p>
-                                            <p class="text-[8px] text-[#92adc9]">km</p>
-                                        </div>
-                                    </div>
-                                    <div class="space-y-3">
-                                        <div class="flex justify-between text-xs bg-[#111a22] p-3 rounded-xl">
-                                            <span class="text-[#92adc9] font-bold">Combustible estimado</span>
-                                            <span id="live-fuel" class="text-white font-black">0.0 L</span>
-                                        </div>
-                                        <div class="flex justify-between text-xs bg-[#111a22] p-3 rounded-xl">
-                                            <span class="text-[#92adc9] font-bold">Tiempo transcurrido</span>
-                                            <span id="trip-duration" class="text-white font-black font-mono">00:00:00</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <!-- Notas del viaje -->
-                                <div class="bg-[#192633] rounded-xl p-4 border border-[#233648]">
-                                    <p class="text-[10px] text-[#92adc9] uppercase mb-2 flex items-center gap-1 font-bold">
-                                        <span class="material-symbols-outlined text-sm">note_add</span> Notas del viaje
-                                    </p>
-                                    <textarea id="trip-notes" rows="2" 
-                                              class="w-full bg-[#111a22] border border-[#233648] text-white p-3 rounded-xl text-sm focus:border-primary focus:outline-none"
-                                              placeholder="Ej. Tráfico pesado, pausa para comer..."></textarea>
-                                    <button onclick="window.conductorModule.saveTripNotes()" 
-                                            class="mt-3 w-full py-2 bg-[#233648] border border-[#324d67] text-white rounded-lg text-xs uppercase font-bold hover:bg-[#2d445a] transition-colors">
-                                        Guardar nota
-                                    </button>
-                                </div>
-                            </div>
-
-                            <!-- Indicador de estado GPS -->
-                            <div class="bg-[#111a22] border border-[#233648] rounded-xl p-4 shadow-lg">
-                                <div id="gps-status-indicator" class="text-center">
-                                    <div class="flex items-center justify-center gap-2 text-slate-400">
-                                        <span class="material-symbols-outlined">gps_fixed</span>
-                                        <span class="text-xs font-bold">GPS Inactivo</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </section>
-
-                    <!-- PESTAÑA TALLER FINAL - Recepción post-viaje -->
-                    <section id="tab-taller-final" class="tab-content hidden p-5 space-y-4">
-                        <div class="bg-[#192633] border border-[#233648] rounded-2xl p-5 shadow-xl">
-                            <h3 class="text-white font-bold mb-4 flex items-center gap-2 border-b border-[#233648] pb-3">
-                                <span class="material-symbols-outlined text-purple-500">assignment_turned_in</span> Entrega en Taller
-                            </h3>
-                            
-                            <div id="taller-final-content" class="space-y-4">
-                                <div class="bg-purple-500/10 border border-purple-500/30 p-4 rounded-xl text-center">
-                                    <span class="material-symbols-outlined text-4xl text-purple-500 mb-2">info</span>
-                                    <p class="text-white text-sm">Tu viaje ha terminado. Debes pasar a taller para la revisión final.</p>
-                                </div>
-                                
-                                <div class="bg-[#111a22] border border-[#324d67] p-4 rounded-xl">
-                                    <p class="text-[10px] text-[#92adc9] uppercase mb-2">Resumen del viaje</p>
-                                    <div class="flex justify-between text-xs">
-                                        <span class="text-white">Distancia:</span>
-                                        <span id="resumen-distancia" class="text-primary font-bold">0 km</span>
-                                    </div>
-                                    <div class="flex justify-between text-xs mt-1">
-                                        <span class="text-white">Combustible:</span>
-                                        <span id="resumen-combustible" class="text-primary font-bold">0 L</span>
-                                    </div>
-                                </div>
-                                
-                                <div class="bg-[#111a22] border border-[#324d67] p-4 rounded-xl">
-                                    <p class="text-[10px] text-[#92adc9] uppercase mb-2">Instrucciones</p>
-                                    <p class="text-white text-sm">Espera a que el mecánico realice la revisión final de la unidad.</p>
-                                    <p class="text-[#92adc9] text-xs mt-2">Una vez completada la revisión, se liberará la unidad.</p>
-                                </div>
-                            </div>
-                        </div>
-                    </section>
-
-                    <!-- PESTAÑA PERFIL -->
-                    <section id="tab-perfil" class="tab-content hidden p-5 space-y-5">
-                        <div class="bg-white rounded-3xl p-6 shadow-2xl">
-                            <div class="flex justify-between items-start mb-6">
-                                <div>
-                                    <span class="text-[9px] font-black text-slate-400 uppercase">Gafete Digital</span>
-                                    <h3 id="card-full-name" class="text-slate-900 text-xl font-bold mt-1">--</h3>
-                                </div>
-                                <div id="card-photo" class="h-16 w-16 bg-slate-100 rounded-xl bg-cover bg-center"></div>
-                            </div>
-
-                            <div class="bg-slate-50 p-4 rounded-2xl mb-4">
-                                <h4 class="text-slate-800 text-xs font-black uppercase mb-3 border-b border-slate-200 pb-2">
-                                    <span class="material-symbols-outlined text-sm text-primary">badge</span> Datos
-                                </h4>
-                                <div class="space-y-3">
-                                    <div class="flex justify-between">
-                                        <span class="text-[10px] text-slate-500 uppercase">Supervisor</span>
-                                        <span id="profile-manager" class="text-slate-800 text-xs font-bold">--</span>
-                                    </div>
-                                    <div class="flex justify-between">
-                                        <span class="text-[10px] text-slate-500 uppercase">Cargo</span>
-                                        <span id="profile-role" class="text-slate-800 text-xs font-bold">Conductor</span>
-                                    </div>
-                                    <div class="flex justify-between">
-                                        <span class="text-[10px] text-slate-500 uppercase">Licencia</span>
-                                        <span id="lic-number" class="text-slate-800 text-xs font-mono font-bold">--</span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div id="reception-photo-container" class="hidden mb-4">
-                                <h4 class="text-slate-800 text-xs font-black uppercase mb-2">Foto de Recepción</h4>
-                                <img id="reception-photo-display" class="w-full rounded-xl border-2 border-primary/30 cursor-pointer" 
-                                     onclick="window.conductorModule.viewReceptionPhoto()"
-                                     src="" alt="Foto de recepción">
-                            </div>
-
-                            <div id="trip-summary-container" class="hidden bg-primary/5 p-4 rounded-2xl border border-primary/20">
-                                <h4 class="text-primary text-xs font-black uppercase mb-3">Viaje en curso</h4>
-                                <div class="space-y-2 text-xs">
-                                    <div class="flex justify-between">
-                                        <span class="text-slate-600">Inicio:</span>
-                                        <span id="summary-start-time" class="text-slate-900 font-bold">--:--</span>
-                                    </div>
-                                    <div class="flex justify-between">
-                                        <span class="text-slate-600">Distancia:</span>
-                                        <span id="summary-distance" class="text-slate-900 font-bold">0 km</span>
-                                    </div>
-                                    <div class="flex justify-between">
-                                        <span class="text-slate-600">Consumo:</span>
-                                        <span id="summary-fuel" class="text-slate-900 font-bold">0 L</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </section>
-                </main>
-
-                <!-- NAVEGACIÓN -->
-                <nav class="absolute bottom-0 w-full bg-[#111a22] border-t border-[#233648] flex justify-around items-center h-20 z-30">
-                    <button onclick="window.conductorModule.switchTab('unidad')" id="nav-unidad" class="nav-btn active text-primary flex flex-col items-center gap-1">
-                        <span class="material-symbols-outlined">directions_car</span>
-                        <span class="text-[9px] font-bold uppercase">Unidad</span>
-                    </button>
-                    <button onclick="window.conductorModule.switchTab('solicitud')" id="nav-solicitud" class="nav-btn text-slate-500 flex flex-col items-center gap-1">
-                        <span class="material-symbols-outlined">assignment</span>
-                        <span class="text-[9px] font-bold uppercase">Solicitar</span>
-                    </button>
-                    <button onclick="window.conductorModule.switchTab('ruta')" id="nav-ruta" class="nav-btn text-slate-500 flex flex-col items-center gap-1">
-                        <span class="material-symbols-outlined">route</span>
-                        <span class="text-[9px] font-bold uppercase">Ruta</span>
-                    </button>
-                    <button onclick="window.conductorModule.switchTab('perfil')" id="nav-perfil" class="nav-btn text-slate-500 flex flex-col items-center gap-1">
-                        <span class="material-symbols-outlined">badge</span>
-                        <span class="text-[9px] font-bold uppercase">Pase</span>
-                    </button>
-                </nav>
-
-                <!-- MODAL DE EMERGENCIA -->
-                <div id="modal-emergency" class="hidden absolute inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
-                    <div class="bg-[#1c2127] w-full max-w-md rounded-3xl p-6 border border-red-500/30">
-                        <span class="material-symbols-outlined text-5xl text-red-500 mb-4 block">emergency</span>
-                        <h3 class="text-white font-bold text-lg mb-2">Reporte de Incidente</h3>
-                        <p class="text-[#92adc9] text-sm mb-6">Describe la situación de emergencia</p>
-                        
-                        <div class="space-y-3">
-                            <textarea id="emergency-desc" rows="3" 
-                                      class="w-full bg-[#111a22] border border-[#233648] text-white p-4 rounded-xl"
-                                      placeholder="Describe lo sucedido..."></textarea>
-                            
-                            <button onclick="window.conductorModule.activateEmergency()" 
-                                    class="w-full py-4 bg-red-600 text-white font-black rounded-xl uppercase text-sm">
-                                REPORTAR EMERGENCIA
-                            </button>
-                            <button onclick="document.getElementById('modal-emergency').classList.add('hidden')" 
-                                    class="w-full py-3 text-[#92adc9] hover:text-white transition-colors text-xs uppercase">
-                                Cancelar
-                            </button>
-                        </div>
+        <div class="flex flex-col h-full gap-6 animate-fade-in max-w-[1600px] mx-auto pb-20 p-6">
+            <div class="flex flex-col gap-4">
+                <div class="flex justify-between items-end">
+                    <div>
+                        <h1 class="text-white text-3xl font-black">Inventario Maestro</h1>
+                        <p class="text-[#92adc9] text-sm">Gestión de activos, expediente digital y seguridad.</p>
                     </div>
                 </div>
-
-                <!-- MODAL DE NOTIFICACIÓN -->
-                <div id="notification-modal" class="hidden absolute inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
-                    <div id="notification-content" class="bg-[#1c2127] w-full max-w-sm rounded-3xl p-6 border border-primary/30 animate-fade-in-up"></div>
+                <div class="flex border-b border-[#324d67]">
+                    <button onclick="window.invModule.switchMainTab('vehicles')" id="main-tab-vehicles" class="px-6 py-3 text-primary border-b-2 border-primary font-bold text-sm transition-colors">Vehículos</button>
+                    <button onclick="window.invModule.switchMainTab('drivers')" id="main-tab-drivers" class="px-6 py-3 text-[#92adc9] hover:text-white border-b-2 border-transparent font-medium text-sm transition-colors">Conductores & Licencias</button>
+                    <button onclick="window.invModule.switchMainTab('inspections')" id="main-tab-inspections" class="px-6 py-3 text-[#92adc9] hover:text-white border-b-2 border-transparent font-medium text-sm transition-colors">Inspecciones</button>
                 </div>
             </div>
+
+            <div id="main-view-vehicles" class="animate-fade-in space-y-6">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <p class="text-[#92adc9] text-sm">Haz clic en cualquier unidad para ver expediente completo, bitácora o inspección.</p>
+                    </div>
+                    <div class="flex gap-3">
+                        <button onclick="window.invModule.openVehicleRegister()" class="bg-primary hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow-lg transition-all">
+                            <span class="material-symbols-outlined">add_circle</span> Nueva Unidad
+                        </button>
+                    </div>
+                </div>
+                
+                <div id="grid-vehicles" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                    <div class="col-span-full flex flex-col items-center justify-center py-20 text-slate-500">
+                        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mb-4"></div>
+                        <p>Cargando flota...</p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="main-view-drivers" class="hidden animate-fade-in space-y-6">
+                <div class="flex justify-end">
+                    <button onclick="document.getElementById('modal-add-driver').classList.remove('hidden')" class="bg-primary hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow-lg transition-all">
+                        <span class="material-symbols-outlined">person_add</span> Nuevo Conductor
+                    </button>
+                </div>
+                
+                <div class="bg-[#1c2127] border border-[#324d67] rounded-xl overflow-hidden shadow-lg">
+                    <table class="w-full text-left text-sm text-[#92adc9]">
+                        <thead class="bg-[#111a22] text-xs font-bold uppercase sticky top-0">
+                            <tr>
+                                <th class="px-6 py-4">Perfil</th>
+                                <th class="px-6 py-4">Licencia</th>
+                                <th class="px-6 py-4 text-center">Validación Biométrica</th>
+                                <th class="px-6 py-4 text-right">Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody id="table-drivers" class="divide-y divide-[#324d67]"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="main-view-inspections" class="hidden animate-fade-in space-y-6">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h2 class="text-white text-xl font-bold">Historial de Inspecciones</h2>
+                        <p class="text-[#92adc9] text-sm">Registro de verificaciones de estado de vehículos</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <input type="date" id="filter-date" class="bg-[#111a22] border border-[#324d67] rounded-lg p-2 text-white text-sm outline-none focus:border-primary">
+                        <select id="filter-vehicle" class="bg-[#111a22] border border-[#324d67] rounded-lg p-2 text-white text-sm outline-none focus:border-primary">
+                            <option value="">Todos los vehículos</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="inspections-list" class="space-y-4"></div>
+            </div>
+
+            <div id="global-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
+                <div id="global-modal-content" class="bg-[#1c2127] w-full border border-[#324d67] rounded-2xl shadow-2xl flex flex-col max-h-[95vh] overflow-hidden animate-fade-in-up"></div>
+            </div>
+
+            <div id="modal-add-driver" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+                <div class="bg-[#1c2127] w-full max-w-md rounded-2xl border border-[#324d67] p-6 shadow-2xl animate-fade-in-up">
+                    <h3 class="text-xl font-bold text-white mb-6 flex items-center gap-2">
+                        <span class="material-symbols-outlined text-primary">person_add</span> Alta de Conductor
+                    </h3>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="text-xs font-bold text-[#92adc9] uppercase block mb-1">Nombre Completo</label>
+                            <input id="new-driver-name" type="text" placeholder="Nombre y Apellido" class="w-full bg-[#111a22] border border-[#324d67] rounded-lg p-3 text-white focus:border-primary outline-none">
+                        </div>
+                        <div>
+                            <label class="text-xs font-bold text-[#92adc9] uppercase block mb-1">Email (Login)</label>
+                            <input id="new-driver-email" type="email" placeholder="correo@cov.mx" class="w-full bg-[#111a22] border border-[#324d67] rounded-lg p-3 text-white focus:border-primary outline-none">
+                        </div>
+                        <div>
+                            <label class="text-xs font-bold text-[#92adc9] uppercase block mb-1">No. Licencia</label>
+                            <input id="new-driver-lic" type="text" placeholder="A0000000" class="w-full bg-[#111a22] border border-[#324d67] rounded-lg p-3 text-white focus:border-primary outline-none">
+                        </div>
+                        <div class="flex gap-3 pt-4">
+                            <button onclick="document.getElementById('modal-add-driver').classList.add('hidden')" class="flex-1 py-3 text-slate-400 font-bold bg-[#232a33] hover:text-white rounded-lg">Cancelar</button>
+                            <button onclick="window.invModule.saveDriver()" class="flex-1 bg-primary hover:bg-blue-600 text-white py-3 rounded-lg font-bold shadow-lg">Guardar</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="inv-notification-toast" class="hidden fixed bottom-6 right-6 z-50 bg-[#1c2127] border border-primary text-white p-4 rounded-xl shadow-2xl animate-fade-in-up flex items-center gap-3">
+                <span class="material-symbols-outlined text-primary">notifications_active</span>
+                <p id="inv-notification-text" class="text-sm font-bold"></p>
+            </div>
+
         </div>
         `;
     }
 
-    // ==================== MÉTODOS PRINCIPALES ====================
-
     async onMount() {
-        try {
-            const { data: { session }, error } = await supabase.auth.getSession();
-            
-            if (error) throw error;
-            
-            if (!session) {
-                console.log('❌ No hay sesión activa, redirigiendo a login');
-                window.location.hash = '#login';
-                return;
-            }
-            
-            this.userId = session.user.id;
-            console.log('✅ Usuario autenticado:', this.userId);
-            
-            if (!this.userId) {
-                console.error('❌ userId es null después de la autenticación');
-                window.location.hash = '#login';
-                return;
-            }
-            
-            await this.loadProfileData();
-            await this.loadDashboardState();
-            this.setupEventListeners();
-            
-            this.startBackgroundSync();
-
-            // Configurar suscripción en tiempo real
-            this.setupRealtimeSubscription();
-
-            // Configurar actualización periódica
-            this.updateInterval = setInterval(async () => {
-                if (navigator.onLine) {
-                    await this.loadDashboardState();
-                }
-            }, 3000); // Actualizar cada 3 segundos
-                
-        } catch (error) {
-            console.error('❌ Error en onMount:', error);
-            window.location.hash = '#login';
-        }
+        await this.loadAllData();
+        this.setupRealtimeSubscription(); 
     }
 
     setupRealtimeSubscription() {
-        if (this.realtimeChannel) {
-            supabase.removeChannel(this.realtimeChannel);
-        }
+        if (!supabase) return;
+        if (this.realtimeChannel) supabase.removeChannel(this.realtimeChannel);
 
         this.realtimeChannel = supabase
-            .channel('driver_realtime_' + this.userId)
-            .on('postgres_changes', { 
-                event: '*', 
-                schema: 'public', 
-                table: 'trips', 
-                filter: `driver_id=eq.${this.userId}` 
-            }, async (payload) => {
-                console.log('🔄 Cambio detectado en viaje:', payload);
-                
-                if (payload.new) {
-                    await this.handleTripUpdate(payload.new);
-                    
-                    // Mostrar código de acceso cuando el viaje está aprobado
-                    if (payload.new.status === 'driver_accepted' && payload.new.access_code) {
-                        this.showAccessCode(payload.new.access_code);
-                        this.showNotification('✅ Viaje aprobado', 'Tu código de acceso está listo', 'success');
-                    }
-                    
-                    // Iniciar seguimiento cuando el viaje está en progreso
-                    if (payload.new.status === 'in_progress') {
-                        this.startTracking();
-                        this.showNotification('🚗 Viaje iniciado', 'El guardia ha autorizado tu salida', 'success');
-                    }
-                }
+            .channel('inventory_realtime')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'vehicles' }, payload => {
+                this.handleVehicleRealtimeUpdate(payload);
+            })
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'vehicle_inspections' }, () => {
+                this.refreshInspections();
+            })
+            // Detectar cambios en viajes para actualizar estado a "En Uso"
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'trips' }, () => {
+                this.loadAllData(); // Recarga general para sincronizar estados de viajes y vehículos
             })
             .subscribe((status) => {
-                console.log('📡 Estado de suscripción:', status);
+                console.log('📡 Inventario Realtime:', status);
             });
     }
 
-    // ==================== SISTEMA DE NOTIFICACIONES ====================
-    
-    showNotification(title, message, type = 'info') {
-        const modal = document.getElementById('notification-modal');
-        const content = document.getElementById('notification-content');
+    async handleVehicleRealtimeUpdate(payload) {
+        const { eventType, new: newRecord, old: oldRecord } = payload;
         
-        if (!modal || !content) return;
+        if (eventType === 'INSERT') {
+            this.vehicles.push(newRecord);
+            this.showToast(`Nueva unidad registrada: ECO-${newRecord.economic_number}`);
+        } 
+        else if (eventType === 'UPDATE') {
+            const index = this.vehicles.findIndex(v => v.id === newRecord.id);
+            if (index !== -1) {
+                this.vehicles[index] = newRecord;
+                if (this.selectedVehicle && this.selectedVehicle.id === newRecord.id) {
+                    this.selectedVehicle = newRecord;
+                    this.updateActiveModalInfo();
+                }
+            }
+        } 
+        else if (eventType === 'DELETE') {
+            this.vehicles = this.vehicles.filter(v => v.id !== oldRecord.id);
+        }
+
+        this.vehicles.sort((a, b) => (a.economic_number || '').localeCompare(b.economic_number || ''));
+        this.renderVehiclesGrid();
+        this.updateFilterSelects();
+    }
+
+    async refreshInspections() {
+        const { data } = await supabase.from('vehicle_inspections').select('*, vehicles(economic_number, plate, model)').order('created_at', { ascending: false });
+        if (data) {
+            this.inspections = data;
+            this.renderInspectionsList();
+        }
+    }
+
+    showToast(msg) {
+        const toast = document.getElementById('inv-notification-toast');
+        const text = document.getElementById('inv-notification-text');
+        if (toast && text) {
+            text.innerText = msg;
+            toast.classList.remove('hidden');
+            setTimeout(() => toast.classList.add('hidden'), 4000);
+        }
+    }
+
+    // --- CARGA DE DATOS SEGUROS ---
+    async loadAllData() {
+        if (!supabase) return;
+
+        try {
+            const [vehRes, drvRes, insRes, invRes, srvRes, docRes, tripsAllRes] = await Promise.all([
+                supabase.from('vehicles').select('*').order('economic_number'),
+                supabase.from('profiles').select('*').eq('role', 'driver'),
+                supabase.from('vehicle_inspections').select('*, vehicles(economic_number, plate, model)').order('created_at', { ascending: false }).then(r => r.error ? {data: []} : r),
+                supabase.from('inventory_items').select('*').order('name').then(r => r.error ? {data: []} : r),
+                supabase.from('service_templates').select('*, service_template_items(quantity, inventory_items(id, name, cost, unit, stock, sku))').then(r => r.error ? {data: []} : r),
+                supabase.from('vehicle_documents').select('*').then(r => r.error ? {data: []} : r),
+                // Extraer todos los viajes de la app para ver destinos e historiales gráficos
+                supabase.from('trips').select('id, vehicle_id, status, destination, created_at, profiles:driver_id(full_name), workshop_reception_photos, workshop_return_photos').order('created_at', { ascending: false }).then(r => r.error ? {data: []} : r)
+            ]);
+
+            this.vehicles = vehRes.data || [];
+            this.drivers = drvRes.data || [];
+            this.inspections = insRes.data || [];
+            this.inventory = invRes.data || [];
+            this.services = srvRes.data || [];
+            this.vehicleDocuments = docRes.data || [];
+            this.allAppTrips = tripsAllRes.data || [];
+
+            this.renderVehiclesGrid();
+            this.renderDriversTable();
+            this.renderInspectionsList();
+            this.updateFilterSelects();
+            
+        } catch (error) {
+            console.error("Error cargando inventario:", error);
+            document.getElementById('grid-vehicles').innerHTML = '<p class="text-red-500 col-span-full text-center">Error al conectar con la base de datos.</p>';
+        }
+    }
+
+    updateFilterSelects() {
+        const select = document.getElementById('filter-vehicle');
+        if (select) {
+            const currentVal = select.value;
+            select.innerHTML = '<option value="">Todos los vehículos</option>' + 
+                this.vehicles.map(v => `<option value="${v.id}">ECO-${v.economic_number} - ${v.plate}</option>`).join('');
+            select.value = currentVal; 
+        }
+    }
+
+    switchMainTab(tab) {
+        document.getElementById('main-view-vehicles').classList.add('hidden');
+        document.getElementById('main-view-drivers').classList.add('hidden');
+        document.getElementById('main-view-inspections').classList.add('hidden');
         
-        const colors = { 
-            info: 'primary', 
-            success: 'green-500', 
-            warning: 'orange-500', 
-            error: 'red-500' 
-        };
-        
-        const icons = { 
-            info: 'info', 
-            success: 'check_circle', 
-            warning: 'warning', 
-            error: 'error' 
-        };
+        document.getElementById('main-tab-vehicles').className = "px-6 py-3 text-[#92adc9] hover:text-white border-b-2 border-transparent font-medium text-sm transition-colors";
+        document.getElementById('main-tab-drivers').className = "px-6 py-3 text-[#92adc9] hover:text-white border-b-2 border-transparent font-medium text-sm transition-colors";
+        document.getElementById('main-tab-inspections').className = "px-6 py-3 text-[#92adc9] hover:text-white border-b-2 border-transparent font-medium text-sm transition-colors";
+
+        document.getElementById(`main-view-${tab}`).classList.remove('hidden');
+        document.getElementById(`main-tab-${tab}`).className = "px-6 py-3 text-primary border-b-2 border-primary font-bold text-sm transition-colors";
+    }
+
+    renderVehiclesGrid() {
+        const grid = document.getElementById('grid-vehicles');
+        if(this.vehicles.length === 0) {
+            grid.innerHTML = `
+                <div class="col-span-full text-center py-20 bg-[#111a22] border border-[#324d67] border-dashed rounded-xl">
+                    <span class="material-symbols-outlined text-5xl text-slate-500 mb-2">directions_car</span>
+                    <p class="text-slate-400 font-bold">No hay vehículos registrados</p>
+                    <button onclick="window.invModule.openVehicleRegister()" class="mt-4 bg-primary text-white px-4 py-2 rounded-lg text-sm font-bold shadow-lg">Registrar Primer Unidad</button>
+                </div>
+            `;
+            return;
+        }
+
+        grid.innerHTML = this.vehicles.map(v => {
+            const imgUrl = (v.image_url && v.image_url !== "0" && v.image_url !== "null") ? v.image_url : 'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&w=500&q=60';
+            
+            // VERIFICAR ESTADO "EN USO" BASADO EN VIAJES ACTIVOS
+            const activeTrip = this.allAppTrips.find(t => t.vehicle_id === v.id && ['requested', 'approved_for_taller', 'driver_accepted', 'in_progress'].includes(t.status));
+            let statusName = v.status === 'active' ? 'Disponible' : (v.status === 'maintenance' ? 'En Taller' : 'Inactivo');
+            let statusColor = v.status === 'active' ? 'border-green-500 text-green-400' : (v.status === 'maintenance' ? 'border-orange-500 text-orange-400' : 'border-red-500 text-red-400');
+            
+            if (activeTrip) {
+                statusName = 'En Uso';
+                statusColor = 'border-blue-500 text-blue-400 bg-blue-500/20';
+            } else if (v.status === 'in_use') {
+                statusName = 'En Uso';
+                statusColor = 'border-blue-500 text-blue-400 bg-blue-500/20';
+            }
+            
+            return `
+            <div class="bg-[#1c2127] border border-[#324d67] rounded-xl overflow-hidden group hover:border-primary transition-all cursor-pointer shadow-lg hover:shadow-[0_0_20px_rgba(19,127,236,0.15)] hover:-translate-y-1 relative" onclick="window.invModule.openVehicleDetail('${v.id}')">
+                <div class="h-40 bg-[#111a22] relative border-b border-[#324d67]">
+                    <img src="${imgUrl}" class="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity duration-500">
+                    <div class="absolute top-2 right-2 bg-black/80 backdrop-blur-md text-white text-[10px] font-black px-3 py-1 rounded border ${statusColor} uppercase tracking-widest shadow-lg">
+                        ${statusName}
+                    </div>
+                </div>
+                <div class="p-5">
+                    <div class="flex justify-between items-start mb-3">
+                        <div>
+                            <h3 class="text-white font-bold text-lg leading-tight truncate pr-2" title="${v.brand} ${v.model}">${v.brand || 'Vehículo'} ${v.model || ''}</h3>
+                            <span class="text-xs text-[#92adc9]">${v.year || '--'}</span>
+                        </div>
+                        <span class="bg-primary/20 text-primary text-xs font-black px-2 py-1 rounded border border-primary/30 shrink-0">ECO-${v.economic_number}</span>
+                    </div>
+                    <div class="text-sm text-[#92adc9] mb-4 bg-[#111a22] p-2 rounded-lg border border-[#324d67] text-center font-mono font-bold tracking-widest uppercase">
+                        ${v.plate}
+                    </div>
+                    <div class="border-t border-[#324d67] pt-3 flex justify-between items-center">
+                        <div class="text-xs text-[#92adc9] flex items-center gap-1 font-bold">
+                            <span class="material-symbols-outlined text-[14px]">speed</span> ${Number(v.current_km || 0).toLocaleString()} km
+                        </div>
+                        <button onclick="event.stopPropagation(); window.invModule.openVehicleEdit('${v.id}')" class="text-xs bg-[#233648] text-white hover:bg-primary px-3 py-1.5 rounded-lg flex items-center gap-1 transition-colors z-10">
+                            <span class="material-symbols-outlined text-sm">edit</span> Editar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `}).join('');
+    }
+
+    renderDriversTable() {
+        const tbody = document.getElementById('table-drivers');
+        if(this.drivers.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" class="p-4 text-center text-slate-500">No hay conductores registrados.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = this.drivers.map(d => {
+            const photoUrl = (d.photo_url && d.photo_url !== "0") ? d.photo_url : `https://ui-avatars.com/api/?name=${d.full_name}`;
+            return `
+            <tr class="hover:bg-[#232b34] transition-colors border-b border-[#324d67] last:border-0">
+                <td class="px-6 py-4">
+                    <div class="flex items-center gap-3">
+                        <div class="size-10 rounded-full bg-slate-700 bg-cover border-2 border-[#324d67]" style="background-image: url('${photoUrl}')"></div>
+                        <div>
+                            <p class="text-white font-bold text-sm">${d.full_name}</p>
+                            <p class="text-xs text-[#92adc9]">ID: ${d.employee_id || 'N/A'}</p>
+                        </div>
+                    </div>
+                </td>
+                <td class="px-6 py-4">
+                    <div class="flex items-center gap-2 bg-[#111a22] w-fit px-3 py-1.5 rounded-lg border border-[#324d67]">
+                        <span class="material-symbols-outlined text-slate-500 text-sm">badge</span>
+                        <span class="text-white font-mono text-xs font-bold">${d.license_number || 'PENDIENTE'}</span>
+                    </div>
+                </td>
+                <td class="px-6 py-4 text-center">
+                    <span class="inline-flex items-center px-2 py-1 rounded text-[10px] font-bold bg-green-500/10 text-green-500 uppercase tracking-widest border border-green-500/20">Verificado</span>
+                </td>
+                <td class="px-6 py-4 text-right">
+                    <span class="inline-flex items-center px-2 py-1 rounded text-[10px] font-bold bg-green-500/10 text-green-500 uppercase tracking-widest border border-green-500/20">Activo</span>
+                </td>
+            </tr>
+        `}).join('');
+    }
+
+    renderInspectionsList() {
+        const container = document.getElementById('inspections-list');
+        if(this.inspections.length === 0) {
+            container.innerHTML = '<div class="bg-[#1c2127] border border-[#324d67] rounded-xl p-10 text-center"><p class="text-slate-500">No hay inspecciones de entrada/salida registradas.</p></div>';
+            return;
+        }
+
+        container.innerHTML = this.inspections.map(i => {
+            const date = new Date(i.created_at);
+            const approvalColor = i.vehicle_approval === 'approved' ? 'green' : i.vehicle_approval === 'conditional' ? 'yellow' : 'red';
+            const approvalText = i.vehicle_approval === 'approved' ? 'Aprobado' : i.vehicle_approval === 'conditional' ? 'Condicional' : 'Rechazado';
+            
+            return `
+                <div class="bg-[#1c2127] border border-[#324d67] rounded-xl overflow-hidden hover:border-${approvalColor}-500 transition-colors shadow-lg">
+                    <div class="p-5">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <h3 class="text-white font-bold text-lg">ECO-${i.vehicles?.economic_number || '--'} • <span class="text-primary font-mono text-sm">${i.vehicles?.plate || ''}</span></h3>
+                                <p class="text-[#92adc9] text-sm">${i.vehicles?.model || ''}</p>
+                            </div>
+                            <div class="flex flex-col items-end gap-2">
+                                <span class="inline-flex items-center px-3 py-1 rounded-full text-[10px] font-black bg-${approvalColor}-500/20 text-${approvalColor}-400 border border-${approvalColor}-500/30 uppercase tracking-widest shadow-sm">
+                                    ${approvalText}
+                                </span>
+                                <p class="text-xs text-[#92adc9] font-mono">${date.toLocaleDateString()} ${date.toLocaleTimeString()}</p>
+                            </div>
+                        </div>
+                        <div class="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3">
+                            <div class="bg-[#111a22] p-3 rounded-lg border border-[#324d67]">
+                                <p class="text-[10px] text-[#92adc9] uppercase font-bold tracking-widest">Inspector (Guardia)</p>
+                                <p class="text-white text-sm font-medium mt-1">${i.inspector_name}</p>
+                            </div>
+                            <div class="bg-[#111a22] p-3 rounded-lg border border-[#324d67]">
+                                <p class="text-[10px] text-[#92adc9] uppercase font-bold tracking-widest">Kilometraje</p>
+                                <p class="text-white text-sm font-mono mt-1">${(i.current_km || 0).toLocaleString()} km</p>
+                            </div>
+                            <div class="bg-[#111a22] p-3 rounded-lg border border-[#324d67]">
+                                <p class="text-[10px] text-[#92adc9] uppercase font-bold tracking-widest">Condición Reportada</p>
+                                <p class="text-white text-sm font-medium mt-1 uppercase">${i.general_condition}</p>
+                            </div>
+                            <div class="bg-[#111a22] p-3 rounded-lg border border-[#324d67]">
+                                <p class="text-[10px] text-[#92adc9] uppercase font-bold tracking-widest">Nivel Combustible</p>
+                                <p class="text-white text-sm font-medium mt-1 uppercase">${i.fuel_level}</p>
+                            </div>
+                        </div>
+                        ${i.problems_detected ? `
+                            <div class="mt-4 bg-red-900/20 border border-red-500/30 rounded-lg p-3 relative overflow-hidden">
+                                <div class="absolute left-0 top-0 bottom-0 w-1 bg-red-500"></div>
+                                <p class="text-xs text-red-400 font-black mb-1 uppercase tracking-wider pl-2 flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">warning</span> Problemas Detectados / Alertas</p>
+                                <p class="text-slate-300 text-sm pl-2">${i.problems_detected}</p>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    openVehicleRegister() {
+        const modal = document.getElementById('global-modal');
+        const content = document.getElementById('global-modal-content');
+        content.className = "bg-[#1c2127] w-full max-w-4xl rounded-2xl shadow-2xl p-6 border border-[#324d67] animate-fade-in-up overflow-y-auto max-h-[90vh] custom-scrollbar";
         
         content.innerHTML = `
-            <div class="text-center">
-                <span class="material-symbols-outlined text-5xl text-${colors[type]} mb-4">${icons[type]}</span>
-                <h3 class="text-white font-bold text-xl mb-2">${title}</h3>
-                <p class="text-[#92adc9] text-sm mb-6">${message}</p>
-                <button onclick="document.getElementById('notification-modal').classList.add('hidden')" 
-                        class="w-full py-3 bg-${colors[type]} text-white font-bold rounded-xl">
-                    Cerrar
+            <div class="flex justify-between items-center mb-6 border-b border-[#324d67] pb-4">
+                <h3 class="font-black text-2xl text-white flex items-center gap-2">
+                    <span class="material-symbols-outlined text-primary text-3xl">add_circle</span> Alta de Nueva Unidad
+                </h3>
+                <button onclick="document.getElementById('global-modal').classList.add('hidden')" class="text-slate-400 hover:text-white transition-colors bg-[#233648] p-2 rounded-full hover:bg-red-500/20 hover:text-red-500">
+                    <span class="material-symbols-outlined">close</span>
                 </button>
             </div>
-        `;
-        
-        modal.classList.remove('hidden');
-        
-        if (navigator.vibrate) {
-            navigator.vibrate(type === 'error' ? [200, 100, 200] : [100]);
-        }
-        
-        setTimeout(() => {
-            modal.classList.add('hidden');
-        }, 5000);
-    }
-
-    // ==================== SISTEMA DE GPS EN BACKGROUND ====================
-    
-    startBackgroundSync() {
-        this.backgroundSyncInterval = setInterval(() => {
-            if (this.pendingLocations.length > 0 && navigator.onLine) {
-                this.syncPendingLocations();
-            }
-        }, 30000);
-        
-        window.addEventListener('online', () => {
-            this.syncPendingLocations();
-        });
-    }
-
-    async syncPendingLocations() {
-        if (this.pendingLocations.length === 0 || !this.currentTrip) return;
-        
-        const locations = [...this.pendingLocations];
-        this.pendingLocations = [];
-        
-        try {
-            const { error } = await supabase.from('trip_locations').insert(
-                locations.map(loc => ({
-                    trip_id: this.currentTrip.id,
-                    ...loc
-                }))
-            );
             
-            if (error) {
-                this.pendingLocations = [...locations, ...this.pendingLocations];
-            }
-        } catch (error) {
-            this.pendingLocations = [...locations, ...this.pendingLocations];
-        }
-    }
-
-    // ==================== MANEJADOR DE ACTUALIZACIONES ====================
-    
-    async handleTripUpdate(updatedTrip) {
-        const previousStatus = this.currentTrip?.status;
-        this.currentTrip = updatedTrip;
-        
-        switch(updatedTrip.status) {
-            case 'approved_for_taller':
-                this.showNotification('✅ Solicitud aprobada', 'Dirígete a taller para la recepción inicial', 'success');
-                this.switchTab('taller-inicial');
-                break;
-                
-            case 'driver_accepted':
-                this.showNotification('🔑 Recepción completada', 'Ya puedes pasar con el guardia para la salida', 'success');
-                if (updatedTrip.access_code) {
-                    this.showAccessCode(updatedTrip.access_code);
-                }
-                break;
-                
-            case 'in_progress':
-                if (previousStatus !== 'in_progress') {
-                    this.showNotification('🚗 Viaje iniciado', 'El guardia ha autorizado tu salida', 'success');
-                    this.startTracking();
-                    this.switchTab('ruta');
-                }
-                break;
-                
-            case 'returned':
-                this.showNotification('🏁 Viaje terminado', 'Dirígete a taller para la revisión final', 'warning');
-                this.stopTracking();
-                this.switchTab('taller-final');
-                this.cargarResumenViaje();
-                break;
-                
-            case 'completed':
-                this.showNotification('🎉 Unidad liberada', 'El taller ha completado la revisión', 'success');
-                this.currentTrip = null;
-                await this.loadDashboardState();
-                this.switchTab('unidad');
-                break;
-        }
-        
-        await this.loadDashboardState();
-    }
-
-    // ==================== MOSTRAR CÓDIGO DE ACCESO ====================
-    
-    showAccessCode(code) {
-        const container = document.getElementById('access-code-container');
-        const display = document.getElementById('access-code-display');
-        
-        if (container && display) {
-            display.innerText = code;
-            container.classList.remove('hidden');
-            
-            // Hacer que parpadee para llamar la atención
-            setTimeout(() => {
-                container.classList.add('opacity-90');
-            }, 10000);
-        }
-    }
-
-    // ==================== CONFIGURACIÓN ====================
-    
-    setupEventListeners() {
-        document.addEventListener('visibilitychange', () => {
-            if (this.currentTrip?.status === 'in_progress') {
-                console.log('GPS continúa en background');
-            }
-        });
-
-        // Cargar Leaflet si no está disponible
-        if (!window.L) {
-            const script = document.createElement('script');
-            script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-            script.integrity = 'sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=';
-            script.crossOrigin = '';
-            document.head.appendChild(script);
-
-            const link = document.createElement('link');
-            link.rel = 'stylesheet';
-            link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-            link.integrity = 'sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=';
-            link.crossOrigin = '';
-            document.head.appendChild(link);
-        }
-    }
-
-    // ==================== LOGOUT ====================
-    
-    async logout() {
-        if (!confirm('¿Estás seguro que deseas cerrar sesión?')) return;
-
-        try {
-            if (this.backgroundSyncInterval) {
-                clearInterval(this.backgroundSyncInterval);
-            }
-            
-            if (this.updateInterval) {
-                clearInterval(this.updateInterval);
-            }
-            
-            if (this.realtimeChannel) {
-                supabase.removeChannel(this.realtimeChannel);
-            }
-            
-            this.stopTracking();
-            
-            await supabase.auth.signOut();
-
-        } catch (error) {
-            console.error('Error durante logout:', error);
-        } finally {
-            localStorage.clear();
-            window.location.hash = '#login';
-            window.location.reload();
-        }
-    }
-
-    // ==================== GPS Y MAPA ====================
-    
-    startTracking() {
-        if (!navigator.geolocation) {
-            alert("El dispositivo no tiene sensor GPS.");
-            return;
-        }
-
-        if (this.watchPositionId) {
-            navigator.geolocation.clearWatch(this.watchPositionId);
-        }
-
-        const gpsIndicator = document.getElementById('gps-status-indicator');
-        
-        if (gpsIndicator) {
-            gpsIndicator.innerHTML = `
-                <div class="flex items-center justify-center gap-2 text-yellow-400">
-                    <span class="w-2 h-2 rounded-full bg-yellow-400 animate-ping"></span>
-                    <span class="text-xs font-bold">Iniciando GPS...</span>
-                </div>
-            `;
-        }
-
-        navigator.geolocation.getCurrentPosition(
-            (pos) => {
-                this.handleFirstPosition(pos);
-                
-                this.watchPositionId = navigator.geolocation.watchPosition(
-                    (position) => this.handlePositionUpdate(position),
-                    (error) => this.handleGPSError(error),
-                    { 
-                        enableHighAccuracy: true, 
-                        maximumAge: 0,
-                        timeout: 10000,
-                        distanceFilter: 10
-                    }
-                );
-            },
-            (err) => {
-                this.handleGPSError(err);
-            },
-            { enableHighAccuracy: true, timeout: 10000 }
-        );
-    }
-
-    handleFirstPosition(pos) {
-        if (!this.tripLogistics.startTime && this.currentTrip?.status === 'in_progress') {
-            this.tripLogistics.startTime = new Date();
-            
-            this.updateTripInDatabase({
-                start_time: this.tripLogistics.startTime.toISOString()
-            });
-        }
-
-        const gpsIndicator = document.getElementById('gps-status-indicator');
-        if (gpsIndicator) {
-            gpsIndicator.innerHTML = `
-                <div class="flex items-center justify-center gap-2 text-emerald-400">
-                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-                    <span class="text-xs font-bold">GPS Activo - Enviando datos...</span>
-                </div>
-            `;
-        }
-
-        const gpsHeader = document.getElementById('gps-header-indicator');
-        if (gpsHeader) {
-            gpsHeader.innerHTML = `
-                <span class="animate-ping absolute h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                <span class="relative rounded-full h-2 w-2 bg-green-500"></span>
-            `;
-        }
-    }
-
-    handlePositionUpdate(pos) {
-        const { latitude, longitude, speed, accuracy } = pos.coords;
-        const now = new Date();
-        const speedKmh = Math.round((speed || 0) * 3.6);
-
-        const speedEl = document.getElementById('live-speed');
-        if (speedEl) speedEl.innerText = `${speedKmh} km/h`;
-
-        if (this.tripLogistics.lastPosition) {
-            const distance = this.calculateDistance(
-                this.tripLogistics.lastPosition.lat,
-                this.tripLogistics.lastPosition.lng,
-                latitude,
-                longitude
-            );
-
-            if (distance < 0.5) {
-                this.tripLogistics.totalDistance += distance;
-                
-                const fuelConsumption = this.tripLogistics.totalDistance / 8;
-                
-                const distanceEl = document.getElementById('live-distance');
-                if (distanceEl) distanceEl.innerText = this.tripLogistics.totalDistance.toFixed(1);
-                
-                const fuelEl = document.getElementById('live-fuel');
-                if (fuelEl) fuelEl.innerText = fuelConsumption.toFixed(1);
-                
-                const summaryDistance = document.getElementById('summary-distance');
-                if (summaryDistance) summaryDistance.innerText = this.tripLogistics.totalDistance.toFixed(1) + ' km';
-                
-                const summaryFuel = document.getElementById('summary-fuel');
-                if (summaryFuel) summaryFuel.innerText = fuelConsumption.toFixed(1) + ' L';
-            }
-
-            const timeDiff = (now - this.tripLogistics.lastUpdateTime) / 1000;
-            if (speedKmh > 1) {
-                this.tripLogistics.movingTime += timeDiff;
-            } else {
-                this.tripLogistics.idleTime += timeDiff;
-            }
-
-            if (speedKmh > this.tripLogistics.maxSpeed) {
-                this.tripLogistics.maxSpeed = speedKmh;
-            }
-        }
-
-        if (this.tripLogistics.startTime) {
-            const duration = Math.floor((now - this.tripLogistics.startTime) / 1000);
-            const hours = Math.floor(duration / 3600);
-            const minutes = Math.floor((duration % 3600) / 60);
-            const seconds = duration % 60;
-            
-            const durationEl = document.getElementById('trip-duration');
-            if (durationEl) {
-                durationEl.innerText = 
-                    `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-            }
-        }
-
-        this.tripLogistics.lastPosition = { lat: latitude, lng: longitude, timestamp: now };
-        this.tripLogistics.lastUpdateTime = now;
-        this.tripLogistics.lastSpeed = speedKmh;
-
-        // Actualizar marcador en el mapa si existe
-        this.updateMapMarker(latitude, longitude);
-
-        if (this.currentTrip?.status === 'in_progress') {
-            const locationData = {
-                lat: latitude,
-                lng: longitude,
-                speed: speedKmh,
-                accuracy: accuracy,
-                total_distance: this.tripLogistics.totalDistance,
-                moving_time: this.tripLogistics.movingTime,
-                idle_time: this.tripLogistics.idleTime,
-                timestamp: now.toISOString()
-            };
-            
-            this.pendingLocations.push(locationData);
-            this.syncPendingLocations();
-        }
-    }
-
-    calculateDistance(lat1, lon1, lat2, lon2) {
-        const R = 6371;
-        const dLat = this.deg2rad(lat2 - lat1);
-        const dLon = this.deg2rad(lon2 - lon1);
-        const a = 
-            Math.sin(dLat/2) * Math.sin(dLat/2) +
-            Math.cos(this.deg2rad(lat1)) * Math.cos(this.deg2rad(lat2)) * 
-            Math.sin(dLon/2) * Math.sin(dLon/2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-        return R * c;
-    }
-
-    deg2rad(deg) {
-        return deg * (Math.PI/180);
-    }
-
-    handleGPSError(err) {
-        console.error("GPS Error:", err);
-        const gpsIndicator = document.getElementById('gps-status-indicator');
-        if (!gpsIndicator) return;
-        
-        let errorMsg = 'Error de GPS';
-        if (err.code === 1) errorMsg = 'Permiso denegado';
-        if (err.code === 2) errorMsg = 'Señal no disponible';
-        if (err.code === 3) errorMsg = 'Tiempo de espera agotado';
-
-        gpsIndicator.innerHTML = `
-            <div class="flex flex-col items-center gap-2">
-                <div class="flex items-center gap-1 text-red-400">
-                    <span class="material-symbols-outlined text-sm">gps_off</span>
-                    <span class="text-xs">${errorMsg}</span>
-                </div>
-                <button onclick="window.conductorModule.startTracking()" 
-                    class="text-[10px] bg-primary/20 text-primary px-3 py-1 rounded-full">
-                    Reintentar
-                </button>
-            </div>
-        `;
-
-        const gpsHeader = document.getElementById('gps-header-indicator');
-        if (gpsHeader) {
-            gpsHeader.innerHTML = `
-                <span class="relative rounded-full h-2 w-2 bg-red-500"></span>
-            `;
-        }
-    }
-
-    stopTracking() {
-        if (this.watchPositionId) {
-            navigator.geolocation.clearWatch(this.watchPositionId);
-            this.watchPositionId = null;
-            
-            const gpsIndicator = document.getElementById('gps-status-indicator');
-            if (gpsIndicator) {
-                gpsIndicator.innerHTML = `
-                    <div class="flex items-center justify-center gap-2 text-slate-400">
-                        <span class="material-symbols-outlined">gps_fixed</span>
-                        <span class="text-xs font-bold">GPS Detenido</span>
-                    </div>
-                `;
-            }
-
-            const gpsHeader = document.getElementById('gps-header-indicator');
-            if (gpsHeader) {
-                gpsHeader.innerHTML = `
-                    <span class="relative rounded-full h-2 w-2 bg-slate-500"></span>
-                `;
-            }
-        }
-    }
-
-    // ==================== FUNCIONES DEL MAPA ====================
-
-    async initDriverMap() {
-        if (this.driverMap || !window.L || !this.currentTrip) return;
-
-        try {
-            const L = window.L;
-            const center = this.tripLogistics.lastPosition 
-                ? [this.tripLogistics.lastPosition.lat, this.tripLogistics.lastPosition.lng] 
-                : [19.4326, -99.1332]; // Centro de México por defecto
-
-            this.driverMap = L.map('driver-map', { 
-                zoomControl: true, 
-                attributionControl: false 
-            }).setView(center, 13);
-
-            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { 
-                maxZoom: 19,
-                subdomains: 'abcd'
-            }).addTo(this.driverMap);
-
-            // Icono para el vehículo
-            const carIconHtml = `<div class="bg-[#10b981] w-4 h-4 rounded-full border-2 border-white shadow-[0_0_15px_#10b981] animate-pulse"></div>`;
-            const carIcon = L.divIcon({ 
-                className: 'local-car-marker', 
-                html: carIconHtml, 
-                iconSize: [16, 16], 
-                iconAnchor: [8, 8] 
-            });
-
-            if (this.tripLogistics.lastPosition) {
-                this.myLocationMarker = L.marker(
-                    [this.tripLogistics.lastPosition.lat, this.tripLogistics.lastPosition.lng], 
-                    { icon: carIcon }
-                ).addTo(this.driverMap);
-            }
-
-            // Evento click para agregar puntos de ruta
-            this.driverMap.on('click', (e) => {
-                this.addStopFromMap(e.latlng.lat, e.latlng.lng);
-            });
-
-            // Cargar puntos de ruta guardados
-            if (this.currentTrip?.request_details?.route_plan) {
-                this.routeStops = this.currentTrip.request_details.route_plan;
-                this.isReturning = this.currentTrip.request_details.is_returning || false;
-            }
-
-            this.renderRouteStops();
-            this.updateMapMarkers();
-            this.updateReturnButtonUI();
-
-            setTimeout(() => this.driverMap.invalidateSize(), 400);
-        } catch (e) {
-            console.error("Error iniciando mapa:", e);
-        }
-    }
-
-    updateMapMarker(lat, lng) {
-        if (this.myLocationMarker && this.driverMap) {
-            this.myLocationMarker.setLatLng([lat, lng]);
-            this.driverMap.panTo([lat, lng]);
-        }
-    }
-
-    updateMapMarkers() {
-        if (!this.driverMap || !window.L) return;
-
-        const L = window.L;
-        
-        // Limpiar marcadores antiguos
-        this.driverMarkers.forEach(m => this.driverMap.removeLayer(m));
-        this.driverMarkers = [];
-
-        // Agregar marcadores de los puntos de ruta
-        this.routeStops.forEach((stop, i) => {
-            const isReturn = stop.type === 'return';
-            const color = isReturn ? 'bg-purple-500' : 'bg-primary';
-            
-            const iconHtml = `<div class="${color} w-6 h-6 rounded-full border-2 border-white flex items-center justify-center text-[10px] text-white font-black shadow-lg">${i+1}</div>`;
-            const icon = L.divIcon({ 
-                className: 'custom-stop-marker', 
-                html: iconHtml, 
-                iconSize: [24, 24], 
-                iconAnchor: [12, 12] 
-            });
-            
-            const marker = L.marker([stop.lat, stop.lng], { icon }).addTo(this.driverMap);
-            marker.bindPopup(stop.name);
-            this.driverMarkers.push(marker);
-        });
-
-        // Ajustar vista para mostrar todos los marcadores
-        if (this.driverMarkers.length > 0) {
-            const group = new L.featureGroup(this.driverMarkers);
-            if (this.myLocationMarker) group.addLayer(this.myLocationMarker);
-            this.driverMap.fitBounds(group.getBounds(), { padding: [30, 30], maxZoom: 15 });
-        }
-    }
-
-    async addStopFromMap(lat, lng) {
-        this.showNotification('Agregando punto...', 'Extrayendo dirección', 'info');
-        
-        try {
-            const res = await fetch(
-                `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&accept-language=es`
-            );
-            const data = await res.json();
-            const name = data.display_name ? data.display_name.split(',')[0] : 'Punto en mapa';
-            
-            this.addRouteStop(lat, lng, name, 'stop');
-        } catch (e) {
-            this.addRouteStop(lat, lng, 'Ubicación manual', 'stop');
-        }
-    }
-
-    addRouteStop(lat, lng, name, type) {
-        this.routeStops.push({ 
-            id: 'stop_' + Date.now(), 
-            lat, 
-            lng, 
-            name, 
-            type, 
-            timestamp: new Date().toISOString() 
-        });
-        this.renderRouteStops();
-        this.updateMapMarkers();
-    }
-
-    removeRouteStop(index) {
-        if (this.routeStops[index].type === 'return') { 
-            this.isReturning = false; 
-            this.updateReturnButtonUI(); 
-        }
-        this.routeStops.splice(index, 1);
-        this.renderRouteStops();
-        this.updateMapMarkers();
-    }
-
-    toggleReturnTrip() {
-        this.isReturning = !this.isReturning;
-        
-        if (this.isReturning) {
-            // Coordenadas de la base (ajusta según tu ubicación)
-            this.addRouteStop(19.4326, -99.1332, 'Base Central', 'return');
-            this.showNotification('Regreso marcado', 'Ruta hacia la base añadida', 'success');
-        } else {
-            this.routeStops = this.routeStops.filter(s => s.type !== 'return');
-            this.renderRouteStops();
-            this.updateMapMarkers();
-        }
-        this.updateReturnButtonUI();
-    }
-
-    updateReturnButtonUI() {
-        const btn = document.getElementById('btn-return-trip');
-        if (!btn) return;
-        
-        if (this.isReturning) {
-            btn.classList.replace('bg-slate-700', 'bg-purple-600');
-            btn.classList.replace('hover:bg-slate-600', 'hover:bg-purple-500');
-            btn.innerHTML = '<span class="material-symbols-outlined text-[10px] align-middle mr-1">keyboard_return</span>Regreso Activo';
-        } else {
-            btn.classList.replace('bg-purple-600', 'bg-slate-700');
-            btn.classList.replace('hover:bg-purple-500', 'hover:bg-slate-600');
-            btn.innerHTML = 'Marcar Regreso';
-        }
-    }
-
-    renderRouteStops() {
-        const list = document.getElementById('route-stops-list');
-        if (!list) return;
-
-        if (this.routeStops.length === 0) {
-            list.innerHTML = '<li class="text-slate-500 text-center py-2 text-[10px] border border-dashed border-[#324d67] rounded-lg">Agrega puntos a tu ruta tocando el mapa</li>';
-            return;
-        }
-
-        list.innerHTML = this.routeStops.map((stop, index) => `
-            <li class="flex justify-between items-center bg-[#1c2127] p-2 rounded-lg border border-[#324d67] group">
-                <div class="flex items-center gap-3 overflow-hidden">
-                    <span class="w-5 h-5 rounded-full ${stop.type === 'return' ? 'bg-purple-500' : 'bg-primary'} text-[10px] flex items-center justify-center font-black text-white shrink-0 shadow">${index + 1}</span>
-                    <div class="flex flex-col overflow-hidden">
-                        <span class="truncate font-bold text-[11px]" title="${stop.name}">${stop.name}</span>
-                        <span class="text-[8px] text-[#92adc9]">${stop.type === 'return' ? 'Trayecto final' : 'Parada intermedia'}</span>
-                    </div>
-                </div>
-                <button onclick="window.conductorModule.removeRouteStop(${index})" class="text-slate-500 hover:text-red-500 p-1 shrink-0 bg-[#111a22] rounded-md border border-[#233648]">
-                    <span class="material-symbols-outlined text-[14px]">delete</span>
-                </button>
-            </li>
-        `).join('');
-    }
-
-    async saveRoutePlan() {
-        if (!this.currentTrip) return;
-
-        const btn = document.querySelector('[onclick="window.conductorModule.saveRoutePlan()"]');
-        if (btn) {
-            btn.disabled = true;
-            btn.innerHTML = '<span class="animate-spin inline-block mr-2 text-[16px]">⏳</span> GUARDANDO...';
-        }
-
-        try {
-            const currentDetails = this.currentTrip.request_details || {};
-            const newDetails = { 
-                ...currentDetails, 
-                route_plan: this.routeStops, 
-                is_returning: this.isReturning 
-            };
-
-            await this.updateTripInDatabase({ request_details: newDetails });
-            
-            this.showNotification('✅ Ruta Guardada', 'Se ha actualizado el plan de viaje', 'success');
-
-            if (btn) {
-                btn.classList.replace('bg-green-600', 'bg-emerald-500');
-                btn.innerHTML = '<span class="material-symbols-outlined text-[16px]">check_circle</span> RUTA CONFIRMADA';
-                
-                setTimeout(() => { 
-                    btn.disabled = false;
-                    btn.classList.replace('bg-emerald-500', 'bg-green-600');
-                    btn.innerHTML = '<span class="material-symbols-outlined text-[16px]">save</span> Guardar Ruta'; 
-                }, 2500);
-            }
-        } catch (e) {
-            this.showNotification('❌ Error', 'No se pudo guardar la ruta', 'error');
-            if (btn) { 
-                btn.disabled = false; 
-                btn.innerHTML = 'Guardar Ruta'; 
-            }
-        }
-    }
-
-    // ==================== BASE DE DATOS ====================
-    
-    async sendLocationToDatabase(locationData) {
-        if (!this.currentTrip) return;
-
-        try {
-            const { error } = await supabase.from('trip_locations').insert({
-                trip_id: this.currentTrip.id,
-                lat: locationData.lat,
-                lng: locationData.lng,
-                speed: locationData.speed,
-                accuracy: locationData.accuracy,
-                total_distance: locationData.total_distance,
-                moving_time: locationData.movingTime,
-                idle_time: locationData.idleTime,
-                timestamp: locationData.timestamp
-            });
-
-            if (error) console.error('Error guardando ubicación:', error);
-        } catch (error) {
-            console.error('Error en sendLocationToDatabase:', error);
-        }
-    }
-
-    async updateTripInDatabase(updates) {
-        if (!this.currentTrip) return;
-
-        try {
-            const { error } = await supabase
-                .from('trips')
-                .update(updates)
-                .eq('id', this.currentTrip.id);
-
-            if (error) console.error('Error actualizando viaje:', error);
-        } catch (error) {
-            console.error('Error en updateTripInDatabase:', error);
-        }
-    }
-
-    // ==================== FUNCIONES DE SOLICITUD ====================
-    
-    async loadAvailableUnits() {
-        try {
-            const { data: vehs, error } = await supabase
-                .from('vehicles')
-                .select('*')
-                .eq('status', 'active');
-                
-            if (error) throw error;
-            
-            const select = document.getElementById('solicitud-vehicle');
-            if (select) {
-                select.innerHTML = '<option value="">Seleccionar unidad...</option>' + 
-                    (vehs?.map(v => `<option value="${v.id}">ECO-${v.economic_number} - ${v.plate} (${v.model})</option>`).join('') || '');
-            }
-        } catch (error) {
-            console.error('Error cargando unidades:', error);
-        }
-    }
-
-    async loadAvailableUnitsForMainView() {
-        const container = document.getElementById('unidad-content');
-        const loader = document.getElementById('unidad-loader');
-        const noUnitsMsg = document.getElementById('no-units-message');
-        
-        if (!container) return;
-        
-        if (loader) loader.classList.remove('hidden');
-        if (container) container.classList.add('hidden');
-        if (noUnitsMsg) noUnitsMsg.classList.add('hidden');
-        
-        try {
-            const { data: vehs, error } = await supabase
-                .from('vehicles')
-                .select('*')
-                .eq('status', 'active');
-                
-            if (error) throw error;
-            
-            if (!vehs || vehs.length === 0) {
-                if (noUnitsMsg) noUnitsMsg.classList.remove('hidden');
-            } else {
-                if (container) {
-                    container.classList.remove('hidden');
-                    container.innerHTML = vehs.map(v => `
-                        <div onclick="window.conductorModule.selectVehicleForRequest('${v.id}', '${v.plate}', '${v.model}', '${v.economic_number}')" 
-                             class="bg-gradient-to-r from-[#192633] to-[#1a2533] p-4 rounded-xl border border-[#233648] flex justify-between items-center cursor-pointer hover:border-primary hover:scale-[1.02] transition-all active:scale-95">
-                            <div>
-                                <p class="text-white font-black text-lg">${v.plate}</p>
-                                <p class="text-[10px] text-[#92adc9] mt-1">${v.model} · ECO-${v.economic_number}</p>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                <div class="space-y-6">
+                    <div class="bg-[#111a22] border border-[#324d67] rounded-xl p-5 shadow-lg">
+                        <h4 class="font-bold text-white mb-4 flex items-center gap-2 border-b border-[#324d67] pb-2">
+                            <span class="material-symbols-outlined text-primary">id_card</span> Identificación
+                        </h4>
+                        <div class="space-y-4">
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-[10px] font-bold text-[#92adc9] uppercase tracking-wider mb-1">ID Interno (ECO)</label>
+                                    <input id="new-eco" class="w-full bg-[#1c2127] border border-[#324d67] text-white rounded-lg px-3 py-2 outline-none focus:border-primary transition-colors" placeholder="Ej: 01">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold text-[#92adc9] uppercase tracking-wider mb-1">Placas</label>
+                                    <input id="new-plate" class="w-full bg-[#1c2127] border border-[#324d67] text-white rounded-lg px-3 py-2 outline-none focus:border-primary transition-colors uppercase font-mono" placeholder="DEMO-01">
+                                </div>
                             </div>
-                            <button class="bg-primary text-white text-[10px] font-black px-4 py-2 rounded-lg uppercase shadow-lg">
-                                Solicitar
-                            </button>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-[10px] font-bold text-[#92adc9] uppercase tracking-wider mb-1">Marca</label>
+                                    <input id="new-brand" class="w-full bg-[#1c2127] border border-[#324d67] text-white rounded-lg px-3 py-2 outline-none focus:border-primary transition-colors" placeholder="Ej: Ford">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold text-[#92adc9] uppercase tracking-wider mb-1">Modelo</label>
+                                    <input id="new-model" class="w-full bg-[#1c2127] border border-[#324d67] text-white rounded-lg px-3 py-2 outline-none focus:border-primary transition-colors" placeholder="Ej: F-150">
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-[10px] font-bold text-[#92adc9] uppercase tracking-wider mb-1">Año</label>
+                                    <input type="number" id="new-year" class="w-full bg-[#1c2127] border border-[#324d67] text-white rounded-lg px-3 py-2 outline-none focus:border-primary transition-colors" value="${new Date().getFullYear()}" placeholder="2025">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold text-[#92adc9] uppercase tracking-wider mb-1">Color</label>
+                                    <input id="new-color" class="w-full bg-[#1c2127] border border-[#324d67] text-white rounded-lg px-3 py-2 outline-none focus:border-primary transition-colors" placeholder="Blanco">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-[#92adc9] uppercase tracking-wider mb-1">VIN (Número de Serie)</label>
+                                <input id="new-vin" class="w-full bg-[#1c2127] border border-[#324d67] text-white rounded-lg px-3 py-2 outline-none focus:border-primary transition-colors font-mono text-sm uppercase" placeholder="1FTFW1ET4EFA12345">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-[#92adc9] uppercase tracking-wider mb-1">URL Fotografía Vehículo</label>
+                                <input id="new-img" class="w-full bg-[#1c2127] border border-[#324d67] text-white rounded-lg px-3 py-2 outline-none focus:border-primary transition-colors text-xs" placeholder="https://...">
+                            </div>
                         </div>
-                    `).join('');
-                }
-            }
-        } catch (error) {
-            console.error('Error cargando unidades:', error);
-            if (noUnitsMsg) {
-                noUnitsMsg.innerHTML = '<span class="material-symbols-outlined text-4xl mb-2 text-red-500">error</span><p class="text-sm">Error de conexión</p>';
-                noUnitsMsg.classList.remove('hidden');
-            }
-        } finally {
-            if (loader) loader.classList.add('hidden');
-        }
-    }
-
-    async loadLastChecklist(vehicleId) {
-        if (!vehicleId) return;
-        
-        try {
-            const { data: lastTrip, error } = await supabase
-                .from('trips')
-                .select('workshop_checklist, completed_at')
-                .eq('vehicle_id', vehicleId)
-                .eq('status', 'completed')
-                .order('completed_at', { ascending: false })
-                .limit(1)
-                .maybeSingle();
-
-            const container = document.getElementById('last-checklist-container');
-            const content = document.getElementById('last-checklist-content');
-            
-            if (!container || !content) return;
-            
-            if (error || !lastTrip?.workshop_checklist) {
-                container.classList.add('hidden');
-                return;
-            }
-
-            container.classList.remove('hidden');
-            const check = lastTrip.workshop_checklist;
-            
-            content.innerHTML = `
-                <div class="space-y-2">
-                    <div class="grid grid-cols-2 gap-2">
-                        <span class="text-${check.liquid ? 'green' : 'red'}-400 text-xs flex items-center gap-1">
-                            <span class="material-symbols-outlined text-sm">${check.liquid ? 'check_circle' : 'cancel'}</span> Líquido
-                        </span>
-                        <span class="text-${check.oil ? 'green' : 'red'}-400 text-xs flex items-center gap-1">
-                            <span class="material-symbols-outlined text-sm">${check.oil ? 'check_circle' : 'cancel'}</span> Aceite
-                        </span>
-                        <span class="text-${check.coolant ? 'green' : 'red'}-400 text-xs flex items-center gap-1">
-                            <span class="material-symbols-outlined text-sm">${check.coolant ? 'check_circle' : 'cancel'}</span> Anticongelante
-                        </span>
-                        <span class="text-${check.lights ? 'green' : 'red'}-400 text-xs flex items-center gap-1">
-                            <span class="material-symbols-outlined text-sm">${check.lights ? 'check_circle' : 'cancel'}</span> Luces
-                        </span>
-                        <span class="text-${check.tires ? 'green' : 'red'}-400 text-xs flex items-center gap-1">
-                            <span class="material-symbols-outlined text-sm">${check.tires ? 'check_circle' : 'cancel'}</span> Llantas
-                        </span>
                     </div>
-                    <p class="text-[10px] text-[#92adc9] mt-2">Fecha: ${new Date(lastTrip.completed_at).toLocaleDateString()}</p>
+
+                    <div class="bg-[#111a22] border border-[#324d67] rounded-xl p-5 shadow-lg">
+                        <h4 class="font-bold text-white mb-4 flex items-center gap-2 border-b border-[#324d67] pb-2">
+                            <span class="material-symbols-outlined text-orange-500">settings_applications</span> Especificaciones Mecánicas
+                        </h4>
+                        <div class="space-y-4">
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-[10px] font-bold text-[#92adc9] uppercase tracking-wider mb-1">Tipo de Vehículo</label>
+                                    <select id="new-vehicle-type" class="w-full bg-[#1c2127] border border-[#324d67] text-white rounded-lg px-3 py-2 outline-none focus:border-primary transition-colors">
+                                        <option value="">Seleccionar</option>
+                                        <option value="Camioneta">Camioneta</option>
+                                        <option value="Sedán">Sedán</option>
+                                        <option value="SUV">SUV</option>
+                                        <option value="Pickup">Pickup</option>
+                                        <option value="Motocicleta">Motocicleta</option>
+                                        <option value="Camión">Camión</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold text-[#92adc9] uppercase tracking-wider mb-1">Motor</label>
+                                    <input id="new-engine" class="w-full bg-[#1c2127] border border-[#324d67] text-white rounded-lg px-3 py-2 outline-none focus:border-primary transition-colors" placeholder="Ej: 5.0L V8">
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-[10px] font-bold text-[#92adc9] uppercase tracking-wider mb-1">Transmisión</label>
+                                    <select id="new-transmission" class="w-full bg-[#1c2127] border border-[#324d67] text-white rounded-lg px-3 py-2 outline-none focus:border-primary transition-colors">
+                                        <option value="">Seleccionar</option>
+                                        <option value="Automática">Automática</option>
+                                        <option value="Manual">Manual</option>
+                                        <option value="CVT">CVT</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold text-[#92adc9] uppercase tracking-wider mb-1">Combustible</label>
+                                    <select id="new-fuel-type" class="w-full bg-[#1c2127] border border-[#324d67] text-white rounded-lg px-3 py-2 outline-none focus:border-primary transition-colors">
+                                        <option value="">Seleccionar</option>
+                                        <option value="Gasolina">Gasolina</option>
+                                        <option value="Diésel">Diésel</option>
+                                        <option value="Híbrido">Híbrido</option>
+                                        <option value="Eléctrico">Eléctrico</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-[#92adc9] uppercase tracking-wider mb-1">Capacidad / Carga Máxima</label>
+                                <input id="new-capacity" class="w-full bg-[#1c2127] border border-[#324d67] text-white rounded-lg px-3 py-2 outline-none focus:border-primary transition-colors" placeholder="Ej: 5 pasajeros, 1000kg">
+                            </div>
+                        </div>
+                    </div>
                 </div>
-            `;
-        } catch (error) {
-            console.error('Error cargando checklist:', error);
-            const container = document.getElementById('last-checklist-container');
-            if (container) container.classList.add('hidden');
-        }
+
+                <div class="space-y-6">
+                    <div class="bg-[#111a22] border border-[#324d67] rounded-xl p-5 shadow-lg">
+                        <h4 class="font-bold text-white mb-4 flex items-center gap-2 border-b border-[#324d67] pb-2">
+                            <span class="material-symbols-outlined text-green-500">verified_user</span> Documentación Legal
+                        </h4>
+                        <div class="space-y-4">
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-[10px] font-bold text-[#92adc9] uppercase tracking-wider mb-1">Vigencia Tarjeta Circulación</label>
+                                    <input type="date" id="new-license-expiry" class="w-full bg-[#1c2127] border border-[#324d67] text-white rounded-lg px-3 py-2 outline-none focus:border-primary text-sm cursor-pointer">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold text-[#92adc9] uppercase tracking-wider mb-1">Estado TC</label>
+                                    <select id="new-license-status" class="w-full bg-[#1c2127] border border-[#324d67] text-white rounded-lg px-3 py-2 outline-none focus:border-primary">
+                                        <option value="vigente">Vigente</option>
+                                        <option value="vencido">Vencido</option>
+                                        <option value="en proceso">En proceso</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-[10px] font-bold text-[#92adc9] uppercase tracking-wider mb-1">Vigencia Póliza Seguro</label>
+                                    <input type="date" id="new-insurance-expiry" class="w-full bg-[#1c2127] border border-[#324d67] text-white rounded-lg px-3 py-2 outline-none focus:border-primary text-sm cursor-pointer">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold text-[#92adc9] uppercase tracking-wider mb-1">Estado Seguro</label>
+                                    <select id="new-insurance-status" class="w-full bg-[#1c2127] border border-[#324d67] text-white rounded-lg px-3 py-2 outline-none focus:border-primary">
+                                        <option value="vigente">Vigente</option>
+                                        <option value="vencido">Vencido</option>
+                                        <option value="en proceso">En proceso</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-[#111a22] border border-[#324d67] rounded-xl p-5 shadow-lg">
+                        <h4 class="font-bold text-white mb-4 flex items-center gap-2 border-b border-[#324d67] pb-2">
+                            <span class="material-symbols-outlined text-purple-500">speed</span> Estado Operativo Base
+                        </h4>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-[10px] font-bold text-[#92adc9] uppercase tracking-wider mb-1">Kilometraje Inicial (Dashboard)</label>
+                                <input type="number" id="new-initial-km" class="w-full bg-[#1c2127] border border-[#324d67] text-white rounded-lg px-3 py-2 outline-none focus:border-primary font-mono text-lg" placeholder="0" value="0">
+                            </div>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-[10px] font-bold text-[#92adc9] uppercase tracking-wider mb-1">Centro de Costos (Área)</label>
+                                    <input id="new-cost-center" class="w-full bg-[#1c2127] border border-[#324d67] text-white rounded-lg px-3 py-2 outline-none focus:border-primary" placeholder="Ej: LOG-001">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold text-[#92adc9] uppercase tracking-wider mb-1">Estatus Actual</label>
+                                    <select id="new-status" class="w-full bg-[#1c2127] border border-[#324d67] text-white rounded-lg px-3 py-2 outline-none focus:border-primary font-bold">
+                                        <option value="active">Activo / Disponible</option>
+                                        <option value="maintenance">En Taller</option>
+                                        <option value="inactive">De Baja</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-6 flex gap-4 border-t border-[#324d67] pt-6 bg-[#151b23] -mx-6 -mb-6 px-6 pb-6 rounded-b-2xl">
+                <button onclick="document.getElementById('global-modal').classList.add('hidden')" class="flex-1 bg-[#233648] hover:bg-[#2d445a] text-white py-4 rounded-xl font-bold transition-all border border-[#324d67]">
+                    Cancelar
+                </button>
+                <button onclick="window.invModule.saveNewVehicle()" id="btn-save-vehicle" class="flex-1 bg-primary hover:bg-blue-600 text-white py-4 rounded-xl font-bold shadow-[0_0_15px_rgba(19,127,236,0.3)] transition-all flex items-center justify-center gap-2">
+                    <span class="material-symbols-outlined">save</span> Guardar Unidad
+                </button>
+            </div>
+        `;
+        modal.classList.remove('hidden');
     }
 
-    selectVehicleForRequest(vehicleId, plate, model, eco) {
-        this.selectedVehicleForRequest = { id: vehicleId, plate, model, eco };
-        this.switchTab('solicitud');
+    async saveNewVehicle() {
+        const btn = document.getElementById('btn-save-vehicle');
+        const initialKm = parseInt(document.getElementById('new-initial-km').value) || 0;
         
-        setTimeout(() => {
-            const select = document.getElementById('solicitud-vehicle');
-            if (select) {
-                select.value = vehicleId;
-                this.loadLastChecklist(vehicleId);
-            }
-        }, 500);
-    }
-
-    // ==================== MÉTODO ENVIAR SOLICITUD ====================
-
-    async enviarSolicitud() {
-        // Verificar si ya hay un viaje activo
-        if (this.currentTrip) {
-            this.showNotification('❌ No disponible', 'Ya tienes un viaje en curso', 'error');
-            return;
-        }
-
-        if (!this.userId) {
-            console.error('❌ Error: userId es null');
-            alert('Error de sesión. Por favor, recarga la página.');
-            return;
-        }
-
-        const vehicleId = document.getElementById('solicitud-vehicle').value;
-        const destino = document.getElementById('solicitud-destino').value;
-        const motivo = document.getElementById('solicitud-motivo').value;
-        const jefeDirecto = document.getElementById('solicitud-jefe').value;
-        
-        // Validaciones
-        if (!vehicleId) {
-            alert('Por favor selecciona una unidad');
-            return;
-        }
-        
-        if (!destino) {
-            alert('Por favor ingresa el destino');
-            document.getElementById('solicitud-destino').focus();
-            return;
-        }
-        
-        if (!motivo) {
-            alert('Por favor ingresa el motivo del viaje');
-            document.getElementById('solicitud-motivo').focus();
-            return;
-        }
-        
-        if (!jefeDirecto) {
-            alert('Por favor ingresa el nombre del jefe directo');
-            document.getElementById('solicitud-jefe').focus();
-            return;
-        }
-
-        // Deshabilitar botón mientras se procesa
-        const btn = document.querySelector('[onclick="window.conductorModule.enviarSolicitud()"]');
-        if (btn) {
-            btn.disabled = true;
-            btn.innerText = 'ENVIANDO...';
-        }
-
-        try {
-            // Generar código de acceso
-            const accessCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-            this.accessCode = accessCode;
-            
-            // Crear objeto de solicitud
-            const newTrip = {
-                driver_id: this.userId,
-                vehicle_id: vehicleId,
-                status: 'requested',
-                access_code: accessCode,
-                destination: destino,
-                supervisor: jefeDirecto,
-                request_details: {
-                    destination: destino,
-                    motivo: motivo,
-                    supervisor: jefeDirecto,
-                    requested_at: new Date().toISOString(),
-                    vehicle_id: vehicleId
-                },
-                created_at: new Date().toISOString()
-            };
-
-            console.log('📤 Enviando solicitud:', newTrip);
-
-            const { data, error } = await supabase
-                .from('trips')
-                .insert([newTrip])
-                .select();
-
-            if (error) {
-                console.error('❌ Error de Supabase:', error);
-                throw error;
-            }
-
-            console.log('✅ Solicitud creada:', data);
-            
-            // Limpiar formulario
-            document.getElementById('solicitud-destino').value = '';
-            document.getElementById('solicitud-vehicle').value = '';
-            document.getElementById('solicitud-motivo').value = '';
-            document.getElementById('solicitud-jefe').value = '';
-            
-            // Ocultar el checklist
-            const checklistContainer = document.getElementById('last-checklist-container');
-            if (checklistContainer) checklistContainer.classList.add('hidden');
-            
-            this.showNotification('✅ Solicitud enviada', 'Espera la aprobación del supervisor', 'success');
-            
-            // Cambiar a la pestaña de unidad para ver el estado
-            this.switchTab('unidad');
-            
-            // Recargar el estado del dashboard
-            await this.loadDashboardState();
-
-        } catch (error) {
-            console.error('❌ Error enviando solicitud:', error);
-            
-            let errorMessage = 'Error al enviar la solicitud';
-            if (error.message) {
-                errorMessage += ': ' + error.message;
-            }
-            if (error.details) {
-                errorMessage += ' (' + error.details + ')';
-            }
-            if (error.code) {
-                errorMessage += ` (Código: ${error.code})`;
-            }
-            
-            alert(errorMessage);
-            this.showNotification('❌ Error', 'No se pudo enviar la solicitud', 'error');
-            
-        } finally {
-            // Restaurar botón
-            if (btn) {
-                btn.disabled = false;
-                btn.innerText = 'ENVIAR SOLICITUD';
-            }
-        }
-    }
-
-    // ==================== FIRMA DE RECEPCIÓN EN TALLER ====================
-    
-    renderFirmaRecepcion() {
-        const container = document.getElementById('firma-recepcion-container');
-        if (!container) return;
-        
-        container.classList.remove('hidden');
-        
-        setTimeout(() => {
-            const canvas = document.getElementById('signature-pad');
-            if (canvas && window.SignaturePad) {
-                this.signaturePad = new window.SignaturePad(canvas, {
-                    backgroundColor: '#1c2127',
-                    penColor: '#ffffff',
-                    velocityFilterWeight: 0.7,
-                    minWidth: 0.5,
-                    maxWidth: 2.5
-                });
-                
-                canvas.addEventListener('mouseup', () => this.validateSignature());
-                canvas.addEventListener('touchend', () => this.validateSignature());
-            }
-        }, 500);
-    }
-
-    validateSignature() {
-        const btn = document.getElementById('btn-confirmar-recepcion');
-        if (btn) {
-            btn.disabled = !(this.signaturePad && !this.signaturePad.isEmpty());
-        }
-    }
-
-    clearSignature() {
-        if (this.signaturePad) {
-            this.signaturePad.clear();
-            this.validateSignature();
-        }
-    }
-
-    async confirmarRecepcionTaller() {
-        if (!this.signaturePad || this.signaturePad.isEmpty()) {
-            alert('Debes firmar de conformidad');
-            return;
-        }
-
-        const btn = document.getElementById('btn-confirmar-recepcion');
-        if (!btn) return;
-        
-        btn.disabled = true;
-        btn.innerText = 'PROCESANDO...';
-
-        try {
-            const signatureData = this.signaturePad.toDataURL('image/png');
-
-            const { error } = await supabase
-                .from('trips')
-                .update({
-                    driver_signature: signatureData,
-                    reception_confirmed_at: new Date().toISOString()
-                })
-                .eq('id', this.currentTrip.id);
-
-            if (error) throw error;
-
-            this.showNotification('✅ Recepción confirmada', 'Ya puedes pasar con el guardia', 'success');
-            this.switchTab('unidad');
-            
-        } catch (error) {
-            console.error('Error confirmando recepción:', error);
-            alert('Error: ' + error.message);
-        } finally {
-            btn.disabled = false;
-            btn.innerText = 'FIRMAR RECEPCIÓN';
-        }
-    }
-
-    // ==================== RESUMEN POST-VIAJE ====================
-    
-    cargarResumenViaje() {
-        const distanciaEl = document.getElementById('resumen-distancia');
-        const combustibleEl = document.getElementById('resumen-combustible');
-        
-        if (distanciaEl) {
-            distanciaEl.innerText = Math.round(this.tripLogistics.totalDistance) + ' km';
-        }
-        
-        if (combustibleEl) {
-            combustibleEl.innerText = Math.round(this.tripLogistics.totalDistance / 8) + ' L';
-        }
-    }
-
-    // ==================== PERFIL Y ESTADO ====================
-    
-    async loadProfileData() {
-        if (!this.userId) return;
-        
-        try {
-            const { data: p, error } = await supabase
-                .from('profiles')
-                .select('*')
-                .eq('id', this.userId)
-                .single();
-                
-            if (error) {
-                console.error('Error cargando perfil:', error);
-                return;
-            }
-            
-            if(p) {
-                this.profile = p;
-                
-                const profileName = document.getElementById('profile-name');
-                if (profileName) profileName.innerText = p.full_name || 'Conductor';
-                
-                const profileAvatar = document.getElementById('profile-avatar');
-                if (profileAvatar) profileAvatar.style.backgroundImage = `url('${p.photo_url || ''}')`;
-                
-                const cardName = document.getElementById('card-full-name');
-                if (cardName) cardName.innerText = p.full_name || 'Conductor';
-                
-                const cardPhoto = document.getElementById('card-photo');
-                if (cardPhoto) cardPhoto.style.backgroundImage = `url('${p.photo_url || ''}')`;
-                
-                const licNumber = document.getElementById('lic-number');
-                if (licNumber) licNumber.innerText = p.license_number || 'No Registrada';
-                
-                const profileManager = document.getElementById('profile-manager');
-                if (profileManager) profileManager.innerText = p.supervisor_name || 'Central COV';
-                
-                const profileRole = document.getElementById('profile-role');
-                if (profileRole) profileRole.innerText = 'Conductor';
-
-                const conductorNombre = document.getElementById('conductor-nombre');
-                if (conductorNombre) conductorNombre.innerText = p.full_name || 'Conductor';
-            }
-        } catch (error) {
-            console.error('Error en loadProfileData:', error);
-        }
-    }
-
-    async loadDashboardState() {
-        if (!this.userId) {
-            console.log('No hay userId, no se puede cargar dashboard');
-            return;
-        }
-        
-        try {
-            const { data: trips, error } = await supabase
-                .from('trips')
-                .select(`*, vehicles(*)`)
-                .eq('driver_id', this.userId)
-                .neq('status', 'closed')
-                .order('created_at', { ascending: false })
-                .limit(1);
-
-            if (error) throw error;
-
-            const trip = trips && trips.length > 0 ? trips[0] : null;
-            this.currentTrip = trip;
-
-            // Actualizar UI según el estado
-            await this.updateUIByStatus(trip);
-            
-        } catch (error) {
-            console.error('Error cargando dashboard:', error);
-        }
-    }
-
-    async updateUIByStatus(trip) {
-        const statusMap = {
-            'requested': { text: 'Solicitud enviada', color: 'bg-yellow-500' },
-            'approved_for_taller': { text: 'Dirígete a taller', color: 'bg-orange-500' },
-            'driver_accepted': { text: 'Listo para salida', color: 'bg-green-500' },
-            'in_progress': { text: 'En ruta', color: 'bg-primary' },
-            'returned': { text: 'Regresado - Ir a taller', color: 'bg-purple-500' },
-            'completed': { text: 'Viaje completado', color: 'bg-emerald-500' }
+        const data = {
+            economic_number: document.getElementById('new-eco').value,
+            plate: document.getElementById('new-plate').value.toUpperCase(),
+            brand: document.getElementById('new-brand').value,
+            model: document.getElementById('new-model').value,
+            year: document.getElementById('new-year').value,
+            color: document.getElementById('new-color').value,
+            vin: document.getElementById('new-vin').value,
+            vehicle_type: document.getElementById('new-vehicle-type').value,
+            engine: document.getElementById('new-engine').value,
+            transmission: document.getElementById('new-transmission').value,
+            fuel_type: document.getElementById('new-fuel-type').value,
+            capacity: document.getElementById('new-capacity').value,
+            license_expiry: document.getElementById('new-license-expiry').value || null,
+            license_status: document.getElementById('new-license-status').value,
+            insurance_expiry: document.getElementById('new-insurance-expiry').value || null,
+            insurance_status: document.getElementById('new-insurance-status').value,
+            initial_km: initialKm,
+            current_km: initialKm,
+            cost_center: document.getElementById('new-cost-center').value,
+            status: document.getElementById('new-status').value,
+            image_url: document.getElementById('new-img').value || null
         };
 
-        const titleUnits = document.querySelector('#tab-unidad h3');
-        const unitsContent = document.getElementById('unidad-content');
-        const noUnitsMsg = document.getElementById('no-units-message');
-        const profileStatus = document.getElementById('profile-status');
-        const solicitudBtn = document.querySelector('[onclick="window.conductorModule.switchTab(\'solicitud\')"]');
-
-        if (trip && statusMap[trip.status] && trip.status !== 'completed') {
-            const status = statusMap[trip.status];
-            if (profileStatus) profileStatus.innerText = status.text;
-            
-            const badge = document.getElementById('trip-status-badge');
-            if (badge) { 
-                badge.innerText = status.text; 
-                badge.className = `px-3 py-1 rounded-full text-[10px] font-bold uppercase ${status.color} text-white`; 
-            }
-            
-            const plateEl = document.getElementById('current-vehicle-plate');
-            if (plateEl) plateEl.innerText = trip.vehicles?.plate || '--';
-            
-            const modelEl = document.getElementById('current-vehicle-model');
-            if (modelEl) modelEl.innerText = `${trip.vehicles?.model || ''} ECO-${trip.vehicles?.economic_number || ''}`;
-            
-            const currentTripInfo = document.getElementById('current-trip-info');
-            if (currentTripInfo) currentTripInfo.classList.remove('hidden');
-            
-            if (titleUnits) titleUnits.classList.add('hidden');
-            if (unitsContent) unitsContent.classList.add('hidden');
-            if (noUnitsMsg) noUnitsMsg.classList.add('hidden');
-            
-            // Deshabilitar botón de solicitud si hay viaje activo
-            if (solicitudBtn) {
-                solicitudBtn.classList.add('opacity-50');
-                solicitudBtn.disabled = true;
-            }
-            
-            // Mostrar código de acceso
-            if (trip.status === 'driver_accepted' && trip.access_code) {
-                this.showAccessCode(trip.access_code);
-            }
-            
-            if (trip.status === 'approved_for_taller') {
-                const tInfo = document.getElementById('taller-vehicle-info');
-                if (tInfo) tInfo.innerText = `ECO-${trip.vehicles?.economic_number} - ${trip.vehicles?.plate}`;
-            }
-            
-            // Inicializar mapa si estamos en pestaña de ruta y viaje en progreso
-            if (trip.status === 'in_progress' && this.activeTab === 'ruta') {
-                setTimeout(() => {
-                    this.initDriverMap();
-                    this.startTracking();
-                }, 500);
-            }
-            
-            if (trip.status !== 'in_progress') {
-                this.stopTracking();
-            }
-            
-        } else {
-            const currentTripInfo = document.getElementById('current-trip-info');
-            if (currentTripInfo) currentTripInfo.classList.add('hidden');
-            
-            const accessContainer = document.getElementById('access-code-container');
-            if (accessContainer) accessContainer.classList.add('hidden');
-            
-            if (profileStatus) profileStatus.innerText = "Disponible";
-            this.stopTracking();
-            
-            if (titleUnits) titleUnits.classList.remove('hidden');
-            await this.loadAvailableUnitsForMainView();
-            
-            // Habilitar botón de solicitud
-            if (solicitudBtn) {
-                solicitudBtn.classList.remove('opacity-50');
-                solicitudBtn.disabled = false;
-            }
-        }
-    }
-
-    // ==================== FUNCIONES DEL VIAJE ====================
-    
-    async saveTripNotes() {
-        const notes = document.getElementById('trip-notes')?.value;
-        if (!notes || !this.currentTrip) return;
-
-        if (!this.tripLogistics.notes) this.tripLogistics.notes = [];
-        this.tripLogistics.notes.push({
-            text: notes,
-            timestamp: new Date().toISOString()
-        });
-
-        await this.updateTripInDatabase({
-            notes: this.tripLogistics.notes
-        });
-        
-        const notesEl = document.getElementById('trip-notes');
-        if (notesEl) notesEl.value = '';
-        
-        this.showNotification('✅ Nota guardada', 'Se agregó al registro del viaje', 'success');
-    }
-
-    async activateEmergency() {
-        const description = document.getElementById('emergency-desc')?.value;
-        
-        if (!description) {
-            alert('Por favor describe la emergencia');
+        if (!data.economic_number || !data.plate || !data.brand || !data.model) {
+            alert("Los campos ECO, Placas, Marca y Modelo son obligatorios para crear el expediente.");
             return;
         }
-        
-        if (!this.currentTrip) {
-            alert('No hay un viaje activo');
-            return;
-        }
-        
-        const emergencyCode = 'EMG-' + Math.random().toString(36).substring(2, 8).toUpperCase();
-        const expiryTime = new Date(Date.now() + 30 * 60000);
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="animate-spin material-symbols-outlined">sync</span> Guardando...';
 
         try {
-            await this.updateTripInDatabase({
-                emergency_code: emergencyCode,
-                emergency_expiry: expiryTime.toISOString(),
-                notes: [...(this.tripLogistics.notes || []), {
-                    type: 'emergency',
-                    description: description,
-                    code: emergencyCode,
-                    timestamp: new Date().toISOString()
-                }]
-            });
-
-            alert(`🚨 EMERGENCIA REGISTRADA\nCódigo: ${emergencyCode}\nMantén la calma, ayuda en camino.`);
+            const { data: newVeh, error } = await supabase.from('vehicles').insert([data]).select();
+            if (error) throw error;
             
-            const modal = document.getElementById('modal-emergency');
-            if (modal) modal.classList.add('hidden');
+            await supabase.from('vehicle_logs').insert([{
+                vehicle_id: newVeh[0].id,
+                date: new Date().toISOString().split('T')[0],
+                odometer: initialKm,
+                service_name: 'ALTA DE UNIDAD EN SISTEMA',
+                parts_used: 'Registro inicial del expediente digital',
+                total_cost: 0,
+                quantity: 1,
+                notes: `Vehículo registrado: ${data.brand} ${data.model} ${data.year}, Placas: ${data.plate}, ECO: ${data.economic_number}`
+            }]).catch(e => console.warn('No se pudo guardar el log inicial', e));
             
-            const descEl = document.getElementById('emergency-desc');
-            if (descEl) descEl.value = '';
+            document.getElementById('global-modal').classList.add('hidden');
+            alert("✅ Unidad registrada exitosamente y lista para operar.");
             
-        } catch (error) {
-            console.error('Error reportando emergencia:', error);
-            alert('Error al reportar emergencia');
+        } catch (err) {
+            alert("Error al guardar en base de datos: " + err.message);
+            btn.disabled = false;
+            btn.innerHTML = '<span class="material-symbols-outlined">save</span> Guardar Unidad';
         }
     }
 
-    // ==================== NAVEGACIÓN ====================
-    
-    switchTab(tabId) {
-        // Verificar si se puede acceder a la pestaña de solicitud
-        if (tabId === 'solicitud' && this.currentTrip) {
-            this.showNotification('❌ No disponible', 'Ya tienes un viaje en curso', 'error');
-            return;
+    async openVehicleDetail(id) {
+        this.selectedVehicle = this.vehicles.find(v => v.id === id);
+        if(!this.selectedVehicle) return;
+
+        // Limpiar para asegurar info fresca
+        this.vehicleAppTrips = this.allAppTrips.filter(t => t.vehicle_id === id);
+        this.vehicleInspectionsPhotos = this.vehicleAppTrips.filter(t => (t.workshop_reception_photos && t.workshop_reception_photos.length > 0) || (t.workshop_return_photos && t.workshop_return_photos.length > 0));
+
+        const [logsRes, tripsRes, docsRes] = await Promise.all([
+            supabase.from('vehicle_logs').select('*').eq('vehicle_id', id).order('date', {ascending: false}).then(r => r.error ? {data:[]} : r),
+            supabase.from('vehicle_trips').select('*').eq('vehicle_id', id).order('start_date', {ascending: false}).then(r => r.error ? {data:[]} : r),
+            supabase.from('vehicle_documents').select('*').eq('vehicle_id', id).order('uploaded_at', {ascending: false}).then(r => r.error ? {data:[]} : r)
+        ]);
+        
+        this.vehicleLogs = logsRes?.data || [];
+        this.vehicleTrips = tripsRes?.data || [];
+        this.vehicleDocuments = docsRes?.data || [];
+        
+        const totalTripKm = this.vehicleTrips.reduce((sum, trip) => sum + Number(trip.distance_km || 0), 0);
+        const currentKm = Number(this.selectedVehicle.initial_km || 0) + totalTripKm;
+        
+        if (currentKm !== Number(this.selectedVehicle.current_km) && currentKm > Number(this.selectedVehicle.current_km)) {
+            await supabase.from('vehicles').update({ current_km: currentKm }).eq('id', id);
+            this.selectedVehicle.current_km = currentKm;
+        }
+        
+        this.updateActiveModalInfo();
+        
+        const modal = document.getElementById('global-modal');
+        modal.classList.remove('hidden');
+    }
+
+    updateActiveModalInfo() {
+        const content = document.getElementById('global-modal-content');
+        if(!this.selectedVehicle) return;
+
+        const totalTripKm = this.vehicleTrips.reduce((sum, trip) => sum + Number(trip.distance_km || 0), 0);
+        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${this.selectedVehicle.id}&color=111a22`;
+        const imgUrl = (this.selectedVehicle.image_url && this.selectedVehicle.image_url !== "0" && this.selectedVehicle.image_url !== "null") ? this.selectedVehicle.image_url : 'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&w=800&q=60';
+
+        // LÓGICA DE ESTADO (Activo, Mantenimiento, En Uso)
+        const activeTrip = this.vehicleAppTrips.find(t => ['requested', 'approved_for_taller', 'driver_accepted', 'in_progress'].includes(t.status));
+        let statusName = this.selectedVehicle.status === 'active' ? 'Disponible' : (this.selectedVehicle.status === 'maintenance' ? 'En Taller' : 'Inactivo');
+        let statusClass = this.selectedVehicle.status === 'active' ? 'border-green-500 text-green-400 bg-green-500/10' : (this.selectedVehicle.status === 'maintenance' ? 'border-orange-500 text-orange-400 bg-orange-500/10' : 'border-red-500 text-red-400 bg-red-500/10');
+        
+        let destinationHtml = `<span class="flex items-center gap-1 text-slate-500"><span class="material-symbols-outlined text-[14px]">not_listed_location</span> Sin historial reciente</span>`;
+        
+        if (activeTrip) {
+            statusName = 'En Uso';
+            statusClass = 'border-blue-500 text-blue-400 bg-blue-500/10';
+            destinationHtml = `<span class="text-blue-400 font-bold animate-pulse flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">directions_car</span> En ruta a: ${activeTrip.destination || 'Destino múltiple'}</span>`;
+        } else if (this.selectedVehicle.status === 'in_use') {
+            statusName = 'En Uso';
+            statusClass = 'border-blue-500 text-blue-400 bg-blue-500/10';
+        } else if (this.vehicleAppTrips[0]) {
+            destinationHtml = `<span class="flex items-center gap-1 text-[#92adc9]"><span class="material-symbols-outlined text-[14px]">history</span> Últ. viaje: ${this.vehicleAppTrips[0].destination || 'No especificado'}</span>`;
         }
 
-        this.activeTab = tabId;
+        content.className = "bg-[#0d141c] w-full max-w-7xl h-[95vh] rounded-2xl shadow-2xl flex flex-col border border-[#324d67] overflow-hidden animate-fade-in-up font-display";
         
-        document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
-        document.querySelectorAll('.nav-btn').forEach(el => {
-            el.classList.remove('active', 'text-primary');
-            el.classList.add('text-slate-500');
+        content.innerHTML = `
+            <div class="bg-gradient-to-r from-[#111a22] to-[#192633] border-b border-[#324d67] p-6 flex justify-between items-center shrink-0 relative overflow-hidden">
+                <div class="absolute -right-20 -top-20 opacity-5 pointer-events-none">
+                    <span class="material-symbols-outlined text-[300px]">directions_car</span>
+                </div>
+                <div class="flex items-center gap-6 relative z-10">
+                    <div class="bg-white p-2 rounded-xl shadow-lg cursor-pointer transform hover:scale-105 transition-transform" onclick="window.invModule.printQR('${qrUrl}', '${this.selectedVehicle.plate}')" title="Imprimir QR Físico">
+                        <img src="${qrUrl}" alt="QR Vehículo" class="w-20 h-20">
+                        <div class="text-[9px] text-center text-slate-800 font-bold mt-1 uppercase tracking-widest">QR Unidad</div>
+                    </div>
+                    <div>
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="bg-primary text-white text-[10px] font-black px-2 py-0.5 rounded tracking-widest">ECO-${this.selectedVehicle.economic_number}</span>
+                            <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${statusClass}">${statusName}</span>
+                        </div>
+                        <h2 class="text-3xl font-black text-white uppercase tracking-tight">${this.selectedVehicle.brand} ${this.selectedVehicle.model} <span class="text-primary">${this.selectedVehicle.year || ''}</span></h2>
+                        <div class="flex gap-4 mt-2 text-sm text-[#92adc9] font-mono items-center">
+                            <span class="bg-[#1c2127] border border-[#324d67] px-2 py-1 rounded text-white font-bold">${this.selectedVehicle.plate}</span>
+                            <span class="flex items-center gap-1"><span class="material-symbols-outlined text-sm">speed</span> ${Number(this.selectedVehicle.current_km).toLocaleString()} km</span>
+                            <div class="border-l border-[#324d67] pl-4 ml-2">
+                                ${destinationHtml}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex gap-2 relative z-10">
+                    <button onclick="window.invModule.openVehicleEdit('${this.selectedVehicle.id}')" class="bg-[#233648] hover:bg-primary text-white px-4 py-2 rounded-xl font-bold flex items-center gap-2 border border-[#324d67] transition-colors">
+                        <span class="material-symbols-outlined text-sm">edit</span> Editar Perfil
+                    </button>
+                    <button onclick="document.getElementById('global-modal').classList.add('hidden')" class="bg-[#1c2127] hover:bg-red-900/40 text-slate-400 hover:text-red-400 border border-[#324d67] hover:border-red-500/50 w-10 h-10 rounded-xl flex items-center justify-center transition-all">
+                        <span class="material-symbols-outlined">close</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="flex border-b border-[#324d67] bg-[#111a22] px-6 shrink-0 overflow-x-auto custom-scrollbar">
+                <button onclick="window.invModule.switchVehicleTab(1)" id="veh-tab-1" class="py-4 px-6 text-sm font-bold border-b-2 border-primary text-primary transition-colors flex items-center gap-2 whitespace-nowrap">
+                    <span class="material-symbols-outlined text-[18px]">info</span> Expediente Principal
+                </button>
+                <button onclick="window.invModule.switchVehicleTab(2)" id="veh-tab-2" class="py-4 px-6 text-sm font-bold border-b-2 border-transparent text-[#92adc9] hover:text-white transition-colors flex items-center gap-2 whitespace-nowrap">
+                    <span class="material-symbols-outlined text-[18px]">engineering</span> Datos Técnicos y Salud
+                </button>
+                <button onclick="window.invModule.switchVehicleTab(3)" id="veh-tab-3" class="py-4 px-6 text-sm font-bold border-b-2 border-transparent text-[#92adc9] hover:text-white transition-colors flex items-center gap-2 whitespace-nowrap">
+                    <span class="material-symbols-outlined text-[18px]">history</span> Bitácora y Servicios
+                </button>
+                <button onclick="window.invModule.switchVehicleTab(4)" id="veh-tab-4" class="py-4 px-6 text-sm font-bold border-b-2 border-transparent text-[#92adc9] hover:text-white transition-colors flex items-center gap-2 whitespace-nowrap">
+                    <span class="material-symbols-outlined text-[18px]">photo_library</span> Galería de Inspecciones
+                </button>
+                <div class="ml-auto flex items-center py-2 pl-4">
+                    <button onclick="window.invModule.openLogRegister('${this.selectedVehicle.id}')" class="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg font-bold text-xs flex items-center gap-2 shadow-lg shadow-green-900/20 transition-transform hover:scale-105 whitespace-nowrap">
+                        <span class="material-symbols-outlined text-[16px]">build</span> Registrar Servicio
+                    </button>
+                </div>
+            </div>
+
+            <div class="flex-1 overflow-hidden bg-[#0d141c]">
+                
+                <div id="veh-tab-content-1" class="h-full overflow-y-auto p-6 custom-scrollbar block">
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        
+                        <div class="lg:col-span-2 space-y-6">
+                            <div class="bg-[#111a22] border border-[#324d67] rounded-xl p-6 shadow-lg relative overflow-hidden">
+                                <h3 class="font-bold text-white mb-4 flex items-center gap-2 border-b border-[#324d67] pb-2 uppercase tracking-widest text-xs">
+                                    <span class="material-symbols-outlined text-primary">feed</span> Ficha de Identificación
+                                </h3>
+                                <div class="grid grid-cols-2 md:grid-cols-3 gap-6">
+                                    <div><label class="text-[10px] font-bold text-[#92adc9] uppercase">Económico</label><div class="text-white font-black text-lg">ECO-${this.selectedVehicle.economic_number}</div></div>
+                                    <div><label class="text-[10px] font-bold text-[#92adc9] uppercase">Placas</label><div class="text-white font-mono bg-[#1c2127] px-2 py-0.5 rounded border border-[#324d67] inline-block mt-1">${this.selectedVehicle.plate}</div></div>
+                                    <div><label class="text-[10px] font-bold text-[#92adc9] uppercase">VIN</label><div class="text-white font-mono text-sm mt-1">${this.selectedVehicle.vin || 'N/A'}</div></div>
+                                    <div><label class="text-[10px] font-bold text-[#92adc9] uppercase">Marca / Modelo</label><div class="text-white text-sm mt-1">${this.selectedVehicle.brand} ${this.selectedVehicle.model}</div></div>
+                                    <div><label class="text-[10px] font-bold text-[#92adc9] uppercase">Año</label><div class="text-white text-sm mt-1">${this.selectedVehicle.year || 'N/A'}</div></div>
+                                    <div><label class="text-[10px] font-bold text-[#92adc9] uppercase">Color</label><div class="text-white text-sm mt-1 flex items-center gap-2"><span class="w-3 h-3 rounded-full border border-slate-400" style="background-color: ${this.getColorHex(this.selectedVehicle.color)}"></span> ${this.selectedVehicle.color || 'N/A'}</div></div>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div class="bg-[#111a22] border border-[#324d67] rounded-xl p-6 shadow-lg">
+                                    <h3 class="font-bold text-white mb-4 flex items-center gap-2 border-b border-[#324d67] pb-2 uppercase tracking-widest text-xs">
+                                        <span class="material-symbols-outlined text-orange-500">route</span> Telemetría Manual
+                                    </h3>
+                                    <div class="space-y-4">
+                                        <div class="flex justify-between items-end">
+                                            <div>
+                                                <label class="text-[10px] font-bold text-[#92adc9] uppercase block mb-1">Km Actual</label>
+                                                <span class="text-2xl font-black text-white">${Number(this.selectedVehicle.current_km).toLocaleString()}</span> <span class="text-[#92adc9] text-xs">km</span>
+                                            </div>
+                                            <div class="text-right">
+                                                <label class="text-[10px] font-bold text-[#92adc9] uppercase block mb-1">Km Inicial (Alta)</label>
+                                                <span class="text-sm font-bold text-white">${Number(this.selectedVehicle.initial_km || 0).toLocaleString()}</span>
+                                            </div>
+                                        </div>
+                                        <div class="bg-[#1c2127] p-3 rounded-lg border border-[#324d67]">
+                                            <div class="flex justify-between items-center mb-1">
+                                                <span class="text-xs text-[#92adc9]">Recorrido Histórico (Manual):</span>
+                                                <span class="text-sm font-bold text-primary">${totalTripKm.toLocaleString()} km</span>
+                                            </div>
+                                        </div>
+                                        <button onclick="window.invModule.openTripRegister('${this.selectedVehicle.id}')" class="w-full bg-[#233648] hover:bg-[#2d445a] text-white py-2 rounded-lg font-bold text-xs flex items-center justify-center gap-2 transition-colors border border-[#324d67]">
+                                            <span class="material-symbols-outlined text-[16px]">add_location</span> Sumar Trayecto Manual
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="bg-[#111a22] border border-[#324d67] rounded-xl p-6 shadow-lg flex flex-col">
+                                    <h3 class="font-bold text-white mb-4 flex items-center gap-2 border-b border-[#324d67] pb-2 uppercase tracking-widest text-xs shrink-0">
+                                        <span class="material-symbols-outlined text-purple-400">notifications_active</span> Alertas de Vencimiento
+                                    </h3>
+                                    <div class="space-y-2 flex-1 overflow-y-auto custom-scrollbar pr-2">
+                                        ${this.getVehicleAlertsHTML()}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="space-y-6">
+                            <div class="bg-[#111a22] border border-[#324d67] rounded-xl p-6 shadow-lg h-full flex flex-col">
+                                <div class="flex justify-between items-center mb-4 border-b border-[#324d67] pb-2 shrink-0">
+                                    <h3 class="font-bold text-white flex items-center gap-2 uppercase tracking-widest text-xs">
+                                        <span class="material-symbols-outlined text-green-500">folder_open</span> Documentos Digitales
+                                    </h3>
+                                    <button onclick="window.invModule.openDocumentUpload('${this.selectedVehicle.id}')" class="bg-primary/20 text-primary hover:bg-primary/30 p-1.5 rounded-lg transition-colors" title="Subir Documento Adicional">
+                                        <span class="material-symbols-outlined text-sm">upload_file</span>
+                                    </button>
+                                </div>
+                                
+                                <div class="space-y-3 flex-1 overflow-y-auto custom-scrollbar pr-1">
+                                    ${this.getDocumentationHTML()}
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div id="veh-tab-content-2" class="hidden h-full overflow-y-auto p-6 custom-scrollbar">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        
+                        <div class="space-y-6">
+                            <div class="bg-[#111a22] border border-[#324d67] rounded-xl p-6 shadow-lg">
+                                <h3 class="font-bold text-white mb-6 flex items-center gap-2 border-b border-[#324d67] pb-2 uppercase tracking-widest text-xs">
+                                    <span class="material-symbols-outlined text-blue-400">precision_manufacturing</span> Especificaciones de Fabrica
+                                </h3>
+                                <div class="space-y-4">
+                                    <div class="flex justify-between items-center border-b border-[#233648] pb-2">
+                                        <span class="text-xs font-bold text-[#92adc9] uppercase">Tipo de Vehículo</span>
+                                        <span class="text-white text-sm font-medium">${this.selectedVehicle.vehicle_type || 'No especificado'}</span>
+                                    </div>
+                                    <div class="flex justify-between items-center border-b border-[#233648] pb-2">
+                                        <span class="text-xs font-bold text-[#92adc9] uppercase">Motor</span>
+                                        <span class="text-white text-sm font-medium font-mono">${this.selectedVehicle.engine || 'No especificado'}</span>
+                                    </div>
+                                    <div class="flex justify-between items-center border-b border-[#233648] pb-2">
+                                        <span class="text-xs font-bold text-[#92adc9] uppercase">Transmisión</span>
+                                        <span class="text-white text-sm font-medium">${this.selectedVehicle.transmission || 'No especificado'}</span>
+                                    </div>
+                                    <div class="flex justify-between items-center border-b border-[#233648] pb-2">
+                                        <span class="text-xs font-bold text-[#92adc9] uppercase">Combustible</span>
+                                        <span class="text-white text-sm font-medium">${this.selectedVehicle.fuel_type || 'No especificado'}</span>
+                                    </div>
+                                    <div class="flex justify-between items-center border-b border-[#233648] pb-2">
+                                        <span class="text-xs font-bold text-[#92adc9] uppercase">Capacidad/Carga</span>
+                                        <span class="text-white text-sm font-medium">${this.selectedVehicle.capacity || 'No especificado'}</span>
+                                    </div>
+                                    <div class="flex justify-between items-center pb-2">
+                                        <span class="text-xs font-bold text-[#92adc9] uppercase">Asignado a (Centro Costo)</span>
+                                        <span class="bg-[#1c2127] text-white px-2 py-1 rounded text-xs border border-[#324d67] font-mono tracking-wider">${this.selectedVehicle.cost_center || 'No asignado'}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="bg-[#111a22] border border-[#324d67] rounded-xl p-6 shadow-lg">
+                                <h3 class="font-bold text-white mb-6 flex items-center gap-2 border-b border-[#324d67] pb-2 uppercase tracking-widest text-xs">
+                                    <span class="material-symbols-outlined text-green-500">imagesmode</span> Fotografía de la Unidad
+                                </h3>
+                                <div class="aspect-video bg-[#0d141c] rounded-xl border border-[#324d67] overflow-hidden flex items-center justify-center relative group cursor-pointer" onclick="window.invModule.viewPhoto('${imgUrl}')">
+                                    <img src="${imgUrl}" class="w-full h-full object-cover">
+                                    <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                        <span class="material-symbols-outlined text-white text-3xl">zoom_in</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-[#111a22] border border-[#324d67] rounded-xl p-6 shadow-lg flex flex-col h-[700px]">
+                            <div class="flex justify-between items-center border-b border-[#324d67] pb-2 mb-4 shrink-0">
+                                <h3 class="font-bold text-white uppercase tracking-widest text-xs flex items-center gap-2">
+                                    <span class="material-symbols-outlined text-green-500">health_and_safety</span> Salud Total de Unidad
+                                </h3>
+                                <div id="overall-health-badge" class="text-2xl font-black text-green-400 font-mono text-right">100%</div>
+                            </div>
+                            
+                            <div class="bg-blue-500/10 border border-blue-500/30 p-3 rounded-lg mb-4 text-xs text-blue-400 shrink-0">
+                                Ajusta el peso (%) que tiene cada pieza sobre el vehículo (debe sumar 100%) y su salud actual para calcular el estado global de la unidad.
+                            </div>
+                            
+                            <div class="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-3" id="components-container">
+                                </div>
+                            
+                            <div class="mt-4 pt-4 border-t border-[#324d67] flex gap-3 shrink-0">
+                                <button onclick="window.invModule.addComponentRow()" class="bg-[#233648] hover:bg-primary text-white px-3 py-2.5 rounded-lg text-xs font-bold transition-colors flex-1 flex items-center justify-center gap-1 shadow">
+                                    <span class="material-symbols-outlined text-sm">add</span> Añadir Pieza
+                                </button>
+                                <button onclick="window.invModule.saveComponentsHealth()" class="bg-green-600 hover:bg-green-500 text-white px-3 py-2.5 rounded-lg text-xs font-bold transition-colors flex-1 flex items-center justify-center gap-1 shadow-lg shadow-green-900/20">
+                                    <span class="material-symbols-outlined text-sm">save</span> Guardar Salud
+                                </button>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div id="veh-tab-content-3" class="hidden h-full flex flex-col p-6">
+                    <div class="flex justify-between items-end mb-4 shrink-0">
+                        <div>
+                            <h3 class="font-bold text-white text-lg">Historial de Mantenimiento Integral</h3>
+                            <p class="text-xs text-[#92adc9]">Inversión total acumulada en refacciones y MO: <span class="font-mono text-green-400 font-bold">$${this.vehicleLogs.reduce((sum, log) => sum + Number(log.total_cost || 0), 0).toLocaleString()}</span></p>
+                        </div>
+                        <button onclick="window.invModule.generateMaintenanceReport()" class="bg-[#233648] hover:bg-[#2d445a] text-white px-4 py-2 rounded-lg font-bold text-xs flex items-center gap-2 border border-[#324d67]">
+                            <span class="material-symbols-outlined text-[16px]">picture_as_pdf</span> Imprimir Reporte
+                        </button>
+                    </div>
+
+                    <div class="bg-[#111a22] border border-[#324d67] rounded-xl overflow-hidden shadow-lg flex-1 flex flex-col">
+                        <div class="overflow-x-auto flex-1 custom-scrollbar">
+                            <table class="w-full text-left whitespace-nowrap">
+                                <thead class="bg-[#1c2127] text-[10px] font-bold text-[#92adc9] uppercase tracking-widest sticky top-0 border-b border-[#324d67]">
+                                    <tr>
+                                        <th class="p-4">Fecha</th>
+                                        <th class="p-4">Km al Servicio</th>
+                                        <th class="p-4">Tipo de Servicio</th>
+                                        <th class="p-4">Taller / Mecánico</th>
+                                        <th class="p-4">Refacciones Aplicadas</th>
+                                        <th class="p-4 text-right">Inversión Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-[#324d67] text-sm text-slate-300">
+                                    ${this.vehicleLogs.length === 0 ? `
+                                        <tr><td colspan="6" class="p-10 text-center text-slate-500"><span class="material-symbols-outlined text-4xl block mb-2 opacity-50">handyman</span> No hay mantenimientos registrados en la bitácora para esta unidad.</td></tr>
+                                    ` : this.vehicleLogs.map(log => `
+                                        <tr class="hover:bg-[#192633] transition-colors">
+                                            <td class="p-4 font-medium">${this.formatDate(log.date)}</td>
+                                            <td class="p-4 font-mono">${Number(log.odometer).toLocaleString()} km</td>
+                                            <td class="p-4 font-bold text-white"><span class="bg-primary/10 text-primary px-2 py-1 rounded text-xs border border-primary/20">${log.service_name}</span></td>
+                                            <td class="p-4 text-[#92adc9]">${log.mechanic || 'N/A'}</td>
+                                            <td class="p-4 text-[11px] text-[#92adc9] max-w-xs truncate" title="${log.parts_used}">${log.parts_used || 'Ninguna'}</td>
+                                            <td class="p-4 text-right font-mono font-bold text-green-400">$${Number(log.total_cost).toLocaleString()}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="veh-tab-content-4" class="hidden h-full overflow-y-auto p-6 custom-scrollbar">
+                    <h3 class="font-bold text-white mb-6 flex items-center gap-2 border-b border-[#324d67] pb-2 uppercase tracking-widest text-xs">
+                        <span class="material-symbols-outlined text-orange-500">photo_library</span> Historial Fotográfico de Inspecciones
+                    </h3>
+                    <div class="space-y-6">
+                        ${this.renderVehiclePhotosGallery()}
+                    </div>
+                </div>
+
+            </div>
+        `;
+        
+        // Pinta la UI de salud de componentes
+        setTimeout(() => this.renderComponentsHealth(), 100);
+    }
+
+    switchVehicleTab(num) {
+        for(let i=1; i<=4; i++) { 
+            const btn = document.getElementById(`veh-tab-${i}`);
+            const content = document.getElementById(`veh-tab-content-${i}`);
+            if(btn) btn.className = "py-4 px-6 text-sm font-bold border-b-2 border-transparent text-[#92adc9] hover:text-white transition-colors flex items-center gap-2 whitespace-nowrap";
+            if(content) content.classList.replace('block', 'hidden');
+        }
+        document.getElementById(`veh-tab-${num}`).className = "py-4 px-6 text-sm font-bold border-b-2 border-primary text-primary transition-colors flex items-center gap-2 bg-primary/10 whitespace-nowrap";
+        document.getElementById(`veh-tab-content-${num}`).classList.replace('hidden', 'block');
+    }
+
+    // --- NUEVO LÓGICA DE SALUD DE COMPONENTES ---
+    renderComponentsHealth() {
+        let comps = this.selectedVehicle.components;
+        if (!comps || !Array.isArray(comps) || comps.length === 0) {
+            comps = [
+                { name: 'Motor', weight: 40, health: 100 },
+                { name: 'Transmisión', weight: 25, health: 100 },
+                { name: 'Frenos', weight: 15, health: 100 },
+                { name: 'Suspensión', weight: 10, health: 100 },
+                { name: 'Llantas', weight: 10, health: 100 }
+            ];
+        }
+
+        const container = document.getElementById('components-container');
+        if(!container) return;
+        
+        container.innerHTML = comps.map((c, i) => `
+            <div class="component-row bg-[#1c2127] p-3 rounded-lg border border-[#233648] hover:border-primary/50 transition-colors">
+                <div class="flex items-center gap-2 mb-3">
+                    <span class="material-symbols-outlined text-[#92adc9] text-sm">settings</span>
+                    <input type="text" class="comp-name flex-1 bg-transparent border-b border-transparent hover:border-[#324d67] focus:border-primary text-white text-xs px-1 outline-none font-bold" value="${c.name}" placeholder="Nombre pieza">
+                    <button onclick="this.closest('.component-row').remove(); window.invModule.calculateTotalHealth()" class="text-red-400 hover:bg-red-500/20 p-1 rounded transition-colors"><span class="material-symbols-outlined text-[14px]">delete</span></button>
+                </div>
+                <div class="flex items-center gap-4">
+                    <div class="flex-1">
+                        <label class="text-[8px] text-[#92adc9] uppercase font-bold block mb-1">Peso en Unidad (%)</label>
+                        <div class="relative">
+                            <input type="number" class="comp-weight w-full bg-[#111a22] border border-[#324d67] text-white text-xs px-2 py-1.5 rounded outline-none focus:border-primary text-center" value="${c.weight}" oninput="window.invModule.calculateTotalHealth()">
+                            <span class="absolute right-2 top-1.5 text-[9px] text-[#92adc9]">%</span>
+                        </div>
+                    </div>
+                    <div class="flex-1">
+                        <label class="text-[8px] text-[#92adc9] uppercase font-bold block mb-1">Salud Actual (%)</label>
+                        <div class="relative">
+                            <input type="number" class="comp-health w-full bg-[#111a22] border border-[#324d67] text-white text-xs px-2 py-1.5 rounded outline-none focus:border-primary text-center" value="${c.health}" oninput="window.invModule.calculateTotalHealth()">
+                            <span class="absolute right-2 top-1.5 text-[9px] text-[#92adc9]">%</span>
+                        </div>
+                    </div>
+                    <div class="w-16 text-right border-l border-[#324d67] pl-3">
+                        <label class="text-[8px] text-[#92adc9] uppercase font-bold block mb-1">Aporta</label>
+                        <span class="comp-contrib font-mono text-sm font-black text-primary">${((c.weight * c.health) / 100).toFixed(1)}%</span>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+        this.calculateTotalHealth();
+    }
+
+    addComponentRow() {
+        const container = document.getElementById('components-container');
+        if(!container) return;
+        
+        const newRow = document.createElement('div');
+        newRow.className = "component-row bg-[#1c2127] p-3 rounded-lg border border-[#233648] hover:border-primary/50 transition-colors animate-fade-in";
+        newRow.innerHTML = `
+            <div class="flex items-center gap-2 mb-3">
+                <span class="material-symbols-outlined text-[#92adc9] text-sm">settings</span>
+                <input type="text" class="comp-name flex-1 bg-transparent border-b border-transparent hover:border-[#324d67] focus:border-primary text-white text-xs px-1 outline-none font-bold" value="" placeholder="Ej: Batería">
+                <button onclick="this.closest('.component-row').remove(); window.invModule.calculateTotalHealth()" class="text-red-400 hover:bg-red-500/20 p-1 rounded transition-colors"><span class="material-symbols-outlined text-[14px]">delete</span></button>
+            </div>
+            <div class="flex items-center gap-4">
+                <div class="flex-1">
+                    <label class="text-[8px] text-[#92adc9] uppercase font-bold block mb-1">Peso en Unidad (%)</label>
+                    <div class="relative">
+                        <input type="number" class="comp-weight w-full bg-[#111a22] border border-[#324d67] text-white text-xs px-2 py-1.5 rounded outline-none focus:border-primary text-center" value="10" oninput="window.invModule.calculateTotalHealth()">
+                        <span class="absolute right-2 top-1.5 text-[9px] text-[#92adc9]">%</span>
+                    </div>
+                </div>
+                <div class="flex-1">
+                    <label class="text-[8px] text-[#92adc9] uppercase font-bold block mb-1">Salud Actual (%)</label>
+                    <div class="relative">
+                        <input type="number" class="comp-health w-full bg-[#111a22] border border-[#324d67] text-white text-xs px-2 py-1.5 rounded outline-none focus:border-primary text-center" value="100" oninput="window.invModule.calculateTotalHealth()">
+                        <span class="absolute right-2 top-1.5 text-[9px] text-[#92adc9]">%</span>
+                    </div>
+                </div>
+                <div class="w-16 text-right border-l border-[#324d67] pl-3">
+                    <label class="text-[8px] text-[#92adc9] uppercase font-bold block mb-1">Aporta</label>
+                    <span class="comp-contrib font-mono text-sm font-black text-primary">10.0%</span>
+                </div>
+            </div>
+        `;
+        container.appendChild(newRow);
+        
+        // Auto-scroll to bottom
+        container.scrollTop = container.scrollHeight;
+        this.calculateTotalHealth();
+    }
+
+    calculateTotalHealth() {
+        const rows = document.querySelectorAll('.component-row');
+        let totalWeight = 0;
+        let totalHealth = 0;
+        
+        rows.forEach(row => {
+            const w = parseFloat(row.querySelector('.comp-weight').value) || 0;
+            const h = parseFloat(row.querySelector('.comp-health').value) || 0;
+            const contrib = (w * h) / 100;
+            
+            row.querySelector('.comp-contrib').innerText = contrib.toFixed(1) + '%';
+            
+            totalWeight += w;
+            totalHealth += contrib;
         });
         
-        const tabEl = document.getElementById(`tab-${tabId}`);
-        if (tabEl) tabEl.classList.remove('hidden');
-        
-        const navEl = document.getElementById(`nav-${tabId}`);
-        if (navEl) navEl.classList.add('active', 'text-primary');
-
-        if (tabId === 'solicitud') {
-            this.loadAvailableUnits();
-        }
-
-        if (tabId === 'unidad') {
-            this.loadDashboardState();
-        }
-
-        if (tabId === 'ruta') {
-            if (this.currentTrip?.status === 'in_progress') {
-                document.getElementById('route-waiting-msg')?.classList.add('hidden');
-                document.getElementById('active-trip-panel')?.classList.remove('hidden');
-                setTimeout(() => {
-                    this.initDriverMap();
-                    this.startTracking();
-                }, 300);
-            } else if (this.currentTrip?.status === 'driver_accepted') {
-                document.getElementById('route-waiting-msg')?.classList.remove('hidden');
-                document.getElementById('active-trip-panel')?.classList.add('hidden');
-                this.showNotification('⏳ Esperando', 'El guardia debe autorizar la salida', 'info');
+        const badge = document.getElementById('overall-health-badge');
+        if (badge) {
+            let html = `${totalHealth.toFixed(1)}%`;
+            if (totalWeight !== 100) {
+                html += `<div class="text-[9px] text-red-500 uppercase tracking-widest mt-1">Suma Pesos: ${totalWeight}% (Ajustar a 100%)</div>`;
+                badge.className = "text-xl font-black font-mono text-right";
             } else {
-                document.getElementById('route-waiting-msg')?.classList.remove('hidden');
-                document.getElementById('active-trip-panel')?.classList.add('hidden');
+                badge.className = `text-3xl font-black font-mono text-right ${totalHealth > 80 ? 'text-green-400' : (totalHealth > 50 ? 'text-yellow-400' : 'text-red-500')}`;
             }
-        }
-        
-        if (tabId === 'perfil') {
-            this.loadProfileData();
+            badge.innerHTML = html;
         }
     }
 
-    // ==================== LIMPIEZA ====================
+    async saveComponentsHealth() {
+        const rows = document.querySelectorAll('.component-row');
+        const components = [];
+        let tw = 0;
+        rows.forEach(row => {
+            const n = row.querySelector('.comp-name').value;
+            const w = parseFloat(row.querySelector('.comp-weight').value) || 0;
+            const h = parseFloat(row.querySelector('.comp-health').value) || 0;
+            if(n) {
+                components.push({name: n, weight: w, health: h});
+                tw += w;
+            }
+        });
+
+        if (tw !== 100) {
+            if(!confirm(`⚠️ La suma de los pesos es ${tw}%, lo ideal para el algoritmo es 100%. ¿Guardar de todos modos?`)) return;
+        }
+
+        try {
+            const { error } = await supabase.from('vehicles').update({ components: components }).eq('id', this.selectedVehicle.id);
+            if (error) {
+                if (error.message.includes('column "components" of relation "vehicles" does not exist')) {
+                    alert('❌ IMPORTANTE: Falta crear la columna en Supabase.\nVe al SQL Editor y ejecuta:\nALTER TABLE public.vehicles ADD COLUMN components jsonb DEFAULT \'[]\'::jsonb;');
+                    return;
+                }
+                throw error;
+            }
+            this.selectedVehicle.components = components;
+            this.showToast('✅ Salud de componentes actualizada correctamente.');
+        } catch(e) {
+            alert('Error al guardar: ' + e.message);
+        }
+    }
+
+    // --- GALERÍA DE FOTOS DE VIAJES ---
+    renderVehiclePhotosGallery() {
+        if (!this.vehicleInspectionsPhotos || this.vehicleInspectionsPhotos.length === 0) {
+            return `<div class="text-center py-10 text-slate-500"><span class="material-symbols-outlined text-4xl mb-2 opacity-50">no_photography</span><p>No hay fotos de viajes registradas para esta unidad.</p></div>`;
+        }
+
+        let html = '';
+        let foundPhotos = false;
+
+        this.vehicleInspectionsPhotos.forEach(trip => {
+            const hasReception = trip.workshop_reception_photos && trip.workshop_reception_photos.length > 0;
+            const hasReturn = trip.workshop_return_photos && trip.workshop_return_photos.length > 0;
+            
+            if (hasReception || hasReturn) {
+                foundPhotos = true;
+                const dateStr = new Date(trip.created_at).toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).toUpperCase();
+                const driverName = trip.profiles?.full_name || 'Desconocido';
+
+                html += `
+                <div class="bg-[#111a22] border border-[#324d67] rounded-xl p-5 shadow-lg">
+                    <div class="flex justify-between items-center mb-4 border-b border-[#233648] pb-2">
+                        <span class="text-white font-bold text-sm flex items-center gap-2"><span class="material-symbols-outlined text-primary text-sm">calendar_month</span> ${dateStr}</span>
+                        <span class="text-xs text-[#92adc9] bg-[#1c2127] px-3 py-1 rounded-full border border-[#324d67]">Conductor: <span class="text-white font-bold">${driverName}</span></span>
+                    </div>
+                    
+                    ${hasReception ? `
+                    <div class="mb-4">
+                        <p class="text-[10px] text-orange-400 font-bold uppercase tracking-widest mb-3 flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">logout</span> Evidencia de Salida (Guardia/Taller)</p>
+                        <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                            ${trip.workshop_reception_photos.map(p => `
+                                <div class="relative group cursor-pointer aspect-square rounded-lg overflow-hidden border border-[#324d67]" onclick="window.invModule.viewPhoto('${p.url}')">
+                                    <img src="${p.url}" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300">
+                                    <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                        <span class="material-symbols-outlined text-white text-sm">zoom_in</span>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                    ` : ''}
+
+                    ${hasReturn ? `
+                    <div>
+                        <p class="text-[10px] text-purple-400 font-bold uppercase tracking-widest mb-3 flex items-center gap-1 mt-4 border-t border-[#233648] pt-4"><span class="material-symbols-outlined text-[14px]">login</span> Evidencia de Entrada (Retorno)</p>
+                        <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                            ${trip.workshop_return_photos.map(p => `
+                                <div class="relative group cursor-pointer aspect-square rounded-lg overflow-hidden border border-[#324d67]" onclick="window.invModule.viewPhoto('${p.url}')">
+                                    <img src="${p.url}" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300">
+                                    <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                        <span class="material-symbols-outlined text-white text-sm">zoom_in</span>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                    ` : ''}
+                </div>
+                `;
+            }
+        });
+
+        return foundPhotos ? html : `<div class="text-center py-10 text-slate-500"><span class="material-symbols-outlined text-4xl mb-2 opacity-50">no_photography</span><p>No hay fotos de viajes registradas para esta unidad.</p></div>`;
+    }
+
+    // --- ALERTS & HELPERS ---
+    getVehicleAlertsHTML() {
+        const alerts = [];
+        const today = new Date();
+        
+        if (this.selectedVehicle.license_expiry) {
+            const days = Math.ceil((new Date(this.selectedVehicle.license_expiry) - today) / 86400000);
+            if (days < 30 && days > 0) alerts.push(`<div class="bg-orange-500/10 border border-orange-500/30 text-orange-400 p-2 rounded flex items-center gap-2 text-xs"><span class="material-symbols-outlined text-sm">warning</span> Tarjeta Circ. vence en ${days} días.</div>`);
+            else if (days <= 0) alerts.push(`<div class="bg-red-500/10 border border-red-500/30 text-red-400 p-2 rounded flex items-center gap-2 text-xs font-bold"><span class="material-symbols-outlined text-sm">error</span> Tarjeta de Circulación VENCIDA.</div>`);
+        }
+        if (this.selectedVehicle.insurance_expiry) {
+            const days = Math.ceil((new Date(this.selectedVehicle.insurance_expiry) - today) / 86400000);
+            if (days < 30 && days > 0) alerts.push(`<div class="bg-orange-500/10 border border-orange-500/30 text-orange-400 p-2 rounded flex items-center gap-2 text-xs"><span class="material-symbols-outlined text-sm">warning</span> Póliza de seguro vence en ${days} días.</div>`);
+            else if (days <= 0) alerts.push(`<div class="bg-red-500/10 border border-red-500/30 text-red-400 p-2 rounded flex items-center gap-2 text-xs font-bold"><span class="material-symbols-outlined text-sm">error</span> Póliza de Seguro VENCIDA.</div>`);
+        }
+
+        return alerts.length > 0 ? alerts.join('') : `<div class="h-full flex flex-col items-center justify-center text-slate-500 opacity-50"><span class="material-symbols-outlined text-4xl mb-2">verified_user</span><span class="text-xs font-bold uppercase tracking-widest">Documentación al día</span></div>`;
+    }
+
+    getDocumentationHTML() {
+        const docs = [
+            { type: 'license', title: 'Tarjeta Circulación', exp: this.selectedVehicle.license_expiry, status: this.selectedVehicle.license_status, icon: 'badge' },
+            { type: 'insurance', title: 'Póliza de Seguro', exp: this.selectedVehicle.insurance_expiry, status: this.selectedVehicle.insurance_status, icon: 'shield' },
+            { type: 'verification', title: 'Verificación Ambiental', exp: this.selectedVehicle.verification_expiry, status: this.selectedVehicle.verification_status, icon: 'eco' }
+        ];
+
+        return docs.map(d => {
+            const vehicleDocs = this.vehicleDocuments.filter(doc => doc.document_type === d.type);
+            const hasFiles = vehicleDocs.length > 0;
+            const color = d.status === 'vigente' ? 'green' : d.status === 'vencido' ? 'red' : 'orange';
+
+            return `
+                <div class="bg-[#1c2127] border border-[#324d67] p-3 rounded-lg flex justify-between items-center hover:border-[#456b8f] transition-colors shadow-sm">
+                    <div class="flex items-center gap-3">
+                        <div class="bg-[#233648] p-2 rounded-lg text-[#92adc9]"><span class="material-symbols-outlined text-[20px]">${d.icon}</span></div>
+                        <div>
+                            <p class="text-white text-xs font-bold uppercase">${d.title}</p>
+                            <p class="text-[10px] text-[#92adc9] mt-0.5">Vence: <span class="font-mono text-slate-300">${d.exp ? this.formatDate(d.exp) : 'No definida'}</span></p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        ${hasFiles ? `<button onclick="window.invModule.viewDocuments('${d.type}', '${this.selectedVehicle.id}')" class="text-primary hover:text-blue-400 bg-primary/10 hover:bg-primary/20 p-1.5 rounded transition-colors" title="Ver Archivos"><span class="material-symbols-outlined text-[16px]">visibility</span></button>` : ''}
+                        <span class="text-[9px] font-black uppercase px-2 py-1 rounded border border-${color}-500/30 text-${color}-400 bg-${color}-500/10 tracking-widest">${d.status || 'SIN ESTADO'}</span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    formatDate(dateString) {
+        if (!dateString) return '--';
+        return new Date(dateString).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase();
+    }
+
+    getColorHex(colorName) {
+        const c = (colorName||'').toLowerCase();
+        if(c.includes('blanco')) return '#ffffff';
+        if(c.includes('negro')) return '#000000';
+        if(c.includes('rojo')) return '#ef4444';
+        if(c.includes('azul')) return '#3b82f6';
+        if(c.includes('gris') || c.includes('plata')) return '#94a3b8';
+        return 'transparent';
+    }
+
+    // --- MÉTODOS AÑADIDOS PARA EVITAR ERRORES DE CONSOLA (Uncaught TypeError) ---
     
+    // VISOR DE IMÁGENES GLOBAL
+    viewPhoto(url) {
+        const modalId = 'photo-viewer-modal-' + Date.now();
+        const modal = document.createElement('div');
+        modal.id = modalId;
+        modal.className = 'fixed inset-0 z-[200] flex items-center justify-center bg-black/95 p-4 animate-fade-in';
+        modal.innerHTML = `
+            <div class="relative max-w-4xl w-full flex flex-col items-center">
+                <button onclick="document.getElementById('${modalId}').remove()" class="absolute -top-12 right-0 bg-white/10 hover:bg-red-500 text-white p-2 rounded-full transition-colors flex items-center justify-center">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+                <img src="${url}" class="w-full max-h-[85vh] object-contain rounded-xl shadow-2xl border border-[#324d67]" />
+            </div>
+        `;
+        document.body.appendChild(modal);
+    }
+
+    openDocumentUpload(vehicleId) {
+        alert("El módulo para subir documentos (PDF/JPG) al expediente digital se activará en la siguiente fase.");
+    }
+
+    openVehicleEdit(vehicleId) {
+        alert("El editor de perfil del vehículo se abrirá aquí próximamente.");
+    }
+
+    async saveDriver() {
+        const name = document.getElementById('new-driver-name').value;
+        const email = document.getElementById('new-driver-email').value;
+        if (!name || !email) return alert("El nombre y el correo electrónico son obligatorios.");
+        alert("Por seguridad, los conductores deben crearse en el panel de Autenticación de Supabase.");
+        document.getElementById('modal-add-driver').classList.add('hidden');
+    }
+
+    viewDocuments(docType, vehicleId) {
+        alert("Visor de documentos en desarrollo para: " + docType);
+    }
+
+    // --- REGISTRO DE SERVICIOS EN BITÁCORA ---
+    openLogRegister(vehicleId) {
+        this.pendingStockDeduction = [];
+        const modal = document.getElementById('global-modal');
+        const content = document.getElementById('global-modal-content');
+        
+        content.className = "bg-[#1c2127] w-full max-w-5xl rounded-2xl shadow-2xl p-6 border border-[#324d67] animate-fade-in-up font-display flex flex-col max-h-[90vh]";
+        content.innerHTML = `
+            <div class="flex justify-between items-center mb-6 border-b border-[#324d67] pb-4 shrink-0">
+                <h3 class="font-black text-xl text-white flex items-center gap-2 uppercase tracking-tight">
+                    <span class="material-symbols-outlined text-green-500 text-3xl">build</span> Reporte de Servicio: ECO-${this.selectedVehicle.economic_number}
+                </h3>
+                <button onclick="document.getElementById('global-modal').classList.add('hidden'); window.invModule.openVehicleDetail('${vehicleId}')" class="text-slate-400 hover:text-white transition-colors bg-[#233648] p-2 rounded-full border border-[#324d67]">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 overflow-y-auto custom-scrollbar pb-2">
+                <div class="space-y-4">
+                    <div class="bg-[#111a22] border border-[#324d67] p-5 rounded-xl space-y-4 shadow-lg">
+                        <h4 class="text-xs font-bold text-primary uppercase tracking-widest border-b border-[#324d67] pb-2">1. Detalles de la Intervención</h4>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="text-[10px] font-bold text-[#92adc9] uppercase block mb-1">Fecha del Servicio</label>
+                                <input type="date" id="log-date" class="w-full bg-[#1c2127] border border-[#324d67] text-white rounded-lg px-3 py-2 text-sm outline-none focus:border-primary" value="${new Date().toISOString().split('T')[0]}">
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-bold text-[#92adc9] uppercase block mb-1">Kilometraje de Ingreso</label>
+                                <input type="number" id="log-odometer" class="w-full bg-[#1c2127] border border-[#324d67] text-white rounded-lg px-3 py-2 text-sm font-mono outline-none focus:border-primary" value="${this.selectedVehicle.current_km}">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-bold text-[#92adc9] uppercase block mb-1">Diagnóstico / Trabajo Realizado</label>
+                            <input id="log-service-name" class="w-full bg-[#1c2127] border border-[#324d67] text-white rounded-lg px-3 py-2 text-sm outline-none focus:border-primary" placeholder="Ej: Cambio aceite, revisión frenos...">
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="text-[10px] font-bold text-[#92adc9] uppercase block mb-1">Responsable / Taller</label>
+                                <input id="log-mechanic" class="w-full bg-[#1c2127] border border-[#324d67] text-white rounded-lg px-3 py-2 text-sm outline-none focus:border-primary" placeholder="Nombre interno o proveedor">
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-bold text-[#92adc9] uppercase block mb-1">Costo Mano Obra ($)</label>
+                                <input type="number" id="log-labor-cost" class="w-full bg-[#1c2127] border border-[#324d67] text-white rounded-lg px-3 py-2 text-sm font-mono outline-none focus:border-primary" value="0" oninput="window.invModule.updateServiceSummary()">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="space-y-4 flex flex-col">
+                    <div class="bg-[#111a22] border border-[#324d67] p-5 rounded-xl flex-1 flex flex-col shadow-lg">
+                        <h4 class="text-xs font-bold text-orange-500 uppercase tracking-widest border-b border-[#324d67] pb-2 mb-4">2. Consumo de Refacciones (Almacén)</h4>
+                        
+                        <div class="flex gap-2 mb-4">
+                            <select id="log-inv-select" class="flex-1 bg-[#1c2127] border border-[#324d67] text-white rounded-lg px-2 py-2 text-sm outline-none focus:border-primary">
+                                <option value="">Buscar en catálogo...</option>
+                                ${this.inventory.map(i => `<option value="${i.id}" data-stock="${i.stock}" data-cost="${i.cost}" data-name="${i.name}">${i.name} (Stk: ${i.stock} | $${i.cost})</option>`).join('')}
+                            </select>
+                            <input type="number" id="log-inv-qty" class="w-16 bg-[#1c2127] border border-[#324d67] text-white rounded-lg px-2 py-2 text-center text-sm font-mono outline-none focus:border-primary" value="1" min="1">
+                            <button onclick="window.invModule.addManualItem()" class="bg-[#233648] hover:bg-primary text-white px-4 rounded-lg flex items-center justify-center transition-colors shadow" title="Añadir a la lista">
+                                <span class="material-symbols-outlined text-sm">add</span>
+                            </button>
+                        </div>
+
+                        <div class="flex-1 border border-[#324d67] rounded-lg overflow-hidden bg-[#1c2127] min-h-[150px]">
+                            <table class="w-full text-left text-xs text-white">
+                                <thead class="bg-[#233648] text-[#92adc9]"><tr><th class="p-2">Refacción / Insumo</th><th class="p-2 text-center">Cant</th><th class="p-2 text-right">Subtotal</th><th class="p-2"></th></tr></thead>
+                                <tbody id="inventory-preview-body" class="divide-y divide-[#324d67]">
+                                    <tr><td colspan="4" class="text-center p-6 text-slate-500 font-mono text-[10px] bg-[#111a22]">Sin insumos. Selecciona y presiona +</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="mt-4 bg-[#0d141c] p-4 rounded-lg border border-[#324d67] flex justify-between items-center">
+                            <span class="text-xs text-[#92adc9] uppercase font-bold tracking-widest">Inversión Total de la Orden:</span>
+                            <span id="summary-total-cost" class="text-2xl font-black text-green-400 font-mono">$0.00</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-6 pt-4 border-t border-[#324d67] shrink-0">
+                <button onclick="window.invModule.saveLog()" class="w-full bg-green-600 hover:bg-green-500 text-white py-4 rounded-xl font-bold shadow-[0_0_20px_rgba(22,163,74,0.3)] transition-all flex items-center justify-center gap-2 text-lg tracking-wide uppercase">
+                    <span class="material-symbols-outlined">save</span> Firmar y Registrar en Expediente
+                </button>
+            </div>
+        `;
+        modal.classList.remove('hidden');
+    }
+
+    addManualItem() {
+        const select = document.getElementById('log-inv-select');
+        const qty = parseFloat(document.getElementById('log-inv-qty').value);
+        const opt = select.options[select.selectedIndex];
+        
+        if (!opt || qty <= 0 || !select.value) return alert('Selecciona un producto del catálogo y una cantidad válida mayor a 0.');
+        
+        const itemId = select.value;
+        const stock = parseFloat(opt.dataset.stock);
+        const cost = parseFloat(opt.dataset.cost);
+        const name = opt.dataset.name;
+
+        if (qty > stock) alert(`⚠️ Advertencia de Almacén: Estás sacando (${qty}) pero el sistema solo registra (${stock}) en existencia. Se generará un negativo.`);
+
+        const existingItem = this.pendingStockDeduction.find(i => i.id === itemId);
+        if (existingItem) existingItem.qty += qty;
+        else this.pendingStockDeduction.push({ id: itemId, name, cost, qty });
+        
+        this.previewService();
+        document.getElementById('log-inv-select').value = '';
+        document.getElementById('log-inv-qty').value = 1;
+    }
+
+    removePendingItem(idx) {
+        this.pendingStockDeduction.splice(idx, 1);
+        this.previewService();
+    }
+
+    previewService() {
+        const tbody = document.getElementById('inventory-preview-body');
+        if (this.pendingStockDeduction.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" class="text-center p-6 text-slate-500 font-mono text-[10px] bg-[#111a22]">Sin insumos. Selecciona y presiona +</td></tr>';
+        } else {
+            tbody.innerHTML = this.pendingStockDeduction.map((item, idx) => `
+                <tr class="hover:bg-[#233648] transition-colors">
+                    <td class="p-2 font-bold truncate max-w-[150px] text-primary" title="${item.name}">${item.name}</td>
+                    <td class="p-2 text-center text-white font-mono bg-white/5 rounded mx-1">${item.qty}</td>
+                    <td class="p-2 text-right font-mono text-green-400">$${(item.qty * item.cost).toFixed(2)}</td>
+                    <td class="p-2 text-center">
+                        <button onclick="window.invModule.removePendingItem(${idx})" class="text-slate-500 hover:text-red-500 hover:bg-red-500/10 p-1 rounded transition-colors"><span class="material-symbols-outlined text-[16px]">close</span></button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+        this.updateServiceSummary();
+    }
+
+    updateServiceSummary() {
+        const partsCost = this.pendingStockDeduction.reduce((sum, item) => sum + (item.qty * item.cost), 0);
+        const laborCost = parseFloat(document.getElementById('log-labor-cost').value) || 0;
+        document.getElementById('summary-total-cost').textContent = `$${(partsCost + laborCost).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+    }
+
+    async saveLog() {
+        const serviceName = document.getElementById('log-service-name').value;
+        const date = document.getElementById('log-date').value;
+        const odometer = parseInt(document.getElementById('log-odometer').value);
+        const laborCost = parseFloat(document.getElementById('log-labor-cost').value) || 0;
+        
+        if (!serviceName || !date || isNaN(odometer)) return alert("Completa los datos obligatorios: Diagnóstico, Fecha y Kilometraje actual.");
+
+        const partsCost = this.pendingStockDeduction.reduce((sum, item) => sum + (item.qty * item.cost), 0);
+        const totalCost = partsCost + laborCost;
+        
+        const logData = {
+            vehicle_id: this.selectedVehicle.id,
+            date: date,
+            odometer: odometer,
+            service_name: serviceName,
+            parts_used: this.pendingStockDeduction.length ? this.pendingStockDeduction.map(i => `${i.qty} PZ - ${i.name} ($${i.cost.toFixed(2)} c/u)`).join('\n') : 'Ninguna (Solo Mano de Obra)',
+            total_cost: totalCost,
+            labor_cost: laborCost,
+            parts_cost: partsCost,
+            mechanic: document.getElementById('log-mechanic').value || 'Taller Interno',
+            created_at: new Date().toISOString()
+        };
+
+        try {
+            const { error } = await supabase.from('vehicle_logs').insert([logData]);
+            if (error) throw error;
+
+            for(let item of this.pendingStockDeduction) {
+                const currentItem = this.inventory.find(i => i.id === item.id);
+                if(currentItem) await supabase.from('inventory_items').update({ stock: currentItem.stock - item.qty }).eq('id', item.id);
+            }
+
+            if(odometer > this.selectedVehicle.current_km) {
+                await supabase.from('vehicles').update({ current_km: odometer }).eq('id', this.selectedVehicle.id);
+            }
+
+            alert("✅ Orden de Servicio guardada. El inventario ha sido actualizado automáticamente.");
+            
+            await this.loadAllData();
+            this.openVehicleDetail(this.selectedVehicle.id); 
+            
+        } catch (e) {
+            alert("Error del sistema al guardar la bitácora: " + e.message);
+        }
+    }
+
+    generateMaintenanceReport() {
+        const total = this.vehicleLogs.reduce((sum, log) => sum + Number(log.total_cost || 0), 0);
+        const reportWindow = window.open('', '_blank');
+        reportWindow.document.write(`
+            <html><head><title>Expediente de Mantenimiento ECO-${this.selectedVehicle.economic_number}</title>
+            <style>
+                body{font-family:'Helvetica Neue', Helvetica, Arial, sans-serif; padding:40px; color:#1e293b; background: #fff;}
+                .header { border-bottom: 2px solid #0f172a; padding-bottom: 20px; margin-bottom: 30px; }
+                .header h2 { margin:0; color: #0f172a; font-size: 24px; text-transform: uppercase; letter-spacing: 2px;}
+                .header p { margin: 5px 0 0 0; color: #475569; font-size: 14px;}
+                table{width:100%; border-collapse:collapse; margin-top:20px; font-size: 12px;}
+                th,td{border:1px solid #cbd5e1; padding:12px; text-align:left;}
+                th{background:#f1f5f9; color: #334155; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;}
+                tr:nth-child(even){background-color: #f8fafc;}
+                .tot{text-align:right; font-weight:900; font-size:20px; margin-top:30px; color:#0f172a; padding: 15px; background: #f1f5f9; border-radius: 8px;}
+                .parts { font-size: 10px; color: #64748b; white-space: pre-wrap; }
+            </style>
+            </head><body>
+                <div class="header">
+                    <h2>EXPEDIENTE HISTÓRICO DE MANTENIMIENTO</h2>
+                    <p><strong>UNIDAD:</strong> ${this.selectedVehicle.brand} ${this.selectedVehicle.model} (${this.selectedVehicle.year}) | <strong>PLACAS:</strong> ${this.selectedVehicle.plate} | <strong>ECO:</strong> ${this.selectedVehicle.economic_number}</p>
+                    <p><strong>KM ACTUAL:</strong> ${Number(this.selectedVehicle.current_km).toLocaleString()} km | <strong>FECHA REPORTE:</strong> ${new Date().toLocaleDateString()}</p>
+                </div>
+                <table>
+                    <tr><th>Fecha</th><th>Servicio / Diagnóstico</th><th>Kilometraje</th><th>Taller/Mecánico</th><th>Desglose de Refacciones</th><th>Inversión</th></tr>
+                    ${this.vehicleLogs.map(l => `
+                        <tr>
+                            <td style="white-space:nowrap">${this.formatDate(l.date)}</td>
+                            <td><strong>${l.service_name}</strong></td>
+                            <td style="font-family:monospace">${Number(l.odometer).toLocaleString()} km</td>
+                            <td>${l.mechanic || 'Interno'}</td>
+                            <td class="parts">${l.parts_used}</td>
+                            <td style="font-family:monospace; font-weight:bold; text-align:right">$${Number(l.total_cost).toLocaleString()}</td>
+                        </tr>
+                    `).join('')}
+                </table>
+                <div class="tot">INVERSIÓN TOTAL ACUMULADA: $${total.toLocaleString(undefined, {minimumFractionDigits: 2})} MXN</div>
+                <div style="margin-top: 50px; text-align: center; color: #94a3b8; font-size: 10px;">
+                    Reporte generado automáticamente por COV - Central de Operaciones Vehiculares
+                </div>
+                <script>window.onload = () => { window.print(); setTimeout(window.close, 500); }</script>
+            </body></html>
+        `);
+    }
+
+    printQR(url, plate) {
+        const printWindow = window.open('', '_blank');
+        printWindow.document.write(`
+            <html><head><style>
+                body{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;text-align:center; margin:0;}
+                .card { border: 4px solid #000; border-radius: 20px; padding: 40px; display:flex; flex-direction:column; align-items:center; width: 400px;}
+                h1{font-size: 50px; margin: 10px 0; font-family: monospace; letter-spacing: 5px;}
+                h2{font-size: 16px; margin: 0; color: #555; letter-spacing: 2px;}
+                img{width:250px;height:250px;margin:20px 0;}
+                p{font-size: 12px; color: #888; font-weight: bold;}
+            </style></head>
+            <body>
+                <div class="card">
+                    <h2>UNIDAD VINCULADA COV</h2>
+                    <h1>${plate}</h1>
+                    <img src="${url}">
+                    <p>ESCANEAR PARA GESTIÓN DE SALIDAS Y TALLER</p>
+                </div>
+                <script>window.onload=()=>{window.print();setTimeout(window.close,500);}</script>
+            </body></html>
+        `);
+    }
+
+    openTripRegister(vehicleId) {
+        const modal = document.getElementById('global-modal');
+        const content = document.getElementById('global-modal-content');
+        content.className = "bg-[#1c2127] w-full max-w-sm rounded-2xl shadow-2xl p-6 border border-[#324d67] animate-fade-in-up font-display";
+        content.innerHTML = `
+            <h3 class="font-bold text-white mb-4 flex items-center gap-2 border-b border-[#324d67] pb-2 uppercase tracking-widest text-xs">
+                <span class="material-symbols-outlined text-primary">add_location</span> Registrar Trayecto Manual
+            </h3>
+            <div class="space-y-4">
+                <div class="bg-blue-500/10 p-3 rounded-lg border border-blue-500/30 text-xs text-blue-400 mb-4">
+                    Este formulario sumará kilómetros al odómetro general de la unidad, útil para viajes no rastreados por GPS.
+                </div>
+                <div>
+                    <label class="text-[10px] font-bold text-[#92adc9] uppercase block mb-1">Distancia Recorrida (KM)</label>
+                    <input type="number" id="trip-dist" class="w-full bg-[#111a22] border border-[#324d67] text-white rounded-lg px-3 py-2 outline-none focus:border-primary font-mono text-lg" placeholder="Ej: 120">
+                </div>
+                <div>
+                    <label class="text-[10px] font-bold text-[#92adc9] uppercase block mb-1">Propósito / Destino</label>
+                    <input type="text" id="trip-dest" class="w-full bg-[#111a22] border border-[#324d67] text-white rounded-lg px-3 py-2 outline-none focus:border-primary" placeholder="Ej: Ruta foránea sin red">
+                </div>
+                <div class="flex gap-3 pt-4">
+                    <button onclick="document.getElementById('global-modal').classList.add('hidden'); window.invModule.openVehicleDetail('${vehicleId}')" class="flex-1 py-3 text-slate-400 hover:text-white bg-[#233648] hover:bg-[#2d445a] rounded-lg text-sm font-bold transition-colors">Cancelar</button>
+                    <button onclick="window.invModule.saveTrip('${vehicleId}')" class="flex-1 bg-primary hover:bg-blue-600 text-white py-3 rounded-lg text-sm font-bold shadow-lg transition-colors">Sumar KM</button>
+                </div>
+            </div>
+        `;
+        modal.classList.remove('hidden');
+    }
+
+    async saveTrip(vehicleId) {
+        const dist = parseFloat(document.getElementById('trip-dist').value);
+        const dest = document.getElementById('trip-dest').value;
+        if(!dist || !dest || dist <= 0) return alert("Ingresa una distancia válida y un destino/motivo.");
+
+        try {
+            await supabase.from('vehicle_trips').insert([{
+                vehicle_id: vehicleId,
+                distance_km: dist,
+                destination: dest,
+                start_date: new Date().toISOString()
+            }]).catch(e => console.warn('Error guardando trip', e));
+
+            const currentKm = Number(this.selectedVehicle.current_km) + dist;
+            await supabase.from('vehicles').update({ current_km: currentKm }).eq('id', vehicleId);
+
+            alert(`✅ Trayecto registrado. Se sumaron ${dist} km al odómetro de la unidad.`);
+            await this.loadAllData();
+            this.openVehicleDetail(vehicleId);
+        } catch (e) {
+            alert("Error al guardar trayecto: " + e.message);
+        }
+    }
+
+    // --- LIMPIEZA ---
     destroy() {
-        if (this.backgroundSyncInterval) {
-            clearInterval(this.backgroundSyncInterval);
-        }
-        
-        if (this.updateInterval) {
-            clearInterval(this.updateInterval);
-        }
-        
         if (this.realtimeChannel) {
             supabase.removeChannel(this.realtimeChannel);
         }
-        
-        this.stopTracking();
     }
 }
-
-// Función global de respaldo
-window.logoutDriver = function() {
-    if (window.conductorModule && typeof window.conductorModule.logout === 'function') {
-        window.conductorModule.logout();
-    } else {
-        localStorage.clear();
-        window.location.hash = '#login';
-        window.location.reload();
-    }
-};
