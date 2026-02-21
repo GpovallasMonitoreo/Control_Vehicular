@@ -20,19 +20,31 @@ export class TrackingView {
         window.trackingModule = this;
     }
 
-    // --- SEGURIDAD: ESPERAR A QUE LEAFLET ESTÉ LISTO ---
+    // --- SEGURIDAD: ESPERAR A QUE LEAFLET ESTÉ LISTO (MEJORADO) ---
     async waitForLeaflet() {
         return new Promise((resolve) => {
             if (window.L) return resolve();
+            
+            let attempts = 0;
             const interval = setInterval(() => {
-                if (window.L) { clearInterval(interval); resolve(); }
+                attempts++;
+                if (window.L) { 
+                    clearInterval(interval); 
+                    resolve(); 
+                } else if (attempts > 50) { // Timeout de 5 segundos
+                    clearInterval(interval);
+                    console.error("❌ ERROR: La librería Leaflet no se cargó. Verifica el index.html.");
+                    resolve(); // Resuelve para no bloquear la app
+                }
             }, 100);
         });
     }
 
     async onMount() {
         await this.waitForLeaflet();
-        this.initMap();
+        if (window.L) {
+            this.initMap();
+        }
         await this.loadActiveTrips();
         this.setupRealtimeSubscription();
         this.setupPeriodicUpdate();
@@ -95,7 +107,7 @@ export class TrackingView {
             }
             
             this.renderSidebarList();
-            this.updateMapMarkers();
+            if (this.map) this.updateMapMarkers();
 
         } catch (error) {
             console.error("Error cargando viajes activos:", error);
@@ -171,13 +183,13 @@ export class TrackingView {
         this.vehicleLocations[newLoc.trip_id] = newLoc;
         
         // Actualizar marcador en el mapa
-        this.updateSingleMarker(newLoc.trip_id);
+        if (this.map) this.updateSingleMarker(newLoc.trip_id);
         
         // Actualizar lista lateral
         this.renderSidebarList();
 
         // Si estamos siguiendo a este conductor, actualizar ruta y panel
-        if (this.focusedTripId === newLoc.trip_id) {
+        if (this.focusedTripId === newLoc.trip_id && this.map) {
             this.drawRouteAndCalculateETA(newLoc.trip_id);
             this.map.panTo([newLoc.lat, newLoc.lng], { animate: true });
             this.updateRoutePanel(newLoc.trip_id);
@@ -190,7 +202,7 @@ export class TrackingView {
             this.activeTrips = this.activeTrips.filter(t => String(t.id) !== String(updatedTrip.id));
             
             // Remover marcador del mapa
-            if (this.markers[updatedTrip.id]) {
+            if (this.map && this.markers[updatedTrip.id]) {
                 this.map.removeLayer(this.markers[updatedTrip.id]);
                 delete this.markers[updatedTrip.id];
             }
@@ -217,6 +229,8 @@ export class TrackingView {
     }
 
     updateSingleMarker(tripId) {
+        if (!this.map) return;
+        
         const L = window.L;
         const trip = this.activeTrips.find(t => String(t.id) === String(tripId));
         const loc = this.vehicleLocations[tripId];
@@ -283,6 +297,7 @@ export class TrackingView {
     }
 
     updateMapMarkers() {
+        if (!this.map) return;
         this.activeTrips.forEach(trip => {
             this.updateSingleMarker(trip.id);
         });
@@ -290,6 +305,8 @@ export class TrackingView {
 
     // --- CÁLCULO DE RUTA, DISTANCIA Y TIEMPO ---
     async drawRouteAndCalculateETA(tripId) {
+        if (!this.map) return;
+        
         const L = window.L;
         const trip = this.activeTrips.find(t => String(t.id) === String(tripId));
         const loc = this.vehicleLocations[tripId];
@@ -414,6 +431,7 @@ export class TrackingView {
     }
 
     focusVehicle(id) {
+        if (!this.map) return;
         this.focusedTripId = id;
         const loc = this.vehicleLocations[id];
         const coords = loc ? [loc.lat, loc.lng] : this.baseNaucalpan;
@@ -436,6 +454,7 @@ export class TrackingView {
     }
 
     viewAllVehicles() {
+        if (!this.map) return;
         this.focusedTripId = null;
         
         // Limpiar línea de ruta
