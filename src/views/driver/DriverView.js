@@ -16,7 +16,7 @@ export class DriverView {
         this.updateInterval = null;
         this.forceUpdateInterval = null;
         
-        // Variables para Ping Inteligente y Broadcast
+        // --- NUEVO: Variables para Ping Inteligente y Broadcast ---
         this.lastBroadcastTime = 0;
         this.lastBroadcastPos = null;
         this.broadcastChannel = null; 
@@ -635,7 +635,7 @@ export class DriverView {
             supabase.removeChannel(this.realtimeChannel);
         }
 
-        // 1. Canal para escuchar los cambios de estado
+        // 1. Canal para escuchar los cambios de estado (Aprobaciones, etc)
         this.realtimeChannel = supabase
             .channel('driver_realtime_' + this.userId)
             .on('postgres_changes', { 
@@ -679,11 +679,9 @@ export class DriverView {
                     }
                 }
             })
-            .subscribe((status) => {
-                console.log('📡 Estado de suscripción trips:', status);
-            });
+            .subscribe();
 
-        // 2. Canal general para EMITIR el GPS sin guardarlo en DB
+        // --- NUEVO: Canal para EMITIR el GPS sin guardarlo en DB ---
         this.broadcastChannel = supabase.channel('tracking_realtime');
         this.broadcastChannel.subscribe();
     }
@@ -921,7 +919,7 @@ export class DriverView {
         this.pendingLocations = [];
         
         try {
-            console.log('Sincronizando ubicaciones a la DB:', locations.length);
+            console.log('Sincronizando ubicaciones a DB:', locations.length);
             
             const dataToInsert = locations.map(loc => ({
                 trip_id: this.currentTrip.id,
@@ -1078,6 +1076,7 @@ export class DriverView {
         document.getElementById('live-speed').innerText = speedKmh;
     }
 
+    // --- NUEVO: Función de actualización con Ping Inteligente ---
     handlePositionUpdate(pos) {
         const { latitude, longitude, speed, accuracy } = pos.coords;
         const now = new Date();
@@ -1175,7 +1174,7 @@ export class DriverView {
                 timestamp: now.toISOString()
             });
             
-            // Incrementamos el lote para hacer menos inserciones
+            // Incrementamos el lote para hacer menos inserciones a la DB
             if (this.pendingLocations.length >= 20) {
                 this.syncPendingLocations();
             }
@@ -1688,6 +1687,8 @@ export class DriverView {
         if (this.realtimeChannel) {
             supabase.removeChannel(this.realtimeChannel);
         }
+        
+        // --- NUEVO: Limpiar el canal de emisión al salir ---
         if (this.broadcastChannel) {
             supabase.removeChannel(this.broadcastChannel);
         }
