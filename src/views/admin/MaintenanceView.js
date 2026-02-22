@@ -11,7 +11,6 @@ export class MaintenanceView {
         this.schedules = []; 
         this.html5QrcodeScanner = null;
         
-        // Control del calendario
         const today = new Date();
         this.currentMonth = today.getMonth();
         this.currentYear = today.getFullYear();
@@ -46,8 +45,9 @@ export class MaintenanceView {
             <div class="flex border-b border-[#324d67] overflow-x-auto custom-scrollbar shrink-0">
                 <button onclick="window.taller.switchTab('dashboard')" id="tab-btn-dashboard" class="px-6 py-3 text-primary border-b-2 border-primary font-bold text-sm transition-colors whitespace-nowrap flex items-center gap-2"><span class="material-symbols-outlined text-[18px]">dashboard</span> Tablero Principal</button>
                 <button onclick="window.taller.switchTab('new-service')" id="tab-btn-new-service" class="px-6 py-3 text-[#92adc9] hover:text-white border-b-2 border-transparent font-medium text-sm transition-colors whitespace-nowrap flex items-center gap-2"><span class="material-symbols-outlined text-[18px]">car_repair</span> Recepción y Servicio</button>
-                <button onclick="window.taller.switchTab('calendar')" id="tab-btn-calendar" class="px-6 py-3 text-[#92adc9] hover:text-white border-b-2 border-transparent font-medium text-sm transition-colors whitespace-nowrap flex items-center gap-2"><span class="material-symbols-outlined text-[18px]">calendar_month</span> Agenda y Taller</button>
-                <button onclick="window.taller.switchTab('database')" id="tab-btn-database" class="px-6 py-3 text-[#92adc9] hover:text-white border-b-2 border-transparent font-medium text-sm transition-colors whitespace-nowrap flex items-center gap-2"><span class="material-symbols-outlined text-[18px]">table_view</span> Base de Datos (Excel)</button>
+                <button onclick="window.taller.switchTab('calendar')" id="tab-btn-calendar" class="px-6 py-3 text-[#92adc9] hover:text-white border-b-2 border-transparent font-medium text-sm transition-colors whitespace-nowrap flex items-center gap-2"><span class="material-symbols-outlined text-[18px]">calendar_month</span> Agenda y Citas</button>
+                <button onclick="window.taller.switchTab('database')" id="tab-btn-database" class="px-6 py-3 text-[#92adc9] hover:text-white border-b-2 border-transparent font-medium text-sm transition-colors whitespace-nowrap flex items-center gap-2"><span class="material-symbols-outlined text-[18px]">table_view</span> Base de Datos</button>
+                <button onclick="window.taller.switchTab('completed')" id="tab-btn-completed" class="px-6 py-3 text-[#92adc9] hover:text-white border-b-2 border-transparent font-medium text-sm transition-colors whitespace-nowrap flex items-center gap-2"><span class="material-symbols-outlined text-[18px]">task_alt</span> Completados</button>
             </div>
 
             <div class="flex-1 relative overflow-hidden flex flex-col">
@@ -96,7 +96,7 @@ export class MaintenanceView {
                     <div class="bg-[#1c2127] border border-[#324d67] rounded-xl overflow-hidden flex flex-col shadow-xl min-h-[400px]">
                         <div class="p-6 border-b border-[#324d67] flex justify-between items-center bg-[#151b23]">
                             <h4 class="text-lg font-bold text-white flex items-center gap-2"><span class="material-symbols-outlined text-primary">history</span> Últimos Servicios Realizados</h4>
-                            <button onclick="window.taller.switchTab('database')" class="text-xs font-bold text-primary hover:text-white transition-colors">Ver todos →</button>
+                            <button onclick="window.taller.switchTab('completed')" class="text-xs font-bold text-primary hover:text-white transition-colors">Ver todos →</button>
                         </div>
                         <div class="flex-1 overflow-x-auto p-0">
                             <table class="w-full text-left text-sm border-collapse whitespace-nowrap">
@@ -153,33 +153,23 @@ export class MaintenanceView {
                             <div class="bg-[#1c2127] border border-[#324d67] rounded-xl p-6 shadow-lg">
                                 <div class="flex justify-between items-center mb-4 border-b border-[#324d67] pb-2">
                                     <h3 class="font-bold text-white flex items-center gap-2 uppercase tracking-widest text-xs">
-                                        <span class="material-symbols-outlined text-orange-500">fact_check</span> 1. Recepción y Checklist
+                                        <span class="material-symbols-outlined text-orange-500">fact_check</span> 1. Recepción y Evidencia
                                     </h3>
                                 </div>
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     <div class="space-y-3">
-                                        <label class="flex items-center justify-between p-3 bg-[#111a22] rounded-lg border border-[#324d67] cursor-pointer hover:border-primary transition-colors"><span class="text-white text-sm">Carrocería sin daños nuevos</span><input type="checkbox" id="chk-body" class="w-5 h-5 rounded bg-slate-800 text-primary accent-primary"></label>
-                                        <label class="flex items-center justify-between p-3 bg-[#111a22] rounded-lg border border-[#324d67] cursor-pointer hover:border-primary transition-colors"><span class="text-white text-sm">Luces completas</span><input type="checkbox" id="chk-lights" class="w-5 h-5 rounded bg-slate-800 text-primary accent-primary"></label>
-                                        <label class="flex items-center justify-between p-3 bg-[#111a22] rounded-lg border border-[#324d67] cursor-pointer hover:border-primary transition-colors"><span class="text-white text-sm">Niveles de líquidos OK</span><input type="checkbox" id="chk-fluids" class="w-5 h-5 rounded bg-slate-800 text-primary accent-primary"></label>
-                                        
-                                        <div class="mt-4 pt-3 border-t border-[#324d67]">
-                                            <h4 class="text-white text-xs uppercase tracking-widest font-bold mb-2 flex items-center gap-2"><span class="material-symbols-outlined text-blue-400 text-[18px]">tire_repair</span> Cambio de Llantas</h4>
-                                            <div class="grid grid-cols-2 gap-2">
-                                                <label class="flex items-center gap-2 p-2 bg-[#111a22] rounded border border-[#324d67] text-xs text-white cursor-pointer"><input type="checkbox" id="tire-fl" class="accent-primary w-4 h-4"> Del. Izq</label>
-                                                <label class="flex items-center gap-2 p-2 bg-[#111a22] rounded border border-[#324d67] text-xs text-white cursor-pointer"><input type="checkbox" id="tire-fr" class="accent-primary w-4 h-4"> Del. Der</label>
-                                                <label class="flex items-center gap-2 p-2 bg-[#111a22] rounded border border-[#324d67] text-xs text-white cursor-pointer"><input type="checkbox" id="tire-rl" class="accent-primary w-4 h-4"> Tras. Izq</label>
-                                                <label class="flex items-center gap-2 p-2 bg-[#111a22] rounded border border-[#324d67] text-xs text-white cursor-pointer"><input type="checkbox" id="tire-rr" class="accent-primary w-4 h-4"> Tras. Der</label>
-                                            </div>
-                                        </div>
-
                                         <div class="pt-2">
                                             <label class="block text-[10px] font-bold text-primary uppercase tracking-wider mb-1">Confirmar Kilometraje Entrada</label>
                                             <input type="number" id="shop-current-km" class="w-full bg-[#111a22] border border-[#324d67] text-white rounded-lg p-3 outline-none focus:border-primary font-mono text-center text-lg">
                                         </div>
+                                        <div class="pt-2">
+                                            <label class="block text-[10px] font-bold text-orange-400 uppercase tracking-wider mb-1">Tiempo de Reparación / Espera</label>
+                                            <input type="text" id="shop-wait-time" class="w-full bg-[#111a22] border border-[#324d67] text-white rounded-lg p-3 outline-none focus:border-orange-500 text-sm" placeholder="Ej: 3 horas, 2 días, En espera de pieza...">
+                                        </div>
                                     </div>
                                     <div class="flex flex-col gap-2 bg-[#111a22] border border-[#324d67] rounded-lg p-4">
                                         <div class="flex justify-between items-center mb-2">
-                                            <p class="text-xs text-[#92adc9] font-bold uppercase tracking-wider">Evidencia Fotográfica</p>
+                                            <p class="text-xs text-[#92adc9] font-bold uppercase tracking-wider">Evidencia Fotográfica de Reparación</p>
                                             <div class="relative">
                                                 <input type="file" accept="image/*" capture="environment" id="shop-camera" class="hidden" onchange="window.taller.captureImage(this)">
                                                 <label for="shop-camera" class="bg-primary hover:bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer flex items-center gap-1 transition-colors">
@@ -187,9 +177,9 @@ export class MaintenanceView {
                                                 </label>
                                             </div>
                                         </div>
-                                        <div id="images-container" class="grid grid-cols-2 gap-2 overflow-y-auto max-h-[250px] custom-scrollbar p-1">
+                                        <div id="images-container" class="grid grid-cols-2 gap-2 overflow-y-auto max-h-[150px] custom-scrollbar p-1">
                                             <div class="col-span-2 text-center text-[#92adc9] text-[10px] py-10 border-2 border-dashed border-[#324d67] rounded-lg">
-                                                Sin fotos capturadas. Usa el botón de arriba.
+                                                Sin fotos capturadas.
                                             </div>
                                         </div>
                                     </div>
@@ -198,7 +188,7 @@ export class MaintenanceView {
 
                             <div class="bg-[#1c2127] border border-[#324d67] rounded-xl p-6 shadow-lg">
                                 <h3 class="font-bold text-white mb-4 flex items-center gap-2 border-b border-[#324d67] pb-2 uppercase tracking-widest text-xs">
-                                    <span class="material-symbols-outlined text-green-500">build</span> 2. Aplicar Servicio (Recetas)
+                                    <span class="material-symbols-outlined text-green-500">build</span> 2. Aplicar Servicio e Insumos
                                 </h3>
                                 
                                 <div class="space-y-4">
@@ -206,7 +196,7 @@ export class MaintenanceView {
                                         <label class="block text-[10px] font-bold text-[#92adc9] uppercase tracking-wider mb-1">Cargar Receta de Inventario</label>
                                         <div class="flex gap-2">
                                             <select id="shop-recipe-select" class="flex-1 bg-[#111a22] border border-[#324d67] text-white rounded-lg p-3 outline-none focus:border-primary text-sm" onchange="window.taller.applyRecipe()">
-                                                <option value="">Seleccionar receta...</option>
+                                                <option value="">Seleccionar receta predefinida...</option>
                                             </select>
                                             <button onclick="window.taller.clearRecipe()" class="bg-[#233648] hover:bg-red-900/40 text-slate-400 hover:text-red-400 px-4 rounded-lg transition-colors border border-[#324d67]" title="Limpiar todo">
                                                 <span class="material-symbols-outlined text-sm">delete_sweep</span>
@@ -217,25 +207,11 @@ export class MaintenanceView {
                                     <div class="grid grid-cols-2 gap-4">
                                         <div>
                                             <label class="block text-[10px] font-bold text-[#92adc9] uppercase tracking-wider mb-1">Nombre del Trabajo</label>
-                                            <input id="shop-service-name" class="w-full bg-[#111a22] border border-[#324d67] text-white rounded-lg p-3 outline-none focus:border-primary text-sm" placeholder="Ej: Cambio de aceite y llantas">
+                                            <input id="shop-service-name" class="w-full bg-[#111a22] border border-[#324d67] text-white rounded-lg p-3 outline-none focus:border-primary text-sm" placeholder="Ej: Afinación Completa V8">
                                         </div>
                                         <div>
                                             <label class="block text-[10px] font-bold text-[#92adc9] uppercase tracking-wider mb-1">Costo Mano Obra ($)</label>
                                             <input type="number" id="shop-labor-cost" class="w-full bg-[#111a22] border border-[#324d67] text-white rounded-lg p-3 outline-none focus:border-primary font-mono text-right" value="0" oninput="window.taller.updateTotalCost()">
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <label class="block text-[10px] font-bold text-[#92adc9] uppercase tracking-wider mb-1">Tiempo de Reparación (Estimado)</label>
-                                            <input type="number" id="shop-labor-time" class="w-full bg-[#111a22] border border-[#324d67] text-white rounded-lg p-3 outline-none focus:border-primary text-sm" placeholder="Ej: 2" value="1">
-                                        </div>
-                                        <div>
-                                            <label class="block text-[10px] font-bold text-[#92adc9] uppercase tracking-wider mb-1">Unidad de Tiempo</label>
-                                            <select id="shop-labor-unit" class="w-full bg-[#111a22] border border-[#324d67] text-white rounded-lg p-3 outline-none focus:border-primary text-sm">
-                                                <option value="Horas">Horas</option>
-                                                <option value="Días">Días</option>
-                                            </select>
                                         </div>
                                     </div>
 
@@ -258,8 +234,8 @@ export class MaintenanceView {
                                         <span id="shop-total-cost" class="text-2xl font-black text-green-400 font-mono">$0.00</span>
                                     </div>
 
-                                    <button id="btn-save-shop" onclick="window.taller.saveShopService()" class="w-full bg-primary hover:bg-blue-600 text-white py-4 rounded-xl font-bold shadow-[0_0_15px_rgba(19,127,236,0.3)] transition-all flex items-center justify-center gap-2 text-sm uppercase tracking-wider">
-                                        <span class="material-symbols-outlined">save</span> Registrar Trabajo y Liberar Unidad
+                                    <button id="btn-save-shop" onclick="window.taller.saveShopService()" class="w-full bg-green-600 hover:bg-green-500 text-white py-4 rounded-xl font-black shadow-[0_0_20px_rgba(22,163,74,0.3)] transition-all flex items-center justify-center gap-2 text-sm uppercase tracking-wider">
+                                        <span class="material-symbols-outlined">save</span> Registrar Reparación y Liberar Unidad
                                     </button>
                                 </div>
                             </div>
@@ -311,11 +287,11 @@ export class MaintenanceView {
                                         <th class="p-3">Servicio Realizado</th>
                                         <th class="p-3">Km</th>
                                         <th class="p-3">Mecánico</th>
-                                        <th class="p-3">Tiempo Taller</th>
                                         <th class="p-3">Refacciones</th>
                                         <th class="p-3">Costo Ref.</th>
                                         <th class="p-3">Mano Obra</th>
                                         <th class="p-3">Inversión Total</th>
+                                        <th class="p-3">Notas / Espera</th>
                                     </tr>
                                 </thead>
                                 <tbody id="database-table" class="divide-y divide-[#324d67] text-slate-300">
@@ -324,6 +300,14 @@ export class MaintenanceView {
                             </table>
                         </div>
                     </div>
+                </div>
+
+                <div id="tab-content-completed" class="hidden animate-fade-in h-full overflow-y-auto custom-scrollbar pb-6 pr-2">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-white text-xl font-bold flex items-center gap-2"><span class="material-symbols-outlined text-green-500">task_alt</span> Trabajos Liberados y Completados</h2>
+                    </div>
+                    <div id="completed-list" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        </div>
                 </div>
 
             </div>
@@ -406,62 +390,42 @@ export class MaintenanceView {
     }
 
     async loadInitialData() {
-        if (!supabase) return;
+        const [vehRes, invRes, recRes, logRes, schedRes] = await Promise.all([
+            supabase.from('vehicles').select('*'), // Se traen todos para poder operar
+            supabase.from('inventory_items').select('*'),
+            supabase.from('service_templates').select('*, service_template_items(quantity, inventory_items(id, name, cost, unit, stock))'),
+            supabase.from('vehicle_logs').select('*, vehicles(economic_number, plate)').order('date', {ascending: false}),
+            supabase.from('maintenance_logs').select('*, vehicles(economic_number, plate)').eq('status', 'scheduled')
+        ]);
 
-        try {
-            const [vehRes, invRes, recRes, logRes, schedRes] = await Promise.all([
-                supabase.from('vehicles').select('*').order('economic_number'),
-                supabase.from('inventory_items').select('*'),
-                supabase.from('service_templates').select('*, service_template_items(quantity, inventory_items(id, name, cost, unit, stock))').then(r => r.error ? {data:[]} : r),
-                supabase.from('vehicle_logs').select('*, vehicles(economic_number, plate)').order('date', {ascending: false}).then(r => r.error ? {data:[]} : r),
-                supabase.from('maintenance_logs').select('*, vehicles(economic_number, plate)').eq('status', 'scheduled').then(r => r.error ? {data:[]} : r)
-            ]);
+        this.vehicles = vehRes.data || [];
+        this.inventory = invRes.data || [];
+        this.services = recRes.data || [];
+        this.logs = logRes.data || [];
+        this.schedules = schedRes.data || [];
 
-            this.vehicles = vehRes.data || [];
-            this.inventory = invRes.data || [];
-            this.services = recRes.data || [];
-            this.logs = logRes.data || [];
-            this.schedules = schedRes.data || [];
+        const vehOptions = '<option value="">Selecciona unidad...</option>' + this.vehicles.map(v => `<option value="${v.id}">${v.plate} (ECO-${v.economic_number})</option>`).join('');
+        document.getElementById('shop-vehicle-select').innerHTML = vehOptions;
+        document.getElementById('emer-vehicle').innerHTML = vehOptions;
+        document.getElementById('sched-vehicle').innerHTML = vehOptions;
 
-            const activeVehicles = this.vehicles.filter(v => v.status === 'active' || v.status === 'maintenance');
-            const vehOptions = '<option value="">Selecciona unidad...</option>' + activeVehicles.map(v => `<option value="${v.id}">${v.plate} (ECO-${v.economic_number})</option>`).join('');
-            
-            const shopSelect = document.getElementById('shop-vehicle-select');
-            const emerSelect = document.getElementById('emer-vehicle');
-            const schedSelect = document.getElementById('sched-vehicle');
+        const recOptions = '<option value="">Seleccionar receta...</option>' + this.services.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+        document.getElementById('shop-recipe-select').innerHTML = recOptions;
 
-            if(shopSelect) shopSelect.innerHTML = vehOptions;
-            if(emerSelect) emerSelect.innerHTML = vehOptions;
-            if(schedSelect) schedSelect.innerHTML = vehOptions;
-
-            const recSelect = document.getElementById('shop-recipe-select');
-            if (recSelect) {
-                recSelect.innerHTML = '<option value="">Seleccionar receta...</option>' + this.services.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
-            }
-
-            this.renderDashboard();
-            this.renderCalendar();
-            this.renderDatabaseTable();
-            
-        } catch (error) {
-            console.error("Error al cargar Taller:", error);
-            this.showToastNotification('Error de conexión', 'No se pudieron cargar los datos.', 'error');
-        }
+        this.renderDashboard();
+        this.renderCalendar();
+        this.renderDatabaseTable();
+        this.renderCompletedTab(); // Renderiza la nueva pestaña
     }
 
     switchTab(tab) {
-        ['dashboard', 'new-service', 'calendar', 'database'].forEach(t => {
-            const content = document.getElementById(`tab-content-${t}`);
-            const btn = document.getElementById(`tab-btn-${t}`);
-            if (content) content.classList.replace('block', 'hidden');
-            if (btn) btn.className = "px-6 py-3 text-[#92adc9] hover:text-white border-b-2 border-transparent font-medium text-sm transition-colors whitespace-nowrap flex items-center gap-2";
+        ['dashboard', 'new-service', 'calendar', 'database', 'completed'].forEach(t => {
+            document.getElementById(`tab-content-${t}`).classList.replace('block', 'hidden');
+            document.getElementById(`tab-btn-${t}`).className = "px-6 py-3 text-[#92adc9] hover:text-white border-b-2 border-transparent font-medium text-sm transition-colors whitespace-nowrap flex items-center gap-2";
         });
 
-        const activeContent = document.getElementById(`tab-content-${tab}`);
-        const activeBtn = document.getElementById(`tab-btn-${tab}`);
-        
-        if (activeContent) activeContent.classList.replace('hidden', 'block');
-        if (activeBtn) activeBtn.className = "px-6 py-3 text-primary border-b-2 border-primary font-bold text-sm transition-colors whitespace-nowrap flex items-center gap-2 bg-[#1c2127]";
+        document.getElementById(`tab-content-${tab}`).classList.replace('hidden', 'block');
+        document.getElementById(`tab-btn-${tab}`).className = "px-6 py-3 text-primary border-b-2 border-primary font-bold text-sm transition-colors whitespace-nowrap flex items-center gap-2 bg-[#1c2127]";
 
         if(tab === 'new-service' && !this.html5QrcodeScanner) {
             this.setupScanner();
@@ -472,17 +436,12 @@ export class MaintenanceView {
     }
 
     renderDashboard() {
-        const inShop = this.vehicles.filter(v => v.status === 'maintenance').length;
-        const comp = this.logs.filter(l => new Date(l.date).getMonth() === new Date().getMonth()).length;
+        document.getElementById('stat-in-shop').innerText = this.vehicles.filter(v => v.status === 'maintenance').length;
+        document.getElementById('stat-completed').innerText = this.logs.filter(l => new Date(l.date).getMonth() === new Date().getMonth()).length;
         const alertsKm = this.vehicles.filter(v => v.next_service_km && (v.next_service_km - v.current_km) < 1000).length;
-        
-        if (document.getElementById('stat-in-shop')) document.getElementById('stat-in-shop').innerText = inShop;
-        if (document.getElementById('stat-completed')) document.getElementById('stat-completed').innerText = comp;
-        if (document.getElementById('stat-km-alerts')) document.getElementById('stat-km-alerts').innerText = alertsKm;
+        document.getElementById('stat-km-alerts').innerText = alertsKm;
 
         const tbody = document.getElementById('maintenance-list');
-        if (!tbody) return;
-
         const recentLogs = this.logs.slice(0, 10); 
         if(!recentLogs.length) {
             tbody.innerHTML = '<tr><td colspan="5" class="text-center py-10 text-slate-500">Sin registros recientes.</td></tr>';
@@ -491,13 +450,85 @@ export class MaintenanceView {
 
         tbody.innerHTML = recentLogs.map(log => `
             <tr class="hover:bg-[#1a212b] transition-all border-b border-[#324d67]/50 last:border-0">
-                <td class="px-6 py-4 font-mono text-xs text-[#92adc9]">${new Date(log.date).toLocaleDateString('es-MX')}</td>
+                <td class="px-6 py-4 font-mono text-xs text-[#92adc9]">${new Date(log.date).toLocaleDateString()}</td>
                 <td class="px-6 py-4 font-bold text-white uppercase"><span class="bg-[#111a22] border border-[#324d67] px-2 py-1 rounded text-[10px] text-primary mr-1">ECO-${log.vehicles?.economic_number}</span> ${log.vehicles?.plate}</td>
-                <td class="px-6 py-4 text-xs font-bold text-slate-300 truncate max-w-[200px]" title="${log.service_name}">${log.service_name}</td>
+                <td class="px-6 py-4 text-xs font-bold text-slate-300 truncate max-w-[200px]">${log.service_name}</td>
                 <td class="px-6 py-4 font-mono text-xs text-slate-400">${Number(log.odometer).toLocaleString()} km</td>
                 <td class="px-6 py-4 text-right font-mono font-bold text-green-400">$${Number(log.total_cost).toLocaleString()}</td>
             </tr>
         `).join('');
+    }
+
+    // --- NUEVO: PESTAÑA COMPLETADOS ---
+    renderCompletedTab() {
+        const container = document.getElementById('completed-list');
+        if(!this.logs || this.logs.length === 0) {
+            container.innerHTML = '<div class="col-span-full text-center py-20 text-slate-500">No hay servicios completados.</div>';
+            return;
+        }
+
+        container.innerHTML = this.logs.map(log => {
+            const photos = log.photos || [];
+            const photosHtml = photos.length > 0 ? `
+                <div class="mt-4 pt-3 border-t border-[#324d67] grid grid-cols-4 gap-2">
+                    ${photos.map(p => `
+                        <div class="aspect-square rounded-lg overflow-hidden border border-[#324d67] cursor-pointer hover:border-primary group relative" onclick="window.taller.viewPhoto('${p.url}')">
+                            <img src="${p.url}" class="w-full h-full object-cover group-hover:scale-110 transition-transform">
+                            <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"><span class="material-symbols-outlined text-white text-sm">zoom_in</span></div>
+                        </div>
+                    `).join('')}
+                </div>
+            ` : '<p class="text-[10px] text-slate-500 mt-3 pt-3 border-t border-[#324d67] italic">Sin evidencia fotográfica adjunta</p>';
+
+            return `
+                <div class="bg-[#1c2127] border border-[#324d67] rounded-xl p-6 shadow-lg relative overflow-hidden flex flex-col">
+                    <div class="absolute top-0 right-0 bg-green-600 text-white text-[9px] font-black px-3 py-1 rounded-bl-lg uppercase tracking-widest shadow-md">Liberado / Activo</div>
+                    
+                    <div class="flex justify-between items-start mb-4">
+                        <div>
+                            <h4 class="text-white font-black text-xl tracking-tight">ECO-${log.vehicles?.economic_number} <span class="text-slate-400 font-mono text-sm ml-2">${log.vehicles?.plate}</span></h4>
+                            <p class="text-primary text-sm font-bold mt-1">${log.service_name}</p>
+                        </div>
+                        <div class="text-right mt-4">
+                            <p class="text-2xl font-black text-green-400 font-mono bg-[#111a22] px-3 py-1 rounded-lg border border-[#324d67] shadow-inner">$${Number(log.total_cost).toLocaleString()}</p>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3 mb-2 flex-1">
+                        <div class="bg-[#111a22] p-3 rounded-lg border border-[#324d67]">
+                            <p class="text-[9px] text-[#92adc9] uppercase tracking-widest font-bold mb-1">Fecha y Km</p>
+                            <p class="text-white text-xs">${new Date(log.date).toLocaleDateString()} • <span class="font-mono">${Number(log.odometer).toLocaleString()} km</span></p>
+                        </div>
+                        <div class="bg-[#111a22] p-3 rounded-lg border border-[#324d67]">
+                            <p class="text-[9px] text-orange-400 uppercase tracking-widest font-bold mb-1">Tiempo Reparación</p>
+                            <p class="text-white text-xs">${log.wait_time || 'N/A'}</p>
+                        </div>
+                        <div class="bg-[#111a22] p-3 rounded-lg border border-[#324d67] col-span-2">
+                            <p class="text-[9px] text-[#92adc9] uppercase tracking-widest font-bold mb-1">Observaciones / Piezas</p>
+                            <p class="text-slate-300 text-xs line-clamp-3" title="${log.notes}\n${log.parts_used}">${log.notes || 'N/A'}</p>
+                        </div>
+                    </div>
+                    
+                    ${photosHtml}
+                </div>
+            `;
+        }).join('');
+    }
+
+    viewPhoto(url) {
+        const modalId = 'photo-viewer-modal-' + Date.now();
+        const modal = document.createElement('div');
+        modal.id = modalId;
+        modal.className = 'fixed inset-0 z-[200] flex items-center justify-center bg-black/95 p-4 animate-fade-in';
+        modal.innerHTML = `
+            <div class="relative max-w-4xl w-full flex flex-col items-center">
+                <button onclick="document.getElementById('${modalId}').remove()" class="absolute -top-12 right-0 bg-white/10 hover:bg-red-500 text-white p-2 rounded-full transition-colors flex items-center justify-center cursor-pointer">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+                <img src="${url}" class="w-full max-h-[85vh] object-contain rounded-xl shadow-2xl border border-[#324d67]" />
+            </div>
+        `;
+        document.body.appendChild(modal);
     }
 
     changeMonth(offset) {
@@ -509,14 +540,10 @@ export class MaintenanceView {
 
     renderCalendar() {
         const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
-        const title = document.getElementById('calendar-month-title');
-        if (title) title.innerText = `${monthNames[this.currentMonth]} ${this.currentYear}`;
-        
-        const grid = document.getElementById('calendar-grid');
-        if (!grid) return;
-        
+        document.getElementById('calendar-month-title').innerText = `${monthNames[this.currentMonth]} ${this.currentYear}`;
         const firstDay = new Date(this.currentYear, this.currentMonth, 1).getDay();
         const daysInMonth = new Date(this.currentYear, this.currentMonth + 1, 0).getDate();
+        const grid = document.getElementById('calendar-grid');
         grid.innerHTML = '';
 
         for (let i = 0; i < firstDay; i++) {
@@ -562,50 +589,24 @@ export class MaintenanceView {
         const vId = document.getElementById('sched-vehicle').value;
         const service = document.getElementById('sched-service').value;
         const notes = document.getElementById('sched-notes').value;
-        
         if(!vId || !service) return alert("Completa los campos.");
-        
-        try {
-            const { error } = await supabase.from('maintenance_logs').insert([{ 
-                vehicle_id: vId, 
-                service_type: service, 
-                scheduled_date: dateStr, 
-                status: 'scheduled', 
-                notes: notes 
-            }]);
-            
-            if(error) throw error;
-            
-            document.getElementById('modal-schedule-calendar').classList.add('hidden'); 
-            this.showToastNotification("Servicio Agendado", `Programado para ${dateStr}.`); 
-            await this.loadInitialData(); 
-            
-        } catch (error) {
-            console.error(error);
-            this.showToastNotification('Atención', 'Asegúrate de que la tabla maintenance_logs existe en la BD', 'warning');
-        }
+        const { error } = await supabase.from('maintenance_logs').insert([{ vehicle_id: vId, service_type: service, scheduled_date: dateStr, status: 'scheduled', notes: notes }]);
+        if(error) alert("Error");
+        else { document.getElementById('modal-schedule-calendar').classList.add('hidden'); this.showToastNotification("Servicio Agendado", `Programado para ${dateStr}.`); await this.loadInitialData(); }
     }
 
     showToastNotification(title, message, type = 'success') {
         const container = document.getElementById('toast-container');
-        if (!container) return;
         const toast = document.createElement('div');
-        toast.className = `border ${type === 'error' ? 'border-red-500 bg-red-900/20 text-red-400' : (type === 'warning' ? 'border-orange-500 bg-orange-900/20 text-orange-400' : 'border-green-500 bg-green-900/20 text-green-400')} p-4 rounded-xl shadow-2xl flex items-start gap-3 w-80 animate-fade-in-up backdrop-blur-md`;
-        const icon = type === 'error' ? 'error' : (type === 'warning' ? 'warning' : 'check_circle');
-        toast.innerHTML = `<span class="material-symbols-outlined text-2xl">${icon}</span><div><h4 class="font-bold text-white text-sm">${title}</h4><p class="text-xs mt-1 text-slate-300">${message}</p></div>`;
+        toast.className = `border border-green-500 bg-green-900/20 text-green-400 p-4 rounded-xl shadow-2xl flex items-start gap-3 w-80 animate-fade-in-up backdrop-blur-md`;
+        toast.innerHTML = `<span class="material-symbols-outlined text-2xl">check_circle</span><div><h4 class="font-bold text-white text-sm">${title}</h4><p class="text-xs mt-1 text-slate-300">${message}</p></div>`;
         container.appendChild(toast);
         setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 4000);
     }
 
     renderDatabaseTable() {
         const tbody = document.getElementById('database-table');
-        if(!tbody) return;
-        
-        if(!this.logs.length) { 
-            tbody.innerHTML = '<tr><td colspan="12" class="text-center py-10">La base de datos está vacía.</td></tr>'; 
-            return; 
-        }
-        
+        if(!this.logs.length) { tbody.innerHTML = '<tr><td colspan="12" class="text-center py-10">Vacío.</td></tr>'; return; }
         tbody.innerHTML = this.logs.map(l => `
             <tr class="hover:bg-[#1a212b]">
                 <td class="p-3 font-mono text-[10px] text-slate-500">${l.id.split('-')[0]}</td>
@@ -614,69 +615,55 @@ export class MaintenanceView {
                 <td class="p-3">${l.vehicles?.plate}</td>
                 <td class="p-3 font-medium">${l.service_name}</td>
                 <td class="p-3 font-mono">${l.odometer}</td>
-                <td class="p-3">${l.mechanic || 'N/A'}</td>
-                <td class="p-3 font-mono">${l.labor_time || 0} ${l.labor_unit || 'H'}</td>
-                <td class="p-3 text-[10px] truncate max-w-[150px]" title="${l.parts_used}">${l.parts_used}</td>
+                <td class="p-3">${l.mechanic}</td>
+                <td class="p-3 text-[10px] truncate max-w-[200px]">${l.parts_used}</td>
                 <td class="p-3 font-mono text-orange-300">$${(l.parts_cost||0).toFixed(2)}</td>
                 <td class="p-3 font-mono text-blue-300">$${(l.labor_cost||0).toFixed(2)}</td>
                 <td class="p-3 font-mono font-bold text-green-400">$${(l.total_cost||0).toFixed(2)}</td>
+                <td class="p-3 text-[10px] truncate max-w-[200px]">${l.notes || ''}</td>
             </tr>
         `).join('');
     }
 
     exportToCSV() {
-        if (!this.logs || this.logs.length === 0) return alert("No hay datos para exportar");
-        const headers = ["ID", "Fecha", "ECO", "Placas", "Servicio", "Km", "Costo_Refacciones", "Costo_ManoObra", "Total_Invertido"];
-        const rows = this.logs.map(l => [l.id, l.date, l.vehicles?.economic_number, l.vehicles?.plate, `"${l.service_name}"`, l.odometer, l.parts_cost, l.labor_cost, l.total_cost]);
+        if (!this.logs || this.logs.length === 0) return alert("No hay datos");
+        const headers = ["ID", "Fecha", "ECO", "Placas", "Servicio", "Km", "Total"];
+        const rows = this.logs.map(l => [l.id, l.date, l.vehicles?.economic_number, l.vehicles?.plate, l.service_name, l.odometer, l.total_cost]);
         let csvContent = headers.join(",") + "\n";
         rows.forEach(r => csvContent += r.join(",") + "\n");
         const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.setAttribute("href", url);
-        link.setAttribute("download", `Taller_Bitacora_${new Date().toLocaleDateString()}.csv`);
+        link.setAttribute("download", `Taller_Bitacora.csv`);
         link.click();
     }
 
     setupScanner() {
-        if(document.getElementById('reader') && window.Html5QrcodeScanner) {
-            try {
-                this.html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: {width: 250, height: 250}, aspectRatio: 1 });
-                this.html5QrcodeScanner.render((text) => this.onScanSuccess(text), (error) => {});
-            } catch (e) {
-                console.warn('Scanner no inicializado', e);
-            }
+        if(document.getElementById('reader')) {
+            this.html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: {width: 250, height: 250}, aspectRatio: 1 });
+            this.html5QrcodeScanner.render((text) => this.onScanSuccess(text), (error) => {});
         }
     }
 
     onScanSuccess(decodedText) {
         try {
-            // Se asume que el QR tiene solo el UUID en texto plano, igual que en InventoryView
-            const vId = decodedText.trim();
-            if (vId.length > 20) { 
-                document.getElementById('shop-vehicle-select').value = vId; 
-                this.loadVehicleForService(vId); 
-                if(this.html5QrcodeScanner) {
-                    this.html5QrcodeScanner.pause(); 
-                    setTimeout(() => this.html5QrcodeScanner.resume(), 5000); 
-                }
-            }
+            const data = JSON.parse(decodedText);
+            if(data.v_id) { document.getElementById('shop-vehicle-select').value = data.v_id; this.loadVehicleForService(data.v_id); this.html5QrcodeScanner.pause(); setTimeout(() => this.html5QrcodeScanner.resume(), 5000); }
         } catch(e) { }
     }
 
     loadVehicleForService(id) {
         const v = this.vehicles.find(x => x.id === id);
         if(!v) return;
-        this.selectedVehicle = v;
         document.getElementById('sv-plate').innerText = v.plate;
         document.getElementById('sv-model').innerText = `${v.brand} ${v.model}`;
-        document.getElementById('sv-km').innerText = Number(v.current_km).toLocaleString();
+        document.getElementById('sv-km').innerText = v.current_km;
         document.getElementById('shop-current-km').value = v.current_km;
         document.getElementById('selected-vehicle-card').classList.remove('hidden');
         document.getElementById('shop-process-area').classList.remove('opacity-50', 'pointer-events-none');
     }
 
-    // --- MANEJO DE IMÁGENES LOCALES ANTES DE SUBIR ---
     captureImage(input) {
         if(input.files && input.files[0]) {
             this.capturedImages.push(input.files[0]);
@@ -687,187 +674,146 @@ export class MaintenanceView {
 
     renderCapturedImages() {
         const container = document.getElementById('images-container');
-        if(this.capturedImages.length === 0) { 
-            container.innerHTML = '<div class="col-span-2 text-center text-[#92adc9] text-[10px] py-10 border-2 border-dashed border-[#324d67] rounded-lg">Sin fotos capturadas. Usa el botón de arriba.</div>'; 
-            return; 
-        }
+        if(this.capturedImages.length === 0) { container.innerHTML = '<div class="col-span-2 text-center text-[#92adc9] text-[10px] py-10 border-2 border-dashed border-[#324d67] rounded-lg">Sin fotos capturadas. Usa el botón de arriba.</div>'; return; }
         container.innerHTML = this.capturedImages.map((file, idx) => `
-            <div class="relative w-full h-24 rounded-lg overflow-hidden border border-[#324d67]">
+            <div class="relative w-full h-24 rounded-lg overflow-hidden border border-[#324d67] shadow-lg">
                 <img src="${URL.createObjectURL(file)}" class="w-full h-full object-cover">
-                <button onclick="window.taller.removeCapturedImage(${idx})" class="absolute top-1 right-1 bg-red-600/80 hover:bg-red-500 text-white rounded-full p-1 transition-colors"><span class="material-symbols-outlined text-[12px]">close</span></button>
+                <button onclick="window.taller.removeCapturedImage(${idx})" class="absolute top-1 right-1 bg-red-600 text-white rounded-full p-1 shadow-md hover:bg-red-500 transition-colors"><span class="material-symbols-outlined text-[12px]">close</span></button>
             </div>
         `).join('');
     }
 
-    removeCapturedImage(idx) { 
-        this.capturedImages.splice(idx, 1); 
-        this.renderCapturedImages(); 
-    }
+    removeCapturedImage(idx) { this.capturedImages.splice(idx, 1); this.renderCapturedImages(); }
 
-    // --- MANEJO DE RECETAS EN EL SERVICIO ---
     applyRecipe() {
         const recipeId = document.getElementById('shop-recipe-select').value;
         const template = this.services.find(s => s.id === recipeId);
         if(!template) return;
-        
         document.getElementById('shop-service-name').value = template.name;
         document.getElementById('shop-labor-cost').value = template.labor_cost || 0;
-        document.getElementById('shop-labor-time').value = template.labor_time || 1;
-        document.getElementById('shop-labor-unit').value = template.labor_unit || 'Horas';
-        
-        if (template.service_template_items) {
-            this.tempRecipeItems = template.service_template_items.map(si => ({ 
-                id: si.inventory_items.id, 
-                name: si.inventory_items.name, 
-                qty: si.quantity, 
-                cost: si.inventory_items.cost 
-            }));
-        } else {
-            this.tempRecipeItems = [];
-        }
-        
+        this.tempRecipeItems = template.service_template_items?.map(si => ({ id: si.inventory_items.id, name: si.inventory_items.name, qty: si.quantity, cost: si.inventory_items.cost })) || [];
         this.renderRecipeList();
     }
 
-    clearRecipe() { 
-        this.tempRecipeItems = []; 
-        document.getElementById('shop-recipe-select').value = '';
-        document.getElementById('shop-service-name').value = '';
-        document.getElementById('shop-labor-cost').value = '0';
-        document.getElementById('shop-labor-time').value = '1';
-        this.renderRecipeList(); 
-    }
+    clearRecipe() { this.tempRecipeItems = []; this.renderRecipeList(); }
 
     renderRecipeList() {
         const tbody = document.getElementById('shop-parts-list');
         const laborCost = parseFloat(document.getElementById('shop-labor-cost').value) || 0;
         let partsTotal = 0;
-        
-        if(!this.tempRecipeItems.length) { 
-            tbody.innerHTML = '<tr><td colspan="3" class="text-center p-4 text-slate-500">Sin insumos cargados.</td></tr>'; 
-        } else {
-            tbody.innerHTML = this.tempRecipeItems.map(i => { 
-                partsTotal += i.qty * i.cost; 
-                return `<tr class="hover:bg-[#192633] border-b border-[#324d67]/50"><td class="p-2">${i.name}</td><td class="p-2 text-center text-primary font-mono">${i.qty}</td><td class="p-2 text-right font-mono">$${(i.qty*i.cost).toFixed(2)}</td></tr>`; 
-            }).join('');
+        if(!this.tempRecipeItems.length) { tbody.innerHTML = '<tr><td colspan="3" class="text-center p-4 text-slate-500 text-[10px]">Sin insumos cargados.</td></tr>'; } 
+        else {
+            tbody.innerHTML = this.tempRecipeItems.map(i => { partsTotal += i.qty * i.cost; return `<tr class="hover:bg-[#192633]"><td class="p-2 truncate font-bold text-primary max-w-[150px]">${i.name}</td><td class="p-2 text-center text-white font-mono">${i.qty}</td><td class="p-2 text-right text-green-400 font-mono">$${(i.qty*i.cost).toFixed(2)}</td></tr>`; }).join('');
         }
-        document.getElementById('shop-total-cost').innerText = `$${(partsTotal + laborCost).toLocaleString(undefined, {minimumFractionDigits:2})}`;
+        document.getElementById('shop-total-cost').innerText = `$${(partsTotal + laborCost).toLocaleString(undefined, {minimumFractionDigits: 2})}`;
     }
 
     updateTotalCost() { this.renderRecipeList(); }
 
-    // --- PROCESO PRINCIPAL: GUARDAR TODO EL SERVICIO Y FOTOS ---
+    // --- NUEVA LÓGICA DE GUARDADO COMPLETA ---
     async saveShopService() {
-        if (!this.selectedVehicle) return alert("Selecciona un vehículo primero.");
-        
-        const btn = document.getElementById('btn-save-shop');
-        const serviceName = document.getElementById('shop-service-name').value;
-        const currentKm = parseInt(document.getElementById('shop-current-km').value);
-        const laborCost = parseFloat(document.getElementById('shop-labor-cost').value) || 0;
-        const laborTime = parseFloat(document.getElementById('shop-labor-time').value) || 0;
-        const laborUnit = document.getElementById('shop-labor-unit').value;
-        const notes = document.getElementById('shop-notes').value;
-        
-        if (!serviceName || isNaN(currentKm)) {
-            return alert("El nombre del trabajo y el kilometraje son obligatorios.");
-        }
+        const vId = document.getElementById('shop-vehicle-select').value;
+        if (!vId) return this.showToastNotification('Error', 'Selecciona una unidad primero', 'error');
 
+        const serviceName = document.getElementById('shop-service-name').value;
+        const laborCost = parseFloat(document.getElementById('shop-labor-cost').value) || 0;
+        const notes = document.getElementById('shop-notes').value;
+        const waitTime = document.getElementById('shop-wait-time').value;
+        const currentKm = parseInt(document.getElementById('shop-current-km').value) || 0;
+
+        if (!serviceName) return this.showToastNotification('Error', 'El nombre del trabajo es obligatorio', 'error');
+
+        const btn = document.getElementById('btn-save-shop');
         btn.disabled = true;
-        btn.innerHTML = '<span class="animate-spin material-symbols-outlined">sync</span> PROCESANDO Y SUBIENDO FOTOS...';
+        btn.innerHTML = '<span class="animate-spin material-symbols-outlined">sync</span> Registrando y Liberando...';
 
         try {
-            // 1. Subir Imágenes al Storage (Si hay)
-            const uploadedUrls = [];
+            // 1. Subir Fotografías a Storage (usamos vehicle_documents que ya es público)
+            let uploadedPhotos = [];
             if (this.capturedImages.length > 0) {
                 for (let file of this.capturedImages) {
-                    const fileExt = file.name.split('.').pop();
-                    const fileName = `${this.selectedVehicle.id}/service_${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+                    const fileExt = file.name.split('.').pop() || 'jpg';
+                    const fileName = `${vId}/maint_${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
                     
-                    const { error: uploadError } = await supabase.storage.from('vehicle_documents').upload(fileName, file);
+                    const { error: uploadError } = await supabase.storage
+                        .from('vehicle_documents')
+                        .upload(fileName, file);
+
                     if (!uploadError) {
-                        const { data } = supabase.storage.from('vehicle_documents').getPublicUrl(fileName);
-                        uploadedUrls.push({ url: data.publicUrl, timestamp: new Date().toISOString() });
+                        const { data: { publicUrl } } = supabase.storage
+                            .from('vehicle_documents')
+                            .getPublicUrl(fileName);
+                        uploadedPhotos.push({ url: publicUrl, name: file.name });
                     }
                 }
             }
 
-            // 2. Calcular costos
-            const partsCost = this.tempRecipeItems.reduce((sum, item) => sum + (item.qty * item.cost), 0);
-            const totalCost = partsCost + laborCost;
+            // 2. Calcular costos e insumos aplicados
+            let partsTotal = 0;
+            let partsUsedStr = this.tempRecipeItems.length ? this.tempRecipeItems.map(i => `${i.qty} PZ - ${i.name} ($${i.cost.toFixed(2)} c/u)`).join('\n') : 'Ninguna (Solo Mano de Obra)';
+            this.tempRecipeItems.forEach(i => partsTotal += (i.qty * i.cost));
+            const totalCost = partsTotal + laborCost;
 
-            // 3. Crear el Log Principal en vehicle_logs
+            // 3. Guardar en vehicle_logs
             const logData = {
-                vehicle_id: this.selectedVehicle.id,
+                vehicle_id: vId,
                 date: new Date().toISOString().split('T')[0],
                 odometer: currentKm,
                 service_name: serviceName,
-                parts_used: this.tempRecipeItems.length ? this.tempRecipeItems.map(i => `${i.qty} PZ - ${i.name}`).join('\n') : 'Solo Mano de Obra',
+                parts_used: partsUsedStr,
                 total_cost: totalCost,
                 labor_cost: laborCost,
-                parts_cost: partsCost,
+                parts_cost: partsTotal,
                 mechanic: 'Taller Interno',
-                labor_time: laborTime,
-                labor_unit: laborUnit,
                 notes: notes,
-                created_at: new Date().toISOString()
+                wait_time: waitTime,
+                photos: uploadedPhotos
             };
 
-            const { data: logEntry, error: logError } = await supabase.from('vehicle_logs').insert([logData]).select();
-            if (logError) throw logError;
+            const { error: logErr } = await supabase.from('vehicle_logs').insert([logData]);
+            if (logErr) throw logErr;
 
-            // 4. Si hay fotos, las vinculamos al vehículo como documento probatorio también
-            if (uploadedUrls.length > 0) {
-                const docInserts = uploadedUrls.map(photo => ({
-                    vehicle_id: this.selectedVehicle.id,
-                    document_type: 'service_evidence',
-                    file_url: photo.url,
-                    file_name: `Evidencia - ${serviceName}`
-                }));
-                await supabase.from('vehicle_documents').insert(docInserts);
-            }
-
-            // 5. Descontar Inventario Real
-            for(let item of this.tempRecipeItems) {
+            // 4. Descontar Inventario
+            for (let item of this.tempRecipeItems) {
                 const currentItem = this.inventory.find(i => i.id === item.id);
-                if(currentItem) {
-                    await supabase.from('inventory_items').update({ stock: currentItem.stock - item.qty }).eq('id', item.id);
+                if (currentItem) {
+                    await supabase.from('inventory_items')
+                        .update({ stock: currentItem.stock - item.qty })
+                        .eq('id', item.id);
                 }
             }
 
-            // 6. Actualizar Vehículo (Km y Estado a Activo/Disponible)
-            await supabase.from('vehicles').update({ 
-                current_km: currentKm,
-                status: 'active' 
-            }).eq('id', this.selectedVehicle.id);
+            // 5. Liberar la unidad (Ponerla en active y actualizar KM)
+            await supabase.from('vehicles')
+                .update({ status: 'active', current_km: currentKm })
+                .eq('id', vId);
 
-            // Resetear UI
-            this.showToastNotification("✅ Servicio Completado", "El vehículo ha sido reparado y regresado a estado Disponible.", 'success');
+            this.showToastNotification('Mantenimiento Exitoso', 'La unidad ha sido reparada y liberada a operaciones.');
             
-            // Limpiar formulario
-            this.selectedVehicle = null;
-            this.tempRecipeItems = [];
+            // 6. Resetear UI y cambiar a Completados
             this.capturedImages = [];
-            this.renderCapturedImages();
+            this.tempRecipeItems = [];
             document.getElementById('shop-vehicle-select').value = '';
-            document.getElementById('shop-recipe-select').value = '';
+            document.getElementById('selected-vehicle-card').classList.add('hidden');
+            document.getElementById('shop-process-area').classList.add('opacity-50', 'pointer-events-none');
             document.getElementById('shop-service-name').value = '';
-            document.getElementById('shop-labor-cost').value = '0';
+            document.getElementById('shop-wait-time').value = '';
             document.getElementById('shop-notes').value = '';
+            this.renderCapturedImages();
+            this.renderRecipeList();
             
-            // Regresar al dashboard
             await this.loadInitialData();
-            this.switchTab('dashboard');
-
-        } catch (error) {
-            console.error("Error guardando servicio:", error);
-            alert("Error en el proceso: " + error.message);
+            this.switchTab('completed'); 
+            
+        } catch (err) {
+            console.error(err);
+            this.showToastNotification('Error al guardar', err.message, 'error');
         } finally {
             btn.disabled = false;
-            btn.innerHTML = '<span class="material-symbols-outlined">save</span> Registrar Trabajo y Liberar Unidad';
+            btn.innerHTML = '<span class="material-symbols-outlined">save</span> Registrar Reparación y Liberar Unidad';
         }
     }
 
-    // --- ACCESO DE EMERGENCIA (CÓDIGO NUMÉRICO) ---
     openEmergencyAccess() {
         document.getElementById('modal-emergency-qr').classList.remove('hidden');
         document.getElementById('emer-code-container').classList.add('hidden');
@@ -877,32 +823,23 @@ export class MaintenanceView {
         const vId = document.getElementById('emer-vehicle').value;
         if(!vId) return alert("Seleccione un vehículo primero.");
         
-        // 1. Generar Código Numérico de 6 dígitos
         const accessCode = Math.floor(100000 + Math.random() * 900000).toString();
         
-        // 2. Buscar viaje activo para vincular el código
         const { data: trip } = await supabase.from('trips').select('id').eq('vehicle_id', vId).neq('status', 'closed').maybeSingle();
         
         if (trip) {
-            // Guardamos el código en la base de datos para que el guardia lo verifique
             const { error } = await supabase.from('trips').update({ 
                 emergency_code: accessCode,
-                emergency_expiry: new Date(Date.now() + (60 * 60 * 1000)).toISOString() // Vence en 1 hora
+                emergency_expiry: new Date(Date.now() + (60 * 60 * 1000)).toISOString() 
             }).eq('id', trip.id);
-            
-            if (error) {
-                alert("Error al sincronizar código: " + error.message);
-                return;
-            }
+            if (error) { alert("Error al sincronizar: " + error.message); return; }
         }
 
-        // 3. Mostrar el código en pantalla
         const codeContainer = document.getElementById('emer-code-container');
         const display = document.getElementById('emer-display-code');
         
         display.innerText = accessCode;
         codeContainer.classList.remove('hidden');
-        
-        if(navigator.vibrate) navigator.vibrate([100, 50, 100]);
+        if(navigator.vibrate) navigator.vibrate(200);
     }
 }
