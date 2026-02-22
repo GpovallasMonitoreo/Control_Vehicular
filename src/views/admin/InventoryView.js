@@ -125,7 +125,7 @@ export class InventoryView {
                 </div>
             </div>
 
-            <div id="inv-notification-toast" class="hidden fixed bottom-6 right-6 z-50 bg-[#1c2127] border border-primary text-white p-4 rounded-xl shadow-2xl animate-fade-in-up flex items-center gap-3">
+            <div id="inv-notification-toast" class="hidden fixed bottom-6 right-6 z-[300] bg-[#1c2127] border border-primary text-white p-4 rounded-xl shadow-2xl animate-fade-in-up flex items-center gap-3">
                 <span class="material-symbols-outlined text-primary">notifications_active</span>
                 <p id="inv-notification-text" class="text-sm font-bold"></p>
             </div>
@@ -203,7 +203,7 @@ export class InventoryView {
         }
     }
 
-    // --- CARGA DE DATOS SEGUROS ---
+    // --- CARGA DE DATOS ---
     async loadAllData() {
         if (!supabase) return;
 
@@ -646,8 +646,7 @@ export class InventoryView {
             const { data: newVeh, error } = await supabase.from('vehicles').insert([data]).select();
             if (error) throw error;
             
-            // Try insert log, no catch builder
-            const { error: logErr } = await supabase.from('vehicle_logs').insert([{
+            await supabase.from('vehicle_logs').insert([{
                 vehicle_id: newVeh[0].id,
                 date: new Date().toISOString().split('T')[0],
                 odometer: initialKm,
@@ -656,9 +655,7 @@ export class InventoryView {
                 total_cost: 0,
                 quantity: 1,
                 notes: `Vehículo registrado: ${data.brand} ${data.model} ${data.year}, Placas: ${data.plate}, ECO: ${data.economic_number}`
-            }]);
-            
-            if(logErr) console.warn('No se pudo guardar el log inicial', logErr);
+            }]).catch(e => console.warn('No se pudo guardar el log inicial', e));
             
             document.getElementById('global-modal').classList.add('hidden');
             alert("✅ Unidad registrada exitosamente y lista para operar.");
@@ -707,7 +704,6 @@ export class InventoryView {
 
         const totalTripKm = this.vehicleTrips.reduce((sum, trip) => sum + Number(trip.distance_km || 0), 0);
         const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${this.selectedVehicle.id}&color=111a22`;
-        
         const imgUrl = (this.selectedVehicle.image_url && this.selectedVehicle.image_url !== "0" && this.selectedVehicle.image_url !== "null") ? this.selectedVehicle.image_url : 'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&w=800&q=60';
 
         const activeTrip = this.vehicleAppTrips.find(t => ['requested', 'approved_for_taller', 'driver_accepted', 'in_progress'].includes(t.status));
@@ -800,7 +796,7 @@ export class InventoryView {
                                     <div><label class="text-[10px] font-bold text-[#92adc9] uppercase">VIN</label><div class="text-white font-mono text-sm mt-1">${this.selectedVehicle.vin || 'N/A'}</div></div>
                                     <div><label class="text-[10px] font-bold text-[#92adc9] uppercase">Marca / Modelo</label><div class="text-white text-sm mt-1">${this.selectedVehicle.brand} ${this.selectedVehicle.model}</div></div>
                                     <div><label class="text-[10px] font-bold text-[#92adc9] uppercase">Año</label><div class="text-white text-sm mt-1">${this.selectedVehicle.year || 'N/A'}</div></div>
-                                    <div><label class="text-[10px] font-bold text-[#92adc9] uppercase">Color</label><div class="text-white text-sm mt-1 flex items-center gap-2"><span class="w-3 h-3 rounded-full border border-slate-400" style="background-color: ${this.getColorHex(this.selectedVehicle.color)}"></span> ${this.selectedVehicle.color || 'N/A'}</div></div>
+                                    <div><label class="text-[10px] font-bold text-[#92adc9] uppercase">Color</label><div class="text-white text-sm mt-1 flex items-center gap-2"><span class="w-3 h-3 rounded-full border border-slate-400" style="background-color: ${window.invModule.getColorHex(this.selectedVehicle.color)}"></span> ${this.selectedVehicle.color || 'N/A'}</div></div>
                                 </div>
                             </div>
 
@@ -822,7 +818,7 @@ export class InventoryView {
                                         </div>
                                         <div class="bg-[#1c2127] p-3 rounded-lg border border-[#324d67]">
                                             <div class="flex justify-between items-center mb-1">
-                                                <span class="text-xs text-[#92adc9]">Recorrido Histórico (Trayectos manuales):</span>
+                                                <span class="text-xs text-[#92adc9]">Recorrido Histórico (Manual):</span>
                                                 <span class="text-sm font-bold text-primary">${totalTripKm.toLocaleString()} km</span>
                                             </div>
                                         </div>
@@ -969,7 +965,7 @@ export class InventoryView {
                                         <tr><td colspan="6" class="p-10 text-center text-slate-500"><span class="material-symbols-outlined text-4xl block mb-2 opacity-50">handyman</span> No hay mantenimientos registrados en la bitácora para esta unidad.</td></tr>
                                     ` : this.vehicleLogs.map(log => `
                                         <tr class="hover:bg-[#192633] transition-colors">
-                                            <td class="p-4 font-medium">${this.formatDate(log.date)}</td>
+                                            <td class="p-4 font-medium">${window.invModule.formatDate(log.date)}</td>
                                             <td class="p-4 font-mono">${Number(log.odometer).toLocaleString()} km</td>
                                             <td class="p-4 font-bold text-white"><span class="bg-primary/10 text-primary px-2 py-1 rounded text-xs border border-primary/20">${log.service_name}</span></td>
                                             <td class="p-4 text-[#92adc9]">${log.mechanic || 'N/A'}</td>
@@ -995,6 +991,7 @@ export class InventoryView {
             </div>
         `;
         
+        // Pinta la UI de salud de componentes
         setTimeout(() => this.renderComponentsHealth(), 100);
     }
 
@@ -1009,6 +1006,7 @@ export class InventoryView {
         document.getElementById(`veh-tab-content-${num}`).classList.replace('hidden', 'block');
     }
 
+    // --- NUEVO LÓGICA DE SALUD DE COMPONENTES ---
     renderComponentsHealth() {
         let comps = this.selectedVehicle.components;
         if (!comps || !Array.isArray(comps) || comps.length === 0) {
@@ -1090,6 +1088,7 @@ export class InventoryView {
             </div>
         `;
         container.appendChild(newRow);
+        
         container.scrollTop = container.scrollHeight;
         this.calculateTotalHealth();
     }
@@ -1157,6 +1156,7 @@ export class InventoryView {
         }
     }
 
+    // --- GALERÍA DE FOTOS DE VIAJES ---
     renderVehiclePhotosGallery() {
         if (!this.vehicleInspectionsPhotos || this.vehicleInspectionsPhotos.length === 0) {
             return `<div class="text-center py-10 text-slate-500"><span class="material-symbols-outlined text-4xl mb-2 opacity-50">no_photography</span><p>No hay fotos de viajes registradas para esta unidad.</p></div>`;
@@ -1171,7 +1171,7 @@ export class InventoryView {
             
             if (hasReception || hasReturn) {
                 foundPhotos = true;
-                const dateStr = new Date(trip.created_at).toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).toUpperCase();
+                const dateStr = window.invModule.formatDate(trip.created_at);
                 const driverName = trip.profiles?.full_name || 'Desconocido';
 
                 html += `
@@ -1220,7 +1220,7 @@ export class InventoryView {
         return foundPhotos ? html : `<div class="text-center py-10 text-slate-500"><span class="material-symbols-outlined text-4xl mb-2 opacity-50">no_photography</span><p>No hay fotos de viajes registradas para esta unidad.</p></div>`;
     }
 
-    // VISOR DE IMÁGENES GLOBAL
+    // VISOR DE IMÁGENES GLOBAL (AHORA DEFINIDO CORRECTAMENTE EN LA CLASE)
     viewPhoto(url) {
         const modalId = 'photo-viewer-modal-' + Date.now();
         const modal = document.createElement('div');
@@ -1237,7 +1237,7 @@ export class InventoryView {
         document.body.appendChild(modal);
     }
 
-    // --- NUEVO: SUBIDA DE DOCUMENTOS ---
+    // --- SUBIDA DE DOCUMENTOS Y PDFs ---
     openDocumentUpload(vehicleId) {
         const modal = document.getElementById('global-modal');
         const content = document.getElementById('global-modal-content');
@@ -1279,7 +1279,7 @@ export class InventoryView {
         const btn = document.getElementById('btn-upload-doc');
         
         if (!fileInput.files || fileInput.files.length === 0) {
-            return this.showToast('Atención', 'Selecciona un archivo primero.', 'warning');
+            return this.showToast('Selecciona un archivo primero.', 'Atención', 'warning');
         }
         
         const file = fileInput.files[0];
@@ -1289,7 +1289,6 @@ export class InventoryView {
         btn.innerHTML = '<span class="animate-spin material-symbols-outlined">sync</span> Subiendo...';
         
         try {
-            // 1. Upload to Storage
             const fileExt = file.name.split('.').pop();
             const fileName = `${vehicleId}/${docType}_${Date.now()}.${fileExt}`;
             
@@ -1299,12 +1298,10 @@ export class InventoryView {
                 
             if (uploadError) throw uploadError;
             
-            // 2. Get Public URL
             const { data: { publicUrl } } = supabase.storage
                 .from('vehicle_documents')
                 .getPublicUrl(fileName);
                 
-            // 3. Save to DB
             const { error: dbError } = await supabase
                 .from('vehicle_documents')
                 .insert([{
@@ -1319,7 +1316,6 @@ export class InventoryView {
             this.showToast('Documento guardado correctamente', 'Éxito', 'success');
             document.getElementById('global-modal').classList.add('hidden');
             
-            // Refresh modal view
             await this.loadAllData();
             this.openVehicleDetail(vehicleId);
             
@@ -1339,7 +1335,7 @@ export class InventoryView {
         const docs = this.vehicleDocuments.filter(d => d.vehicle_id === vehicleId && d.document_type === docType);
         
         if(docs.length === 0) {
-            return this.showToast('No hay documentos de este tipo.', 'Aviso', 'warning');
+            return this.showToast('No hay documentos de este tipo subidos.', 'Aviso', 'warning');
         }
         
         const modal = document.getElementById('global-modal');
@@ -1373,7 +1369,7 @@ export class InventoryView {
                             <span class="material-symbols-outlined ${color} text-3xl">${icon}</span>
                             <div class="flex flex-col overflow-hidden">
                                 <span class="text-white text-sm font-bold truncate">${d.file_name || 'Documento'}</span>
-                                <span class="text-[10px] text-[#92adc9]">${new Date(d.uploaded_at || d.created_at).toLocaleDateString()}</span>
+                                <span class="text-[10px] text-[#92adc9]">${window.invModule.formatDate(d.uploaded_at || d.created_at)}</span>
                             </div>
                         </div>
                         <div class="flex gap-2 shrink-0">
@@ -1395,7 +1391,7 @@ export class InventoryView {
     }
 
     openVehicleEdit(vehicleId) {
-        alert("El editor completo de la ficha técnica se abrirá aquí próximamente.");
+        alert("El editor de perfil del vehículo se abrirá aquí próximamente.");
     }
 
     async saveDriver() {
@@ -1406,22 +1402,79 @@ export class InventoryView {
         document.getElementById('modal-add-driver').classList.add('hidden');
     }
 
+    // --- ALERTS & HELPERS GLOBALES ---
+    getVehicleAlertsHTML() {
+        const alerts = [];
+        const today = new Date();
+        
+        if (this.selectedVehicle.license_expiry) {
+            const days = Math.ceil((new Date(this.selectedVehicle.license_expiry) - today) / 86400000);
+            if (days < 30 && days > 0) alerts.push(`<div class="bg-orange-500/10 border border-orange-500/30 text-orange-400 p-2 rounded flex items-center gap-2 text-xs"><span class="material-symbols-outlined text-sm">warning</span> Tarjeta Circ. vence en ${days} días.</div>`);
+            else if (days <= 0) alerts.push(`<div class="bg-red-500/10 border border-red-500/30 text-red-400 p-2 rounded flex items-center gap-2 text-xs font-bold"><span class="material-symbols-outlined text-sm">error</span> Tarjeta de Circulación VENCIDA.</div>`);
+        }
+        if (this.selectedVehicle.insurance_expiry) {
+            const days = Math.ceil((new Date(this.selectedVehicle.insurance_expiry) - today) / 86400000);
+            if (days < 30 && days > 0) alerts.push(`<div class="bg-orange-500/10 border border-orange-500/30 text-orange-400 p-2 rounded flex items-center gap-2 text-xs"><span class="material-symbols-outlined text-sm">warning</span> Póliza de seguro vence en ${days} días.</div>`);
+            else if (days <= 0) alerts.push(`<div class="bg-red-500/10 border border-red-500/30 text-red-400 p-2 rounded flex items-center gap-2 text-xs font-bold"><span class="material-symbols-outlined text-sm">error</span> Póliza de Seguro VENCIDA.</div>`);
+        }
+
+        return alerts.length > 0 ? alerts.join('') : `<div class="h-full flex flex-col items-center justify-center text-slate-500 opacity-50"><span class="material-symbols-outlined text-4xl mb-2">verified_user</span><span class="text-xs font-bold uppercase tracking-widest">Documentación al día</span></div>`;
+    }
+
+    getDocumentationHTML() {
+        const docs = [
+            { type: 'license', title: 'Tarjeta Circulación', exp: this.selectedVehicle.license_expiry, status: this.selectedVehicle.license_status, icon: 'badge' },
+            { type: 'insurance', title: 'Póliza de Seguro', exp: this.selectedVehicle.insurance_expiry, status: this.selectedVehicle.insurance_status, icon: 'shield' },
+            { type: 'verification', title: 'Verificación Ambiental', exp: this.selectedVehicle.verification_expiry, status: this.selectedVehicle.verification_status, icon: 'eco' }
+        ];
+
+        return docs.map(d => {
+            const vehicleDocs = this.vehicleDocuments.filter(doc => doc.document_type === d.type);
+            const hasFiles = vehicleDocs.length > 0;
+            const color = d.status === 'vigente' ? 'green' : d.status === 'vencido' ? 'red' : 'orange';
+
+            return `
+                <div class="bg-[#1c2127] border border-[#324d67] p-3 rounded-lg flex justify-between items-center hover:border-[#456b8f] transition-colors shadow-sm">
+                    <div class="flex items-center gap-3">
+                        <div class="bg-[#233648] p-2 rounded-lg text-[#92adc9]"><span class="material-symbols-outlined text-[20px]">${d.icon}</span></div>
+                        <div>
+                            <p class="text-white text-xs font-bold uppercase">${d.title}</p>
+                            <p class="text-[10px] text-[#92adc9] mt-0.5">Vence: <span class="font-mono text-slate-300">${d.exp ? window.invModule.formatDate(d.exp) : 'No definida'}</span></p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        ${hasFiles ? `<button onclick="window.invModule.viewDocuments('${d.type}', '${this.selectedVehicle.id}')" class="text-primary hover:text-blue-400 bg-primary/10 hover:bg-primary/20 p-1.5 rounded transition-colors" title="Ver Archivos"><span class="material-symbols-outlined text-[16px]">visibility</span></button>` : ''}
+                        <span class="text-[9px] font-black uppercase px-2 py-1 rounded border border-${color}-500/30 text-${color}-400 bg-${color}-500/10 tracking-widest">${d.status || 'SIN ESTADO'}</span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    formatDate(dateString) {
+        if (!dateString) return '--';
+        return new Date(dateString).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase();
+    }
+
+    getColorHex(colorName) {
+        const c = (colorName||'').toLowerCase();
+        if(c.includes('blanco')) return '#ffffff';
+        if(c.includes('negro')) return '#000000';
+        if(c.includes('rojo')) return '#ef4444';
+        if(c.includes('azul')) return '#3b82f6';
+        if(c.includes('gris') || c.includes('plata')) return '#94a3b8';
+        return 'transparent';
+    }
+
+    // --- REGISTRO DE TRAYECTOS ---
     openTripRegister(vehicleId) {
-        this.pendingStockDeduction = [];
         const modal = document.getElementById('global-modal');
         const content = document.getElementById('global-modal-content');
-        
-        content.className = "bg-[#1c2127] w-full max-w-sm rounded-2xl shadow-2xl p-6 border border-[#324d67] animate-fade-in-up font-display flex flex-col max-h-[90vh]";
+        content.className = "bg-[#1c2127] w-full max-w-sm rounded-2xl shadow-2xl p-6 border border-[#324d67] animate-fade-in-up font-display";
         content.innerHTML = `
-            <div class="flex justify-between items-center mb-6 border-b border-[#324d67] pb-4 shrink-0">
-                <h3 class="font-black text-xl text-white flex items-center gap-2 uppercase tracking-tight">
-                    <span class="material-symbols-outlined text-primary text-3xl">add_location</span> Registrar Trayecto
-                </h3>
-                <button onclick="document.getElementById('global-modal').classList.add('hidden'); window.invModule.openVehicleDetail('${vehicleId}')" class="text-slate-400 hover:text-white transition-colors bg-[#233648] p-2 rounded-full border border-[#324d67]">
-                    <span class="material-symbols-outlined">close</span>
-                </button>
-            </div>
-
+            <h3 class="font-bold text-white mb-4 flex items-center gap-2 border-b border-[#324d67] pb-2 uppercase tracking-widest text-xs">
+                <span class="material-symbols-outlined text-primary">add_location</span> Registrar Trayecto Manual
+            </h3>
             <div class="space-y-4">
                 <div class="bg-blue-500/10 p-3 rounded-lg border border-blue-500/30 text-xs text-blue-400 mb-4">
                     Este formulario sumará kilómetros al odómetro general de la unidad, útil para viajes no rastreados por GPS.
@@ -1467,6 +1520,7 @@ export class InventoryView {
         }
     }
 
+    // --- LIMPIEZA ---
     destroy() {
         if (this.realtimeChannel) {
             supabase.removeChannel(this.realtimeChannel);
