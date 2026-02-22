@@ -27,7 +27,6 @@ import { DriverView } from './views/driver/DriverView.js';
 
 // Vistas Taller
 import { WorkshopView } from './views/taller/WorkshopView.js';
-import { TallerView } from './views/taller/TallerView.js'; // <--- NUEVA VISTA MECÁNICO
 
 export class Router {
     constructor() {
@@ -51,7 +50,7 @@ export class Router {
             '#inventory': InventoryView,
             '#fleet': FleetView,
             '#fuel': FuelView,
-            '#maintenance': MaintenanceView,           // Se queda la original
+            '#maintenance': WorkshopView,           // AHORA USA WORKSHOPVIEW
             '#incidents-admin': IncidentsDashboard,
             '#reports': ReportsView,
             '#stock': InventoryStockView,
@@ -60,14 +59,11 @@ export class Router {
             // ============================================
             // TALLER
             // ============================================
-            '#taller-dashboard': WorkshopView,         // Se queda la original
+            '#taller-dashboard': WorkshopView,
             '#taller-inventory': InventoryView,
             '#taller-stock': InventoryStockView,
             '#taller-reports': ReportsView,
-            '#taller-workshop': WorkshopView,          // Se queda la original
-
-            // NUEVA RUTA PARA EL ÁREA DE REPARACIÓN
-            '#taller': TallerView, 
+            '#taller-workshop': WorkshopView,
             
             // ============================================
             // VIGILANCIA
@@ -144,14 +140,8 @@ export class Router {
                 return;
             }
             
-            // Limpieza de vista anterior
-            if (window.currentViewInstance && window.currentViewInstance.destroy) {
-                window.currentViewInstance.destroy();
-            }
-
             // Renderizar la vista
             const view = new ViewClass();
-            window.currentViewInstance = view;
             this.appElement.innerHTML = this.layout.render(view.render());
             
             // Ejecutar lógica post-render
@@ -185,11 +175,11 @@ export class Router {
             'admin': [
                 '#dashboard', '#users', '#assignments', '#inventory', '#fleet',
                 '#fuel', '#maintenance', '#incidents-admin', '#reports', '#stock',
-                '#tracking', '#incident', '#taller' // <--- PERMISO AÑADIDO
+                '#tracking', '#incident'
             ],
             'taller': [
                 '#taller-dashboard', '#taller-inventory', '#taller-stock', 
-                '#taller-reports', '#taller-workshop', '#incident', '#taller' // <--- PERMISO AÑADIDO
+                '#taller-reports', '#taller-workshop', '#incident'
             ],
             'guard': [
                 '#scanner', '#incident'
