@@ -8,13 +8,15 @@ import { DashboardView } from './views/admin/DashboardView.js';
 import { AdminDashboardView } from './views/admin/AdminDashboardView.js';
 import { AssignmentsView } from './views/admin/AssignmentsView.js';
 import { FuelView } from './views/admin/FuelView.js';
-import { MaintenanceView } from './views/admin/MaintenanceView.js';
 import { InventoryView } from './views/admin/InventoryView.js';
 import { IncidentsDashboard } from './views/admin/IncidentsDashboard.js';
 import { ReportsView } from './views/admin/ReportsView.js';
 import { FleetView } from './views/admin/FleetView.js';
 import { InventoryStockView } from './views/admin/InventoryStockView.js';
 import { TrackingView } from './views/admin/TrackingView.js';
+
+// Vistas Taller (Tu nueva vista separada)
+import { TallerView } from './views/taller/TallerView.js';
 
 // Vistas Vigilancia
 import { ScannerView } from './views/guard/ScannerView.js';
@@ -25,9 +27,6 @@ import { IncidentsView } from './views/shared/IncidentsView.js';
 // Vistas Conductor
 import { DriverView } from './views/driver/DriverView.js';
 
-// Vistas Taller
-import { WorkshopView } from './views/taller/WorkshopView.js';
-
 export class Router {
     constructor() {
         console.log("✅ Router inicializado");
@@ -37,47 +36,36 @@ export class Router {
 
         // MAPEO DE RUTAS
         this.routes = {
-            // Auth
             '': LoginView,
             '#login': LoginView,
             
-            // ============================================
-            // ADMINISTRADOR
-            // ============================================
+            // ADMIN
             '#dashboard': DashboardView,
             '#users': AdminDashboardView,
             '#assignments': AssignmentsView,
             '#inventory': InventoryView,
             '#fleet': FleetView,
             '#fuel': FuelView,
-            '#maintenance': WorkshopView,           // AHORA USA WORKSHOPVIEW
             '#incidents-admin': IncidentsDashboard,
             '#reports': ReportsView,
             '#stock': InventoryStockView,
             '#tracking': TrackingView,
+            '#maintenance': TallerView, // Redirige a la nueva vista de taller
             
-            // ============================================
             // TALLER
-            // ============================================
-            '#taller-dashboard': WorkshopView,
+            '#taller': TallerView, // Nueva ruta oficial de Taller
+            '#taller-dashboard': TallerView, 
             '#taller-inventory': InventoryView,
             '#taller-stock': InventoryStockView,
             '#taller-reports': ReportsView,
-            '#taller-workshop': WorkshopView,
             
-            // ============================================
             // VIGILANCIA
-            // ============================================
             '#scanner': ScannerView,
             
-            // ============================================
             // CONDUCTOR
-            // ============================================
             '#driver': DriverView,
             
-            // ============================================
             // COMPARTIDAS
-            // ============================================
             '#incident': IncidentsView
         };
 
@@ -97,11 +85,9 @@ export class Router {
             
             console.log(`📍 Navegando a: ${hash} | Rol: ${role || 'sin sesión'}`);
 
-            // VERIFICACIÓN DE SESIÓN
             const hasValidSession = role && userId;
             
             if (!hasValidSession && hash !== '#login') {
-                console.log('⛔ Sin sesión válida, redirigiendo a login');
                 window.location.hash = '#login';
                 this.isHandlingRoute = false;
                 return;
@@ -110,18 +96,15 @@ export class Router {
             if (hasValidSession && hash === '#login') {
                 const redirectMap = {
                     'admin': '#dashboard',
-                    'taller': '#taller-dashboard',
+                    'taller': '#taller',
                     'guard': '#scanner',
                     'driver': '#driver'
                 };
-                const redirectTo = redirectMap[role] || '#dashboard';
-                console.log(`🔄 Sesión activa como ${role}, redirigiendo a ${redirectTo}`);
-                window.location.hash = redirectTo;
+                window.location.hash = redirectMap[role] || '#dashboard';
                 this.isHandlingRoute = false;
                 return;
             }
 
-            // VERIFICAR PERMISOS
             if (hasValidSession && !this.hasPermission(role, hash)) {
                 console.log(`⛔ Acceso denegado: ${role} no tiene permiso para ${hash}`);
                 this.redirectToDefault(role);
@@ -129,22 +112,24 @@ export class Router {
                 return;
             }
 
-            console.log("✅ Navegando a:", hash);
-            
             const ViewClass = this.routes[hash];
             
             if (!ViewClass) {
-                console.log('⚠️ Ruta no encontrada, redirigiendo a login');
                 window.location.hash = '#login';
                 this.isHandlingRoute = false;
                 return;
             }
             
-            // Renderizar la vista
+            // Destruir vista anterior si es necesario (limpieza de listeners/sockets)
+            if (window.currentViewInstance && window.currentViewInstance.destroy) {
+                window.currentViewInstance.destroy();
+            }
+
+            // Renderizar nueva vista
             const view = new ViewClass();
+            window.currentViewInstance = view; // Guardamos la referencia activa
             this.appElement.innerHTML = this.layout.render(view.render());
             
-            // Ejecutar lógica post-render
             if (view.onMount) {
                 setTimeout(() => view.onMount(), 0);
             }
@@ -175,18 +160,14 @@ export class Router {
             'admin': [
                 '#dashboard', '#users', '#assignments', '#inventory', '#fleet',
                 '#fuel', '#maintenance', '#incidents-admin', '#reports', '#stock',
-                '#tracking', '#incident'
+                '#tracking', '#incident', '#taller'
             ],
             'taller': [
-                '#taller-dashboard', '#taller-inventory', '#taller-stock', 
-                '#taller-reports', '#taller-workshop', '#incident'
+                '#taller', '#taller-dashboard', '#taller-inventory', '#taller-stock', 
+                '#taller-reports', '#incident'
             ],
-            'guard': [
-                '#scanner', '#incident'
-            ],
-            'driver': [
-                '#driver', '#incident'
-            ]
+            'guard': ['#scanner', '#incident'],
+            'driver': ['#driver', '#incident']
         };
 
         const publicRoutes = ['#login', ''];
@@ -198,7 +179,7 @@ export class Router {
     redirectToDefault(role) {
         const defaultRoutes = {
             'admin': '#dashboard',
-            'taller': '#taller-dashboard',
+            'taller': '#taller',
             'guard': '#scanner',
             'driver': '#driver'
         };
