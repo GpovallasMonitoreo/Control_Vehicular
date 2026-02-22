@@ -210,14 +210,8 @@ export class DriverView {
                                 
                                 <div class="bg-[#111a22] border border-[#324d67] p-4 rounded-xl">
                                     <p class="text-[10px] text-[#92adc9] uppercase mb-2">Instrucciones</p>
-                                    <p class="text-white text-sm">Espera a que el mecánico realice la revisión y tome las fotos correspondientes.</p>
+                                    <p class="text-white text-sm">Espera a que el mecánico realice la revisión.</p>
                                     <p class="text-[#92adc9] text-xs mt-2">Una vez completada la recepción, podrás continuar.</p>
-                                </div>
-                                
-                                <!-- Fotos tomadas por el taller -->
-                                <div id="reception-photos-gallery" class="hidden">
-                                    <p class="text-[10px] text-[#92adc9] uppercase mb-2">Fotos de la revisión</p>
-                                    <div id="reception-photos-grid" class="grid grid-cols-3 gap-2"></div>
                                 </div>
                             </div>
                         </div>
@@ -335,9 +329,18 @@ export class DriverView {
                             </h3>
                             
                             <div id="taller-final-content" class="space-y-4">
-                                <div class="bg-purple-500/10 border border-purple-500/30 p-4 rounded-xl text-center">
+                                <!-- Mensaje normal -->
+                                <div id="taller-normal-message" class="bg-purple-500/10 border border-purple-500/30 p-4 rounded-xl text-center">
                                     <span class="material-symbols-outlined text-4xl text-purple-500 mb-2">info</span>
-                                    <p class="text-white text-sm">Has regresado del viaje. Dirígete a taller para la revisión final.</p>
+                                    <p class="text-white text-sm">Has regresado del viaje. El taller está realizando la revisión final.</p>
+                                </div>
+
+                                <!-- Mensaje de percance/incidencia -->
+                                <div id="taller-incident-message" class="hidden bg-red-500/10 border border-red-500/30 p-4 rounded-xl text-center">
+                                    <span class="material-symbols-outlined text-4xl text-red-500 mb-2">warning</span>
+                                    <p class="text-white text-sm font-bold">INCIDENCIA REPORTADA</p>
+                                    <p id="incident-description" class="text-[#92adc9] text-xs mt-2"></p>
+                                    <p class="text-red-400 text-[10px] mt-3">La unidad está en espera hasta que se resuelva la incidencia</p>
                                 </div>
                                 
                                 <div class="bg-[#111a22] border border-[#324d67] p-4 rounded-xl">
@@ -354,14 +357,9 @@ export class DriverView {
                                     </div>
                                 </div>
                                 
-                                <!-- Fotos de la entrega (tomadas por taller) -->
-                                <div id="return-photos-gallery" class="hidden">
-                                    <p class="text-[10px] text-[#92adc9] uppercase mb-2">Fotos de la revisión final</p>
-                                    <div id="return-photos-grid" class="grid grid-cols-3 gap-2"></div>
-                                </div>
-                                
+                                <!-- Barra de progreso -->
                                 <div class="bg-[#111a22] p-4 rounded-xl">
-                                    <p class="text-[10px] text-[#92adc9] uppercase mb-2">Progreso</p>
+                                    <p class="text-[10px] text-[#92adc9] uppercase mb-2">Estado de la revisión</p>
                                     <div class="flex justify-between text-[10px] text-[#92adc9] mb-2">
                                         <span>Esperando taller</span>
                                         <span>En revisión</span>
@@ -372,10 +370,11 @@ export class DriverView {
                                     </div>
                                 </div>
                                 
+                                <!-- Botón de confirmación (solo visible cuando el taller libera) -->
                                 <div id="conductor-confirmacion-container" class="hidden">
                                     <button onclick="window.conductorModule.confirmarLiberacionTaller()" 
                                             class="w-full py-5 bg-green-600 text-white font-black rounded-xl uppercase text-lg hover:bg-green-500 transition-all shadow-lg">
-                                        CONFIRMAR LIBERACIÓN
+                                        CONFIRMAR LIBERACIÓN DE UNIDAD
                                     </button>
                                 </div>
                             </div>
@@ -459,7 +458,7 @@ export class DriverView {
                     <div class="bg-[#1c2127] w-full max-w-md rounded-3xl p-6 border border-red-500/30">
                         <span class="material-symbols-outlined text-5xl text-red-500 mb-4 block">emergency</span>
                         <h3 class="text-white font-bold text-lg mb-2">Reporte de Incidente</h3>
-                        <p class="text-[#92adc9] text-sm mb-6">Describe la situación de emergencia</p>
+                        <p class="text-[#92adc9] text-sm mb-6">Describe la situación</p>
                         
                         <div class="space-y-3">
                             <textarea id="emergency-desc" rows="3" 
@@ -568,11 +567,38 @@ export class DriverView {
                         this.cargarResumenViaje();
                         this.switchTab('taller-final');
                     }
+
+                    // Viaje completado - Permitir nueva solicitud
+                    if (payload.new.status === 'completed') {
+                        this.showNotification('✅ Unidad liberada', 'Puedes solicitar una nueva unidad', 'success');
+                        this.currentTrip = null; // Limpiar el viaje actual
+                        this.routeStops = [];
+                        this.isReturning = false;
+                        await this.loadDashboardState();
+                        this.switchTab('unidad');
+                    }
+
+                    // Incidencia reportada - Mostrar mensaje de espera
+                    if (payload.new.status === 'incident_report') {
+                        this.showIncidentMessage(payload.new);
+                    }
                 }
             })
             .subscribe((status) => {
                 console.log('📡 Estado de suscripción:', status);
             });
+    }
+
+    showIncidentMessage(trip) {
+        const normalMsg = document.getElementById('taller-normal-message');
+        const incidentMsg = document.getElementById('taller-incident-message');
+        const incidentDesc = document.getElementById('incident-description');
+        
+        if (normalMsg) normalMsg.classList.add('hidden');
+        if (incidentMsg) incidentMsg.classList.remove('hidden');
+        if (incidentDesc) incidentDesc.innerText = trip.incident_description || 'Incidencia reportada durante la revisión';
+        
+        this.showNotification('⚠️ Incidencia', 'La unidad está en espera por revisión', 'warning');
     }
 
     // ==================== SISTEMA DE NOTIFICACIONES ====================
@@ -660,7 +686,15 @@ export class DriverView {
     
     async handleTripUpdate(updatedTrip) {
         const previousStatus = this.currentTrip?.status;
-        this.currentTrip = updatedTrip;
+        
+        // IMPORTANTE: Si el viaje está completado, limpiar currentTrip
+        if (updatedTrip.status === 'completed') {
+            this.currentTrip = null;
+            this.routeStops = [];
+            this.isReturning = false;
+        } else {
+            this.currentTrip = updatedTrip;
+        }
         
         // Mapeo de estados para el flujo correcto
         switch(updatedTrip.status) {
@@ -691,11 +725,13 @@ export class DriverView {
                 this.switchTab('taller-final');
                 break;
                 
+            case 'incident_report':
+                this.showIncidentMessage(updatedTrip);
+                this.switchTab('taller-final');
+                break;
+                
             case 'completed':
-                this.showNotification('🎉 Unidad liberada', 'El taller ha completado la revisión', 'success');
-                this.currentTrip = null;
-                this.routeStops = [];
-                this.isReturning = false;
+                // Ya se manejó arriba, solo aseguramos que la UI se actualice
                 await this.loadDashboardState();
                 this.switchTab('unidad');
                 break;
@@ -794,13 +830,13 @@ export class DriverView {
                 .update({ 
                     status: 'returned',
                     end_time: new Date().toISOString(),
-                    entry_km: this.tripLogistics.totalDistance,
+                    entry_km: Math.round(this.tripLogistics.totalDistance),
                     return_details: {
-                        total_distance: this.tripLogistics.totalDistance,
-                        max_speed: this.tripLogistics.maxSpeed,
-                        average_speed: this.tripLogistics.averageSpeed,
-                        moving_time: this.tripLogistics.movingTime,
-                        idle_time: this.tripLogistics.idleTime,
+                        total_distance: Math.round(this.tripLogistics.totalDistance * 10) / 10,
+                        max_speed: Math.round(this.tripLogistics.maxSpeed),
+                        average_speed: Math.round(this.tripLogistics.averageSpeed || 0),
+                        moving_time: Math.round(this.tripLogistics.movingTime / 60), // en minutos
+                        idle_time: Math.round(this.tripLogistics.idleTime / 60), // en minutos
                         returned_at: new Date().toISOString()
                     }
                 })
@@ -969,9 +1005,9 @@ export class DriverView {
                 lng: longitude,
                 speed: speedKmh,
                 accuracy: accuracy,
-                total_distance: this.tripLogistics.totalDistance,
-                moving_time: this.tripLogistics.movingTime,
-                idle_time: this.tripLogistics.idleTime,
+                total_distance: Math.round(this.tripLogistics.totalDistance * 10) / 10,
+                moving_time: Math.round(this.tripLogistics.movingTime),
+                idle_time: Math.round(this.tripLogistics.idleTime),
                 timestamp: now.toISOString()
             };
             
@@ -1291,8 +1327,8 @@ export class DriverView {
                 speed: locationData.speed,
                 accuracy: locationData.accuracy,
                 total_distance: locationData.total_distance,
-                moving_time: locationData.movingTime,
-                idle_time: locationData.idleTime,
+                moving_time: locationData.moving_time,
+                idle_time: locationData.idle_time,
                 timestamp: locationData.timestamp
             });
 
@@ -1458,8 +1494,8 @@ export class DriverView {
     // ==================== MÉTODO ENVIAR SOLICITUD ====================
 
     async enviarSolicitud() {
-        // Verificar si ya hay un viaje activo
-        if (this.currentTrip) {
+        // Verificar si ya hay un viaje activo (que no sea completed)
+        if (this.currentTrip && this.currentTrip.status !== 'completed') {
             this.showNotification('❌ No disponible', 'Ya tienes un viaje en curso', 'error');
             return;
         }
@@ -1610,7 +1646,9 @@ export class DriverView {
 
             if (error) throw error;
 
-            this.showNotification('✅ Unidad liberada', 'El taller ha completado la revisión', 'success');
+            this.showNotification('✅ Unidad liberada', 'Puedes solicitar una nueva unidad', 'success');
+            
+            // La actualización en tiempo real limpiará el currentTrip y cambiará la UI
             
         } catch (error) {
             console.error('Error liberando unidad:', error);
@@ -1685,7 +1723,13 @@ export class DriverView {
             if (error) throw error;
 
             const trip = trips && trips.length > 0 ? trips[0] : null;
-            this.currentTrip = trip;
+            
+            // IMPORTANTE: Solo asignar currentTrip si no está completado
+            if (trip && trip.status !== 'completed') {
+                this.currentTrip = trip;
+            } else {
+                this.currentTrip = null;
+            }
 
             await this.updateUIByStatus(trip);
             
@@ -1701,6 +1745,7 @@ export class DriverView {
             'driver_accepted': { text: 'Listo para salir', color: 'bg-green-500' },
             'in_progress': { text: 'En ruta', color: 'bg-primary' },
             'returned': { text: 'Regresado - Ve a taller (Paso 2)', color: 'bg-purple-500' },
+            'incident_report': { text: 'INCIDENCIA - En espera', color: 'bg-red-500' },
             'completed': { text: 'Viaje completado', color: 'bg-emerald-500' }
         };
 
@@ -1710,6 +1755,7 @@ export class DriverView {
         const profileStatus = document.getElementById('profile-status');
         const solicitudBtn = document.querySelector('[onclick="window.conductorModule.switchTab(\'solicitud\')"]');
 
+        // Si hay un viaje y no está completado, mostrar información
         if (trip && statusMap[trip.status] && trip.status !== 'completed') {
             const status = statusMap[trip.status];
             if (profileStatus) profileStatus.innerText = status.text;
@@ -1733,24 +1779,29 @@ export class DriverView {
             if (unitsContent) unitsContent.classList.add('hidden');
             if (noUnitsMsg) noUnitsMsg.classList.add('hidden');
             
+            // Deshabilitar botón de solicitud
             if (solicitudBtn) {
                 solicitudBtn.classList.add('opacity-50');
                 solicitudBtn.disabled = true;
             }
             
+            // Mostrar código de acceso si aplica
             if (trip.status === 'driver_accepted' && trip.access_code) {
                 this.showAccessCode(trip.access_code);
             }
             
+            // Mostrar info de taller si aplica
             if (trip.status === 'approved_for_taller') {
                 const tInfo = document.getElementById('taller-vehicle-info');
                 if (tInfo) tInfo.innerText = `ECO-${trip.vehicles?.economic_number} - ${trip.vehicles?.plate}`;
             }
 
-            if (trip.status === 'returned') {
-                this.cargarResumenViaje();
+            // Si es incidencia, mostrar mensaje especial
+            if (trip.status === 'incident_report') {
+                this.showIncidentMessage(trip);
             }
             
+            // Manejo de tracking según estado
             if (trip.status === 'in_progress' && this.activeTab === 'ruta') {
                 setTimeout(() => {
                     this.initDriverMap();
@@ -1763,11 +1814,18 @@ export class DriverView {
             }
             
         } else {
+            // No hay viaje activo o está completado - Mostrar unidades disponibles
             const currentTripInfo = document.getElementById('current-trip-info');
             if (currentTripInfo) currentTripInfo.classList.add('hidden');
             
             const accessContainer = document.getElementById('access-code-container');
             if (accessContainer) accessContainer.classList.add('hidden');
+            
+            // Restaurar mensajes normales de taller
+            const normalMsg = document.getElementById('taller-normal-message');
+            const incidentMsg = document.getElementById('taller-incident-message');
+            if (normalMsg) normalMsg.classList.remove('hidden');
+            if (incidentMsg) incidentMsg.classList.add('hidden');
             
             if (profileStatus) profileStatus.innerText = "Disponible";
             this.stopTracking();
@@ -1775,6 +1833,7 @@ export class DriverView {
             if (titleUnits) titleUnits.classList.remove('hidden');
             await this.loadAvailableUnitsForMainView();
             
+            // Habilitar botón de solicitud
             if (solicitudBtn) {
                 solicitudBtn.classList.remove('opacity-50');
                 solicitudBtn.disabled = false;
@@ -1849,7 +1908,8 @@ export class DriverView {
     // ==================== NAVEGACIÓN ====================
     
     switchTab(tabId) {
-        if (tabId === 'solicitud' && this.currentTrip) {
+        // Permitir solicitud solo si no hay viaje activo (excluyendo completed)
+        if (tabId === 'solicitud' && this.currentTrip && this.currentTrip.status !== 'completed') {
             this.showNotification('❌ No disponible', 'Ya tienes un viaje en curso', 'error');
             return;
         }
@@ -1887,6 +1947,13 @@ export class DriverView {
             } else {
                 document.getElementById('route-waiting-msg')?.classList.remove('hidden');
                 document.getElementById('active-trip-panel')?.classList.add('hidden');
+            }
+        }
+
+        if (tabId === 'taller-final') {
+            // Verificar si hay incidencia para mostrar el mensaje correcto
+            if (this.currentTrip?.status === 'incident_report') {
+                this.showIncidentMessage(this.currentTrip);
             }
         }
         
