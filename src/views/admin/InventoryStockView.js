@@ -1,4 +1,4 @@
-// IMPORTANTE: Ya no importamos supabase aquí, usamos window.supabaseClient
+import { supabase } from '../../config/supabaseClient.js';
 
 export class InventoryStockView {
     constructor() {
@@ -13,29 +13,34 @@ export class InventoryStockView {
     }
 
     async loadData() {
-        if (!window.supabaseClient) {
-            console.error("🔴 Error: Supabase global no encontrado.");
+        if (!supabase) {
+            console.error("🔴 Error: Cliente Supabase no encontrado.");
+            document.getElementById('table-stock').innerHTML = '<tr><td colspan="6" class="text-center py-10 text-red-500 font-bold">Error de conexión a la base de datos.</td></tr>';
             return;
         }
 
-        const [itemsRes, servicesRes] = await Promise.all([
-            window.supabaseClient.from('inventory_items').select('*').order('name'),
-            window.supabaseClient.from('service_templates').select(`
-                id, name, description, labor_time, labor_unit, labor_cost, 
-                service_template_items ( quantity, inventory_items ( id, name, cost, unit ) )
-            `)
-        ]);
+        try {
+            const [itemsRes, servicesRes] = await Promise.all([
+                supabase.from('inventory_items').select('*').order('name').then(r => r.error ? {data: []} : r),
+                supabase.from('service_templates').select(`
+                    id, name, description, labor_time, labor_unit, labor_cost, 
+                    service_template_items ( quantity, inventory_items ( id, name, cost, unit ) )
+                `).then(r => r.error ? {data: []} : r)
+            ]);
 
-        this.items = itemsRes.data || [];
-        this.services = servicesRes.data || [];
-        
-        this.renderStockGrid();
-        this.renderServicesGrid();
+            this.items = itemsRes.data || [];
+            this.services = servicesRes.data || [];
+            
+            this.renderStockGrid();
+            this.renderServicesGrid();
+        } catch (error) {
+            console.error("Error al cargar datos del stock:", error);
+        }
     }
 
     render() {
         return `
-        <div class="flex flex-col h-full gap-6 animate-fade-in max-w-[1600px] mx-auto pb-20">
+        <div class="flex flex-col h-full gap-6 animate-fade-in max-w-[1600px] mx-auto pb-20 p-6">
             
             <div class="flex flex-col gap-4">
                 <div class="flex justify-between items-end">
@@ -152,7 +157,14 @@ export class InventoryStockView {
         }
 
         grid.innerHTML = this.services.map(s => {
-            const partsCost = s.service_template_items.reduce((acc, si) => acc + (si.quantity * si.inventory_items.cost), 0);
+            let partsCost = 0;
+            // Aseguramos que la propiedad exista antes de iterar
+            if (s.service_template_items && Array.isArray(s.service_template_items)) {
+                partsCost = s.service_template_items.reduce((acc, si) => {
+                    return acc + (si.quantity * (si.inventory_items?.cost || 0));
+                }, 0);
+            }
+            
             const laborCost = Number(s.labor_cost) || 0;
             const totalCost = partsCost + laborCost;
 
@@ -182,12 +194,12 @@ export class InventoryStockView {
                     <div class="flex-1">
                         <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Refacciones Incluidas</p>
                         <ul class="space-y-1.5 overflow-y-auto max-h-[100px] custom-scrollbar pr-1">
-                            ${s.service_template_items.length === 0 ? '<li class="text-xs text-slate-600 italic">Solo mano de obra.</li>' : 
+                            ${(!s.service_template_items || s.service_template_items.length === 0) ? '<li class="text-xs text-slate-600 italic">Solo mano de obra.</li>' : 
                             s.service_template_items.map(si => `
                                 <li class="text-[11px] text-[#92adc9] flex justify-between items-center bg-[#1c2127] p-1.5 rounded border border-[#233648]">
                                     <span class="truncate flex-1 pr-2 flex items-center gap-1">
                                         <span class="material-symbols-outlined text-[12px] text-green-500">check_circle</span> 
-                                        ${si.inventory_items.name}
+                                        ${si.inventory_items?.name || 'Insumo desconocido'}
                                     </span>
                                     <span class="font-mono font-bold text-white bg-[#233648] px-1.5 rounded">x${si.quantity}</span>
                                 </li>
@@ -278,17 +290,20 @@ export class InventoryStockView {
         
         if(!data.name) return alert("El nombre es obligatorio");
 
-        let error;
-        if (id) {
-            ({ error } = await window.supabaseClient.from('inventory_items').update(data).eq('id', id));
-        } else {
-            ({ error } = await window.supabaseClient.from('inventory_items').insert([data]));
-        }
+        try {
+            let error;
+            if (id) {
+                ({ error } = await supabase.from('inventory_items').update(data).eq('id', id));
+            } else {
+                ({ error } = await supabase.from('inventory_items').insert([data]));
+            }
 
-        if (error) alert("Error: " + error.message);
-        else {
+            if (error) throw error;
+            
             document.getElementById('stock-modal').classList.add('hidden');
             await this.loadData();
+        } catch (err) {
+            alert("Error al guardar: " + err.message);
         }
     }
 
@@ -471,27 +486,32 @@ export class InventoryStockView {
         
         if(!name) return alert("El nombre del servicio es obligatorio.");
 
-        const { data, error } = await window.supabaseClient.from('service_templates').insert([{ 
-            name: name, 
-            description: desc,
-            labor_time: l_time,
-            labor_unit: l_unit,
-            labor_cost: l_cost
-        }]).select();
-        
-        if(error) return alert("Error al guardar servicio: " + error.message);
+        try {
+            const { data, error } = await supabase.from('service_templates').insert([{ 
+                name: name, 
+                description: desc,
+                labor_time: l_time,
+                labor_unit: l_unit,
+                labor_cost: l_cost
+            }]).select();
+            
+            if(error) throw error;
 
-        if(this.tempRecipeItems.length > 0) {
-            const items = this.tempRecipeItems.map(i => ({ 
-                template_id: data[0].id, 
-                item_id: i.id, 
-                quantity: i.qty 
-            }));
-            await window.supabaseClient.from('service_template_items').insert(items);
+            if(this.tempRecipeItems.length > 0) {
+                const items = this.tempRecipeItems.map(i => ({ 
+                    template_id: data[0].id, 
+                    item_id: i.id, 
+                    quantity: i.qty 
+                }));
+                const itemsResponse = await supabase.from('service_template_items').insert(items);
+                if (itemsResponse.error) throw itemsResponse.error;
+            }
+            
+            alert("✅ Receta de servicio guardada en el catálogo.");
+            document.getElementById('stock-modal').classList.add('hidden');
+            await this.loadData();
+        } catch (error) {
+            alert("Error al guardar servicio: " + error.message);
         }
-        
-        alert("✅ Receta de servicio guardada en el catálogo.");
-        document.getElementById('stock-modal').classList.add('hidden');
-        await this.loadData();
     }
 }
