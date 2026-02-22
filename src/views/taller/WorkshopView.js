@@ -1,1348 +1,533 @@
 import { supabase } from '../../config/supabaseClient.js';
 
-export class WorkshopView {
+export class MaintenanceView {
     constructor() {
-        this.currentTrip = null;
-        this.currentVehicle = null;
-        this.currentDriver = null;
-        this.receptionPhotos = [];
-        this.deliveryPhotos = [];
-        this.driverPhoto = null;
-        this.html5QrCode = null;
-        this.currentCameraStream = null;
-        this.currentPhotoCallback = null;
-        this.checklistItems = {
-            liquid: false,
-            oil: false,
-            coolant: false,
-            lights: false,
-            tires: false
-        };
-        this.receptionMode = null;
-        window.workshopView = this;
+        this.logs = [];
+        this.vehicles = [];
+        this.services = [];
+        this.inventory = [];
+        this.tempRecipeItems = [];
+        this.capturedImages = []; 
+        this.schedules = []; 
+        this.html5QrcodeScanner = null;
+        
+        // Control del calendario
+        const today = new Date();
+        this.currentMonth = today.getMonth();
+        this.currentYear = today.getFullYear();
+
+        window.taller = this;
     }
 
     render() {
         return `
-        <div class="flex flex-col h-full gap-6 animate-fade-in max-w-[1600px] mx-auto pb-10">
+        <div class="flex flex-col h-full gap-6 animate-fade-in max-w-[1600px] mx-auto pb-10 p-4 md:p-6">
             
-            <!-- Header -->
             <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div class="flex flex-col gap-1">
                     <h1 class="text-white text-3xl font-black leading-tight flex items-center gap-3">
                         <span class="material-symbols-outlined text-primary text-4xl">handyman</span>
                         Taller Central
                     </h1>
-                    <p class="text-[#92adc9] text-sm font-normal">Recepción de unidades, checklist y liberación</p>
+                    <p class="text-[#92adc9] text-sm font-normal">Gestión integral: Logística, Mecánica y Salud de Flota.</p>
                 </div>
                 <div class="flex items-center gap-3">
-                    <button onclick="window.workshopView.switchMode('scanner')" class="flex items-center justify-center gap-2 h-10 px-4 bg-primary hover:bg-primary/90 text-white text-sm font-bold rounded-lg shadow-lg transition-transform active:scale-95">
-                        <span class="material-symbols-outlined text-[18px]">qr_code_scanner</span>
-                        <span>Escanear Unidad</span>
+                    <button onclick="window.taller.openEmergencyAccess()" class="h-10 px-4 rounded-lg bg-orange-600 hover:bg-orange-500 text-white text-sm font-bold transition-all shadow-lg flex items-center gap-2">
+                        <span class="material-symbols-outlined text-[18px]">key</span>
+                        <span>Acceso Único</span>
+                    </button>
+                    <button onclick="window.taller.switchTab('new-service')" class="h-10 px-4 bg-primary hover:bg-primary/90 text-white text-sm font-bold rounded-lg shadow-lg flex items-center gap-2">
+                        <span class="material-symbols-outlined text-[18px]">add</span>
+                        <span>Nueva Orden</span>
                     </button>
                 </div>
             </div>
 
-            <!-- Pestañas -->
             <div class="flex border-b border-[#324d67] overflow-x-auto custom-scrollbar shrink-0">
-                <button onclick="window.workshopView.switchMode('scanner')" id="tab-scanner" class="px-6 py-3 text-primary border-b-2 border-primary font-bold text-sm transition-colors whitespace-nowrap flex items-center gap-2">
-                    <span class="material-symbols-outlined text-[18px]">qr_code_scanner</span> Escáner
-                </button>
-                <button onclick="window.workshopView.switchMode('pending')" id="tab-pending" class="px-6 py-3 text-[#92adc9] hover:text-white border-b-2 border-transparent font-medium text-sm transition-colors whitespace-nowrap flex items-center gap-2">
-                    <span class="material-symbols-outlined text-[18px]">pending_actions</span> Pendientes
-                </button>
-                <button onclick="window.workshopView.switchMode('incidents')" id="tab-incidents" class="px-6 py-3 text-[#92adc9] hover:text-white border-b-2 border-transparent font-medium text-sm transition-colors whitespace-nowrap flex items-center gap-2">
-                    <span class="material-symbols-outlined text-[18px]">warning</span> Incidencias
-                </button>
-                <button onclick="window.workshopView.switchMode('completed')" id="tab-completed" class="px-6 py-3 text-[#92adc9] hover:text-white border-b-2 border-transparent font-medium text-sm transition-colors whitespace-nowrap flex items-center gap-2">
-                    <span class="material-symbols-outlined text-[18px]">history</span> Completados
-                </button>
+                <button onclick="window.taller.switchTab('dashboard')" id="tab-btn-dashboard" class="px-6 py-3 text-primary border-b-2 border-primary font-bold text-sm transition-colors whitespace-nowrap flex items-center gap-2"><span class="material-symbols-outlined text-[18px]">dashboard</span> Tablero</button>
+                <button onclick="window.taller.switchTab('new-service')" id="tab-btn-new-service" class="px-6 py-3 text-[#92adc9] hover:text-white border-b-2 border-transparent font-medium text-sm transition-colors whitespace-nowrap flex items-center gap-2"><span class="material-symbols-outlined text-[18px]">car_repair</span> Servicio y Mecánica</button>
+                <button onclick="window.taller.switchTab('calendar')" id="tab-btn-calendar" class="px-6 py-3 text-[#92adc9] hover:text-white border-b-2 border-transparent font-medium text-sm transition-colors whitespace-nowrap flex items-center gap-2"><span class="material-symbols-outlined text-[18px]">calendar_month</span> Agenda</button>
+                <button onclick="window.taller.switchTab('database')" id="tab-btn-database" class="px-6 py-3 text-[#92adc9] hover:text-white border-b-2 border-transparent font-medium text-sm transition-colors whitespace-nowrap flex items-center gap-2"><span class="material-symbols-outlined text-[18px]">table_view</span> Base de Datos</button>
+                <button onclick="window.taller.switchTab('completed')" id="tab-btn-completed" class="px-6 py-3 text-[#92adc9] hover:text-white border-b-2 border-transparent font-medium text-sm transition-colors whitespace-nowrap flex items-center gap-2"><span class="material-symbols-outlined text-[18px]">task_alt</span> Completados</button>
             </div>
 
-            <!-- CONTENIDO PRINCIPAL -->
-            <div class="flex-1 relative overflow-hidden flex flex-col">
+            <div class="flex-1 relative overflow-hidden">
                 
-                <!-- MODO ESCÁNER -->
-                <div id="mode-scanner" class="space-y-6 animate-fade-in block overflow-y-auto custom-scrollbar pb-6 pr-2 h-full">
-                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        <!-- Columna Izquierda - Escáner -->
-                        <div class="bg-[#1c2127] border border-[#324d67] rounded-xl p-6 shadow-lg">
-                            <h3 class="font-bold text-white mb-4 flex items-center gap-2 border-b border-[#324d67] pb-2 uppercase tracking-widest text-xs">
-                                <span class="material-symbols-outlined text-primary">qr_code_scanner</span> Escanear QR de Unidad
-                            </h3>
-                            
-                            <div id="reader" class="w-full bg-black rounded-lg overflow-hidden border border-[#324d67] aspect-square mb-4"></div>
-                            
-                            <div class="text-center text-xs text-[#92adc9] font-bold uppercase my-2">- O MANUAL -</div>
-                            
-                            <div class="flex gap-2">
-                                <input type="text" id="manual-vehicle-input" class="flex-1 bg-[#111a22] border border-[#324d67] text-white rounded-lg p-3 text-sm" placeholder="ECO o Placa...">
-                                <button onclick="window.workshopView.loadVehicleByEcoOrPlate()" class="bg-primary text-white px-4 rounded-lg text-sm font-bold">Buscar</button>
-                            </div>
-                            
-                            <div id="scanner-result" class="mt-4 hidden">
-                                <div class="bg-orange-500/10 border border-orange-500/30 p-4 rounded-lg">
-                                    <p class="text-white text-sm" id="scanner-message">Esperando vehículo...</p>
-                                </div>
-                            </div>
+                <div id="tab-content-dashboard" class="space-y-6 animate-fade-in block h-full overflow-y-auto custom-scrollbar pr-2">
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div class="bg-[#1c2127] border border-[#324d67] p-5 rounded-xl shadow-sm">
+                            <p class="text-[#92adc9] text-[10px] font-bold uppercase">En Taller</p>
+                            <p id="stat-in-shop" class="text-white text-3xl font-black">0</p>
                         </div>
-
-                        <!-- Columna Derecha - Información de la unidad -->
-                        <div id="vehicle-info-panel" class="bg-[#1c2127] border border-[#324d67] rounded-xl p-6 shadow-lg hidden">
-                            <h3 class="font-bold text-white mb-4 flex items-center gap-2 border-b border-[#324d67] pb-2 uppercase tracking-widest text-xs">
-                                <span class="material-symbols-outlined text-primary">directions_car</span> Información de la Unidad
-                            </h3>
-                            
-                            <div class="space-y-4">
-                                <div class="bg-[#111a22] p-4 rounded-lg border border-[#324d67]">
-                                    <div class="flex justify-between items-start">
-                                        <div>
-                                            <p class="text-[10px] text-[#92adc9] uppercase">Unidad</p>
-                                            <h4 id="vehicle-plate" class="text-2xl font-black text-white">--</h4>
-                                            <p id="vehicle-model" class="text-sm text-[#92adc9] mt-1">--</p>
-                                        </div>
-                                        <span id="vehicle-eco" class="bg-primary/20 text-primary text-xs font-bold px-3 py-1 rounded-full">ECO-?</span>
-                                    </div>
-                                    <div class="grid grid-cols-2 gap-4 mt-4">
-                                        <div>
-                                            <p class="text-[10px] text-[#92adc9]">Kilometraje</p>
-                                            <p id="vehicle-km" class="text-white font-mono font-bold">0 km</p>
-                                        </div>
-                                        <div>
-                                            <p class="text-[10px] text-[#92adc9]">Conductor</p>
-                                            <p id="vehicle-driver" class="text-white font-bold">--</p>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <!-- Tipo de recepción -->
-                                <div id="reception-type-container" class="bg-[#111a22] p-4 rounded-lg border border-[#324d67] hidden">
-                                    <p class="text-xs text-[#92adc9] mb-2">Tipo de recepción:</p>
-                                    <div id="reception-type-badge" class="text-sm font-bold"></div>
-                                </div>
-
-                                <!-- Botón de acción -->
-                                <button id="btn-start-process" onclick="window.workshopView.startProcess()" 
-                                        class="w-full py-4 bg-primary text-white font-bold rounded-xl hidden">
-                                    INICIAR PROCESO
-                                </button>
-                            </div>
+                        <div class="bg-[#1c2127] border border-[#324d67] p-5 rounded-xl shadow-sm">
+                            <p class="text-[#92adc9] text-[10px] font-bold uppercase">Servicios Mes</p>
+                            <p id="stat-completed" class="text-white text-3xl font-black">0</p>
                         </div>
                     </div>
-                </div>
-
-                <!-- MODO PROCESO -->
-                <div id="mode-process" class="hidden animate-fade-in overflow-y-auto custom-scrollbar pb-6 pr-2 h-full">
-                    <div class="bg-[#1c2127] border border-[#324d67] rounded-xl p-6 shadow-lg">
-                        <!-- Cabecera dinámica -->
-                        <div id="process-header" class="flex justify-between items-center mb-6"></div>
-
-                        <!-- Información del viaje -->
-                        <div class="bg-[#111a22] p-4 rounded-xl border border-[#324d67] mb-6">
-                            <div class="flex items-center gap-4">
-                                <div class="w-16 h-16 rounded-lg bg-primary/20 flex items-center justify-center text-primary">
-                                    <span class="material-symbols-outlined text-3xl">directions_car</span>
-                                </div>
-                                <div>
-                                    <p class="text-[10px] text-[#92adc9] uppercase">Unidad en proceso</p>
-                                    <h4 id="process-vehicle-info" class="text-white font-bold text-xl">--</h4>
-                                    <p id="process-conductor" class="text-sm text-[#92adc9]">Conductor: --</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- CONTENIDO DINÁMICO -->
-                        <div id="process-content" class="space-y-6"></div>
-
-                        <!-- Botones de acción -->
-                        <div class="mt-8 flex gap-3">
-                            <button onclick="window.workshopView.cancelProcess()" class="flex-1 py-3 bg-red-500/10 text-red-500 font-bold rounded-xl border border-red-500/20 hover:bg-red-500 hover:text-white transition-colors">
-                                CANCELAR
-                            </button>
-                            <button id="btn-complete-process" onclick="window.workshopView.completeProcess()" 
-                                    class="flex-1 py-3 bg-green-600 text-white font-bold rounded-xl hover:bg-green-500 transition-colors shadow-lg disabled:opacity-50 disabled:cursor-not-allowed" disabled>
-                                COMPLETAR PROCESO
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- MODAL DE CÁMARA -->
-                <div id="camera-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-sm p-4">
-                    <div class="bg-[#1c2127] w-full max-w-2xl rounded-2xl border border-[#324d67] shadow-2xl overflow-hidden">
+                    <div class="bg-[#1c2127] border border-[#324d67] rounded-xl overflow-hidden shadow-xl">
                         <div class="p-4 border-b border-[#324d67] bg-[#151b23] flex justify-between items-center">
-                            <h3 class="text-white font-bold" id="camera-modal-title">Tomar Foto</h3>
-                            <button onclick="window.workshopView.closeCamera()" class="text-slate-400 hover:text-white">
-                                <span class="material-symbols-outlined">close</span>
-                            </button>
+                            <h4 class="text-white font-bold flex items-center gap-2"><span class="material-symbols-outlined text-primary">history</span> Actividad Reciente</h4>
                         </div>
-                        <div class="p-4">
-                            <video id="camera-preview" autoplay playsinline class="w-full rounded-lg bg-black aspect-video"></video>
-                            <canvas id="camera-canvas" class="hidden"></canvas>
-                        </div>
-                        <div class="p-4 border-t border-[#324d67] flex justify-end gap-3">
-                            <button onclick="window.workshopView.closeCamera()" class="px-6 py-2 bg-slate-700 text-white rounded-lg">Cancelar</button>
-                            <button onclick="window.workshopView.capturePhoto()" class="px-6 py-2 bg-primary text-white rounded-lg flex items-center gap-2">
-                                <span class="material-symbols-outlined">photo_camera</span> Capturar
-                            </button>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-sm whitespace-nowrap">
+                                <thead class="bg-[#111a22] text-[#92adc9] text-[10px] font-black uppercase">
+                                    <tr><th class="px-6 py-3">Fecha</th><th class="px-6 py-3">Unidad</th><th class="px-6 py-3">Servicio</th><th class="px-6 py-3 text-right">Inversión</th></tr>
+                                </thead>
+                                <tbody id="maintenance-list" class="divide-y divide-[#324d67]/50 text-slate-300"></tbody>
+                            </table>
                         </div>
                     </div>
                 </div>
 
-                <!-- MODO PENDIENTES -->
-                <div id="mode-pending" class="hidden animate-fade-in overflow-y-auto custom-scrollbar pb-6 pr-2 h-full">
-                    <!-- Sección de Solicitudes Pendientes -->
-                    <div class="bg-[#1c2127] border border-yellow-500/30 rounded-xl p-4 mb-4">
-                        <h3 class="text-white font-bold mb-4 flex items-center gap-2 border-b border-[#324d67] pb-2">
-                            <span class="material-symbols-outlined text-yellow-500">pending_actions</span> Solicitudes Pendientes
-                        </h3>
-                        <div id="pending-requests-list" class="space-y-3 max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
-                            <p class="text-slate-500 text-center text-xs">Cargando...</p>
-                        </div>
-                    </div>
+                <div id="tab-content-new-service" class="hidden animate-fade-in h-full overflow-y-auto custom-scrollbar pr-2 pb-10">
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        
+                        <div class="space-y-6">
+                            <div class="bg-[#1c2127] border border-[#324d67] rounded-xl p-6 shadow-lg">
+                                <h3 class="font-bold text-white mb-4 flex items-center gap-2 border-b border-[#324d67] pb-2 uppercase text-xs">
+                                    <span class="material-symbols-outlined text-primary">qr_code_scanner</span> Identificar Unidad
+                                </h3>
+                                <div id="reader" class="w-full bg-black rounded-lg overflow-hidden border border-[#324d67] aspect-square mb-4"></div>
+                                <select id="shop-vehicle-select" class="w-full bg-[#111a22] border border-[#324d67] text-white rounded-lg p-3 outline-none focus:border-primary" onchange="window.taller.loadVehicleForService(this.value)">
+                                    <option value="">Selección Manual...</option>
+                                </select>
+                                <div id="selected-vehicle-card" class="mt-4 bg-primary/10 border border-primary/30 p-4 rounded-lg hidden">
+                                    <h4 id="sv-plate" class="text-2xl font-black text-white leading-none">--</h4>
+                                    <p id="sv-model" class="text-xs text-[#92adc9] mt-1">--</p>
+                                </div>
+                            </div>
 
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <!-- Recepciones Iniciales -->
-                        <div class="bg-[#1c2127] border border-orange-500/30 rounded-xl p-4">
-                            <h3 class="text-white font-bold mb-4 flex items-center gap-2 border-b border-[#324d67] pb-2">
-                                <span class="material-symbols-outlined text-orange-500">engineering</span> Recepciones Iniciales
-                            </h3>
-                            <div id="pending-initial-list" class="space-y-3 max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
-                                <p class="text-slate-500 text-center text-xs">Cargando...</p>
+                            <div id="mec-health-area" class="bg-[#1c2127] border border-[#324d67] rounded-xl p-6 shadow-lg hidden">
+                                <div class="flex justify-between items-center border-b border-[#324d67] pb-2 mb-4">
+                                    <h3 class="font-bold text-white uppercase text-xs">Salud de Unidad</h3>
+                                    <span id="overall-health-pct" class="text-xl font-black text-green-400 font-mono">100%</span>
+                                </div>
+                                <div id="components-list" class="space-y-4">
+                                    </div>
                             </div>
                         </div>
 
-                        <!-- Recepciones Finales -->
-                        <div class="bg-[#1c2127] border border-green-500/30 rounded-xl p-4">
-                            <h3 class="text-white font-bold mb-4 flex items-center gap-2 border-b border-[#324d67] pb-2">
-                                <span class="material-symbols-outlined text-green-500">assignment_return</span> Retornos Pendientes
-                            </h3>
-                            <div id="pending-final-list" class="space-y-3 max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
-                                <p class="text-slate-500 text-center text-xs">Cargando...</p>
+                        <div class="lg:col-span-2 space-y-6 opacity-40 pointer-events-none transition-all" id="shop-process-area">
+                            
+                            <div class="bg-[#1c2127] border border-[#324d67] rounded-xl p-6 shadow-lg">
+                                <h3 class="font-bold text-white mb-4 flex items-center gap-2 border-b border-[#324d67] pb-2 uppercase text-xs text-orange-400">
+                                    <span class="material-symbols-outlined">fact_check</span> 1. Revisión de Logística (Entrada/Salida)
+                                </h3>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div class="space-y-2">
+                                        <label class="flex items-center justify-between p-2 bg-[#111a22] rounded-lg border border-[#324d67] cursor-pointer text-xs text-white">Carrocería OK <input type="checkbox" id="chk-body" class="accent-primary w-4 h-4"></label>
+                                        <label class="flex items-center justify-between p-2 bg-[#111a22] rounded-lg border border-[#324d67] cursor-pointer text-xs text-white">Luces OK <input type="checkbox" id="chk-lights" class="accent-primary w-4 h-4"></label>
+                                        <label class="flex items-center justify-between p-2 bg-[#111a22] rounded-lg border border-[#324d67] cursor-pointer text-xs text-white">Interiores Limpios <input type="checkbox" id="chk-clean" class="accent-primary w-4 h-4"></label>
+                                    </div>
+                                    <div class="space-y-2">
+                                        <label class="block text-[10px] font-bold text-[#92adc9] uppercase">Km de Entrada</label>
+                                        <input type="number" id="shop-current-km" class="w-full bg-[#111a22] border border-[#324d67] text-white rounded-lg p-2 outline-none focus:border-primary font-mono">
+                                        <label class="block text-[10px] font-bold text-orange-400 uppercase mt-2">Tiempo Estimado de Espera</label>
+                                        <input type="text" id="shop-wait-time" class="w-full bg-[#111a22] border border-[#324d67] text-white rounded-lg p-2 outline-none focus:border-orange-500 text-sm" placeholder="Ej: 2 horas">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="bg-[#1c2127] border border-[#324d67] rounded-xl p-6 shadow-lg">
+                                <h3 class="font-bold text-white mb-4 flex items-center gap-2 border-b border-[#324d67] pb-2 uppercase text-xs text-green-400">
+                                    <span class="material-symbols-outlined">build</span> 2. Reparación Mecánica y Refacciones
+                                </h3>
+                                <div class="space-y-4">
+                                    <div class="flex gap-2">
+                                        <select id="shop-recipe-select" class="flex-1 bg-[#111a22] border border-[#324d67] text-white rounded-lg p-3 text-sm outline-none" onchange="window.taller.applyRecipe()">
+                                            <option value="">Cargar Receta/Paquete...</option>
+                                        </select>
+                                        <button onclick="window.taller.clearRecipe()" class="bg-[#233648] px-4 rounded-lg text-slate-400 hover:text-white transition-colors border border-[#324d67]"><span class="material-symbols-outlined">delete_sweep</span></button>
+                                    </div>
+
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <input id="shop-service-name" class="bg-[#111a22] border border-[#324d67] text-white rounded-lg p-3 outline-none focus:border-primary text-sm" placeholder="Nombre del Trabajo">
+                                        <input type="number" id="shop-labor-cost" class="bg-[#111a22] border border-[#324d67] text-white rounded-lg p-3 outline-none focus:border-primary font-mono text-right" placeholder="Mano de Obra ($)" oninput="window.taller.updateTotalCost()">
+                                    </div>
+
+                                    <div class="border border-[#324d67] rounded-lg overflow-hidden bg-[#111a22]">
+                                        <table class="w-full text-left text-[11px] text-white">
+                                            <thead class="bg-[#233648] text-[#92adc9]"><tr><th class="p-2">Pieza</th><th class="p-2 text-center">Cant</th><th class="p-2 text-right">Subtotal</th></tr></thead>
+                                            <tbody id="shop-parts-list" class="divide-y divide-[#324d67]">
+                                                <tr><td colspan="3" class="text-center p-4 text-slate-600">Sin piezas cargadas.</td></tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    <div class="bg-[#111a22] border border-[#324d67] p-4 rounded-lg">
+                                        <div class="flex justify-between items-center mb-2">
+                                            <p class="text-xs text-[#92adc9] font-bold uppercase tracking-wider">Evidencia Visual</p>
+                                            <input type="file" accept="image/*" capture="environment" id="shop-camera" class="hidden" onchange="window.taller.captureImage(this)">
+                                            <label for="shop-camera" class="bg-primary hover:bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer flex items-center gap-1 transition-colors">
+                                                <span class="material-symbols-outlined text-[16px]">add_a_photo</span> Capturar
+                                            </label>
+                                        </div>
+                                        <div id="images-container" class="grid grid-cols-4 gap-2"></div>
+                                    </div>
+
+                                    <div class="flex justify-between items-center bg-[#0d141c] p-4 rounded-xl border border-[#324d67]">
+                                        <span class="text-sm font-bold text-[#92adc9] uppercase">Inversión Total:</span>
+                                        <span id="shop-total-cost" class="text-2xl font-black text-green-400 font-mono">$0.00</span>
+                                    </div>
+
+                                    <button id="btn-save-shop" onclick="window.taller.saveShopService()" class="w-full bg-green-600 hover:bg-green-500 text-white py-4 rounded-xl font-black shadow-lg transition-all flex items-center justify-center gap-2 uppercase tracking-widest">
+                                        <span class="material-symbols-outlined">verified</span> Finalizar Reparación y Liberar Unidad
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- MODO INCIDENCIAS -->
-                <div id="mode-incidents" class="hidden animate-fade-in overflow-y-auto custom-scrollbar pb-6 pr-2 h-full">
-                    <div class="bg-[#1c2127] border border-red-500/30 rounded-xl p-6">
-                        <h3 class="text-white font-bold mb-4 flex items-center gap-2 border-b border-[#324d67] pb-2">
-                            <span class="material-symbols-outlined text-red-500">warning</span> Incidencias Reportadas
-                        </h3>
-                        <div id="incidents-list" class="space-y-4 max-h-[600px] overflow-y-auto custom-scrollbar">
-                            <p class="text-slate-500 text-center text-xs">Cargando...</p>
+                <div id="tab-content-calendar" class="hidden h-full">
+                    <div class="bg-[#1c2127] border border-[#324d67] rounded-xl flex flex-col h-full overflow-hidden">
+                        <div class="p-4 border-b border-[#324d67] bg-[#151b23] flex justify-between items-center">
+                            <h3 id="calendar-month-title" class="font-black text-white uppercase">Mes Año</h3>
+                            <div class="flex gap-2">
+                                <button onclick="window.taller.changeMonth(-1)" class="bg-[#233648] text-white w-8 h-8 rounded-lg">←</button>
+                                <button onclick="window.taller.changeMonth(1)" class="bg-[#233648] text-white w-8 h-8 rounded-lg">→</button>
+                            </div>
                         </div>
+                        <div id="calendar-grid" class="grid grid-cols-7 gap-1 p-4 flex-1 bg-[#0d141c]"></div>
                     </div>
                 </div>
 
-                <!-- MODO COMPLETADOS -->
-                <div id="mode-completed" class="hidden animate-fade-in overflow-y-auto custom-scrollbar pb-6 pr-2 h-full">
-                    <div class="bg-[#1c2127] border border-[#324d67] rounded-xl p-6">
-                        <h3 class="text-white font-bold mb-4 flex items-center gap-2 border-b border-[#324d67] pb-2">
-                            <span class="material-symbols-outlined text-green-500">check_circle</span> Últimos Viajes Completados
-                        </h3>
-                        <div id="completed-list" class="space-y-3 max-h-[600px] overflow-y-auto custom-scrollbar">
-                            <p class="text-slate-500 text-center text-xs">Cargando...</p>
+                <div id="tab-content-database" class="hidden h-full overflow-auto custom-scrollbar">
+                    <div class="bg-[#1c2127] border border-[#324d67] rounded-xl">
+                        <table class="w-full text-left text-xs whitespace-nowrap">
+                            <thead class="bg-[#111a22] text-[#92adc9] uppercase font-black sticky top-0">
+                                <tr><th class="p-3">ID</th><th class="p-3">Fecha</th><th class="p-3">ECO</th><th class="p-3">Servicio</th><th class="p-3">Total</th></tr>
+                            </thead>
+                            <tbody id="database-table" class="divide-y divide-[#324d67] text-slate-300"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="tab-content-completed" class="hidden animate-fade-in h-full overflow-y-auto custom-scrollbar pb-10">
+                    <div id="completed-list" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         </div>
+                </div>
+
+            </div>
+
+            <div id="modal-schedule-calendar" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
+                <div class="bg-[#1c2127] border border-[#324d67] w-full max-w-md rounded-2xl p-6 animate-fade-in-up">
+                    <h3 class="text-lg font-black text-white mb-4">Agendar Servicio</h3>
+                    <input type="hidden" id="sched-date-hidden">
+                    <div class="space-y-4">
+                        <select id="sched-vehicle" class="w-full bg-[#111a22] border border-[#324d67] text-white p-3 rounded-lg outline-none"></select>
+                        <input id="sched-service" class="w-full bg-[#111a22] border border-[#324d67] text-white p-3 rounded-lg outline-none" placeholder="Tipo de servicio">
+                        <button onclick="window.taller.saveScheduledService()" class="w-full py-3 bg-primary text-white font-bold rounded-xl">Agendar</button>
                     </div>
                 </div>
             </div>
+
+            <div id="photo-viewer" class="hidden fixed inset-0 z-[300] flex items-center justify-center bg-black/95 p-4" onclick="this.classList.add('hidden')">
+                <img id="viewer-img" class="max-w-full max-h-full rounded-lg shadow-2xl border border-white/10">
+            </div>
+
         </div>
         `;
     }
 
     async onMount() {
-        await this.loadPendingRequests();
-        await this.loadPendingLists();
-        await this.loadIncidents();
-        await this.loadCompletedTrips();
-        this.switchMode('scanner');
-        
-        setInterval(() => {
-            this.loadPendingRequests();
-            this.loadPendingLists();
-            this.loadIncidents();
-            this.loadCompletedTrips();
-        }, 10000);
+        await this.loadInitialData();
+        this.setupScanner();
     }
 
-    switchMode(mode) {
-        const modes = ['scanner', 'process', 'pending', 'incidents', 'completed'];
-        modes.forEach(m => {
-            const el = document.getElementById(`mode-${m}`);
-            if (el) el.classList.add('hidden');
+    async loadInitialData() {
+        const [vehRes, invRes, recRes, logRes, schedRes] = await Promise.all([
+            supabase.from('vehicles').select('*'),
+            supabase.from('inventory_items').select('*'),
+            supabase.from('service_templates').select('*, service_template_items(quantity, inventory_items(id, name, cost, unit, stock))'),
+            supabase.from('vehicle_logs').select('*, vehicles(economic_number, plate)').order('date', {ascending: false}),
+            supabase.from('maintenance_logs').select('*, vehicles(economic_number, plate)').eq('status', 'scheduled')
+        ]);
+
+        this.vehicles = vehRes.data || [];
+        this.inventory = invRes.data || [];
+        this.services = recRes.data || [];
+        this.logs = logRes.data || [];
+        this.schedules = schedRes.data || [];
+
+        const vehOptions = '<option value="">Selecciona unidad...</option>' + this.vehicles.map(v => `<option value="${v.id}">${v.plate} (ECO-${v.economic_number})</option>`).join('');
+        document.getElementById('shop-vehicle-select').innerHTML = vehOptions;
+        document.getElementById('sched-vehicle').innerHTML = vehOptions;
+        document.getElementById('shop-recipe-select').innerHTML = '<option value="">Cargar Receta...</option>' + this.services.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+
+        this.renderDashboard();
+        this.renderDatabaseTable();
+        this.renderCompletedTab();
+    }
+
+    switchTab(tab) {
+        ['dashboard', 'new-service', 'calendar', 'database', 'completed'].forEach(t => {
+            const content = document.getElementById(`tab-content-${t}`);
+            const btn = document.getElementById(`tab-btn-${t}`);
+            if (content) content.classList.replace('block', 'hidden');
+            if (btn) btn.className = "px-6 py-3 text-[#92adc9] hover:text-white border-b-2 border-transparent font-medium text-sm transition-colors whitespace-nowrap flex items-center gap-2";
         });
 
-        ['scanner', 'pending', 'incidents', 'completed'].forEach(tab => {
-            const tabEl = document.getElementById(`tab-${tab}`);
-            if (tabEl) {
-                tabEl.classList.remove('text-primary', 'border-primary');
-                tabEl.classList.add('text-[#92adc9]', 'border-transparent');
-            }
+        const activeContent = document.getElementById(`tab-content-${tab}`);
+        const activeBtn = document.getElementById(`tab-btn-${tab}`);
+        if (activeContent) activeContent.classList.replace('hidden', 'block');
+        if (activeBtn) activeBtn.className = "px-6 py-3 text-primary border-b-2 border-primary font-bold text-sm transition-colors whitespace-nowrap flex items-center gap-2 bg-[#1c2127]";
+
+        if(tab === 'calendar') this.renderCalendar();
+        if(tab === 'completed') this.renderCompletedTab();
+    }
+
+    // --- SALUD DE COMPONENTES ---
+    renderComponentsHealth(vehicle) {
+        const container = document.getElementById('components-list');
+        const area = document.getElementById('mec-health-area');
+        if(!container) return;
+
+        area.classList.remove('hidden');
+        let comps = vehicle.components || [
+            { name: 'Motor', weight: 40, health: 100 },
+            { name: 'Frenos', weight: 20, health: 100 },
+            { name: 'Llantas', weight: 20, health: 100 },
+            { name: 'Suspensión', weight: 20, health: 100 }
+        ];
+
+        container.innerHTML = comps.map((c, i) => `
+            <div class="bg-[#111a22] p-3 rounded-lg border border-[#324d67]">
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-xs text-white font-bold">${c.name} (${c.weight}%)</span>
+                    <span class="text-[10px] text-primary font-mono">${c.health}% Salud</span>
+                </div>
+                <input type="range" min="0" max="100" value="${c.health}" class="w-full accent-primary h-1 bg-slate-700 rounded-lg cursor-pointer" 
+                       oninput="window.taller.updateComponentHealth(${i}, this.value)">
+            </div>
+        `).join('');
+        this.calculateOverallHealth(comps);
+    }
+
+    updateComponentHealth(index, value) {
+        this.selectedVehicle.components[index].health = parseInt(value);
+        this.renderComponentsHealth(this.selectedVehicle);
+    }
+
+    calculateOverallHealth(comps) {
+        let totalHealth = 0;
+        comps.forEach(c => {
+            totalHealth += (c.weight * c.health) / 100;
         });
-
-        const modeEl = document.getElementById(`mode-${mode}`);
-        if (modeEl) modeEl.classList.remove('hidden');
-
-        const tabEl = document.getElementById(`tab-${mode}`);
-        if (tabEl) {
-            tabEl.classList.remove('text-[#92adc9]', 'border-transparent');
-            tabEl.classList.add('text-primary', 'border-primary');
-        }
-
-        if (mode === 'scanner') {
-            setTimeout(() => this.initScanner(), 100);
-        } else {
-            this.stopCamera();
+        const badge = document.getElementById('overall-health-pct');
+        if(badge) {
+            badge.innerText = `${totalHealth.toFixed(1)}%`;
+            badge.className = `text-xl font-black font-mono ${totalHealth > 80 ? 'text-green-400' : (totalHealth > 50 ? 'text-yellow-400' : 'text-red-500')}`;
         }
     }
 
-    // ========== MÉTODOS DE CÁMARA ==========
-    async openCamera(callback, title = "Tomar Foto") {
-        this.currentPhotoCallback = callback;
-        
-        const modal = document.getElementById('camera-modal');
-        const titleEl = document.getElementById('camera-modal-title');
-        const video = document.getElementById('camera-preview');
-        
-        if (titleEl) titleEl.innerText = title;
-        if (modal) modal.classList.remove('hidden');
+    loadVehicleForService(id) {
+        const v = this.vehicles.find(x => x.id === id);
+        if(!v) return;
+        this.selectedVehicle = v;
+        document.getElementById('sv-plate').innerText = v.plate;
+        document.getElementById('sv-model').innerText = `${v.brand} ${v.model}`;
+        document.getElementById('shop-current-km').value = v.current_km;
+        document.getElementById('selected-vehicle-card').classList.remove('hidden');
+        document.getElementById('shop-process-area').classList.remove('opacity-40', 'pointer-events-none');
+        this.renderComponentsHealth(v);
+    }
 
-        try {
-            if (this.currentCameraStream) {
-                this.currentCameraStream.getTracks().forEach(track => track.stop());
-            }
-
-            const stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { facingMode: "environment" }, 
-                audio: false 
-            });
-            
-            this.currentCameraStream = stream;
-            video.srcObject = stream;
-            await video.play();
-        } catch (error) {
-            console.error('Error al acceder a la cámara:', error);
-            alert('No se pudo acceder a la cámara. Asegúrate de tener permisos.');
-            this.closeCamera();
+    captureImage(input) {
+        if(input.files && input.files[0]) {
+            this.capturedImages.push(input.files[0]);
+            this.renderCapturedImages();
+            input.value = ''; 
         }
     }
 
-    closeCamera() {
-        if (this.currentCameraStream) {
-            this.currentCameraStream.getTracks().forEach(track => track.stop());
-            this.currentCameraStream = null;
-        }
-
-        const modal = document.getElementById('camera-modal');
-        if (modal) modal.classList.add('hidden');
-
-        const video = document.getElementById('camera-preview');
-        if (video) video.srcObject = null;
-
-        this.currentPhotoCallback = null;
-    }
-
-    capturePhoto() {
-        const video = document.getElementById('camera-preview');
-        const canvas = document.getElementById('camera-canvas');
-        
-        if (!video || !canvas || !this.currentPhotoCallback) return;
-
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-
-        const context = canvas.getContext('2d');
-        context.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-        const photoData = canvas.toDataURL('image/jpeg', 0.9);
-
-        this.currentPhotoCallback(photoData);
-        this.closeCamera();
-    }
-
-    // ========== MÉTODOS DE FOTOS ==========
-    takePhoto(position) {
-        this.openCamera(
-            (photoData) => {
-                this.receptionPhotos.push({ position, url: photoData });
-                this.updatePhotosPreview();
-                this.validateInitialProcess();
-            },
-            `Foto: ${position}`
-        );
-    }
-
-    takeDriverPhoto() {
-        this.openCamera(
-            (photoData) => {
-                this.driverPhoto = photoData;
-                const preview = document.getElementById('driver-photo-preview');
-                const img = document.getElementById('driver-photo-img');
-                if (preview && img) {
-                    img.src = photoData;
-                    preview.classList.remove('hidden');
-                }
-                this.validateInitialProcess();
-            },
-            "Foto del Conductor"
-        );
-    }
-
-    takeDeliveryPhoto(position) {
-        this.openCamera(
-            (photoData) => {
-                this.deliveryPhotos.push({ position, url: photoData });
-                this.updateDeliveryPhotosPreview();
-                this.validateFinalProcess();
-            },
-            `Foto de Entrega: ${position}`
-        );
-    }
-
-    // ========== FUNCIONES PARA SOLICITUDES ==========
-    async loadPendingRequests() {
-        try {
-            const { data: requests, error } = await supabase
-                .from('trips')
-                .select(`
-                    id,
-                    created_at,
-                    destination,
-                    motivo,
-                    supervisor,
-                    departamento,
-                    vehicles:vehicle_id(economic_number, plate, model),
-                    driver:driver_id(full_name, photo_url)
-                `)
-                .eq('status', 'requested')
-                .order('created_at', { ascending: false });
-
-            if (error) throw error;
-            
-            this.renderRequestsList(requests);
-
-        } catch (error) {
-            console.error('Error cargando solicitudes:', error);
-            const list = document.getElementById('pending-requests-list');
-            if (list) {
-                list.innerHTML = '<p class="text-red-500 text-center text-xs">Error al cargar solicitudes</p>';
-            }
-        }
-    }
-
-    renderRequestsList(requests) {
-        const list = document.getElementById('pending-requests-list');
-        if (!list) return;
-
-        if (!requests || requests.length === 0) {
-            list.innerHTML = '<p class="text-slate-500 text-center text-xs">Sin solicitudes pendientes</p>';
-            return;
-        }
-
-        list.innerHTML = requests.map(r => `
-            <div class="bg-[#151b23] p-3 rounded-lg border border-yellow-500/30">
-                <div class="flex items-center gap-2 mb-2">
-                    <div class="w-8 h-8 rounded-full bg-slate-700 bg-cover bg-center" 
-                         style="background-image: url('${r.driver?.photo_url || ''}')"></div>
-                    <div class="flex-1">
-                        <p class="text-white font-bold text-xs">${r.driver?.full_name || 'Conductor'}</p>
-                        <p class="text-[10px] text-yellow-400">ECO-${r.vehicles?.economic_number || '?'}</p>
-                    </div>
-                    <span class="text-[10px] text-[#92adc9]">${new Date(r.created_at).toLocaleTimeString()}</span>
-                </div>
-                <div class="bg-[#111a22] p-2 rounded-lg text-xs space-y-1">
-                    <p><span class="text-[#92adc9]">Destino:</span> ${r.destination || 'No especificado'}</p>
-                    <p><span class="text-[#92adc9]">Motivo:</span> ${r.motivo || 'No especificado'}</p>
-                    <p><span class="text-[#92adc9]">Jefe:</span> ${r.supervisor || 'No especificado'}</p>
-                    <p><span class="text-[#92adc9]">Depto:</span> ${r.departamento || 'No especificado'}</p>
-                </div>
-                <div class="flex gap-2 mt-2">
-                    <button onclick="window.workshopView.approveRequest('${r.id}')" 
-                            class="flex-1 py-2 bg-green-600 text-white text-xs font-bold rounded-lg hover:bg-green-500">
-                        APROBAR
-                    </button>
-                    <button onclick="window.workshopView.rejectRequest('${r.id}')" 
-                            class="flex-1 py-2 bg-red-600/20 text-red-400 text-xs font-bold rounded-lg border border-red-500/30 hover:bg-red-600 hover:text-white">
-                        RECHAZAR
-                    </button>
-                </div>
+    renderCapturedImages() {
+        const container = document.getElementById('images-container');
+        if(!container) return;
+        if(this.capturedImages.length === 0) { container.innerHTML = ''; return; }
+        container.innerHTML = this.capturedImages.map((file, idx) => `
+            <div class="relative aspect-square rounded-lg overflow-hidden border border-[#324d67] shadow-lg">
+                <img src="${URL.createObjectURL(file)}" class="w-full h-full object-cover">
+                <button onclick="window.taller.removeImage(${idx})" class="absolute top-1 right-1 bg-red-600 text-white rounded-full p-0.5"><span class="material-symbols-outlined text-[12px]">close</span></button>
             </div>
         `).join('');
     }
 
-    async approveRequest(tripId) {
-        if (!confirm('¿Aprobar esta solicitud? El conductor deberá pasar a taller.')) return;
+    removeImage(idx) { this.capturedImages.splice(idx, 1); this.renderCapturedImages(); }
 
-        try {
-            const { error } = await supabase
-                .from('trips')
-                .update({ 
-                    status: 'approved_for_taller',
-                    approved_at: new Date().toISOString()
-                })
-                .eq('id', tripId);
-
-            if (error) throw error;
-
-            alert('✅ Solicitud aprobada');
-            await this.loadPendingRequests();
-            await this.loadPendingLists();
-
-        } catch (error) {
-            console.error('Error aprobando solicitud:', error);
-            alert('Error: ' + error.message);
-        }
+    viewPhoto(url) {
+        const viewer = document.getElementById('photo-viewer');
+        const img = document.getElementById('viewer-img');
+        img.src = url;
+        viewer.classList.remove('hidden');
     }
 
-    async rejectRequest(tripId) {
-        if (!confirm('¿Rechazar esta solicitud?')) return;
-
-        try {
-            const { error } = await supabase
-                .from('trips')
-                .update({ 
-                    status: 'rejected',
-                    rejected_at: new Date().toISOString()
-                })
-                .eq('id', tripId);
-
-            if (error) throw error;
-
-            alert('❌ Solicitud rechazada');
-            await this.loadPendingRequests();
-
-        } catch (error) {
-            console.error('Error rechazando solicitud:', error);
-            alert('Error: ' + error.message);
-        }
+    applyRecipe() {
+        const recipeId = document.getElementById('shop-recipe-select').value;
+        const template = this.services.find(s => s.id === recipeId);
+        if(!template) return;
+        document.getElementById('shop-service-name').value = template.name;
+        document.getElementById('shop-labor-cost').value = template.labor_cost || 0;
+        this.tempRecipeItems = template.service_template_items?.map(si => ({ id: si.inventory_items.id, name: si.inventory_items.name, qty: si.quantity, cost: si.inventory_items.cost, stock: si.inventory_items.stock })) || [];
+        this.renderRecipeList();
     }
 
-    // ========== FUNCIONES PARA INCIDENCIAS ==========
-    async loadIncidents() {
-        try {
-            const { data: incidents, error } = await supabase
-                .from('trips')
-                .select(`
-                    id,
-                    created_at,
-                    incident_description,
-                    incident_status,
-                    incident_notes,
-                    workshop_notes,
-                    vehicles:vehicle_id(economic_number, plate),
-                    driver:driver_id(full_name, photo_url)
-                `)
-                .eq('status', 'incident_report')
-                .order('created_at', { ascending: false });
-
-            if (error) throw error;
-
-            const list = document.getElementById('incidents-list');
-            if (!list) return;
-
-            if (!incidents || incidents.length === 0) {
-                list.innerHTML = '<p class="text-slate-500 text-center text-xs">Sin incidencias reportadas</p>';
-                return;
-            }
-
-            list.innerHTML = incidents.map(i => `
-                <div class="bg-[#151b23] p-4 rounded-lg border border-red-500/30">
-                    <div class="flex items-center gap-3 mb-3">
-                        <div class="w-10 h-10 rounded-full bg-slate-700 bg-cover bg-center" 
-                             style="background-image: url('${i.driver?.photo_url || ''}')"></div>
-                        <div class="flex-1">
-                            <p class="text-white font-bold text-sm">${i.driver?.full_name || 'Conductor'}</p>
-                            <p class="text-[10px] text-red-400">ECO-${i.vehicles?.economic_number} · ${i.vehicles?.plate}</p>
-                        </div>
-                        <span class="text-[10px] bg-red-500/20 text-red-500 px-2 py-1 rounded-full">
-                            ${i.incident_status === 'pending' ? 'Pendiente' : 'En revisión'}
-                        </span>
-                    </div>
-                    
-                    <div class="bg-[#111a22] p-3 rounded-lg mb-3">
-                        <p class="text-[10px] text-[#92adc9] uppercase mb-1">Descripción de la incidencia</p>
-                        <p class="text-white text-xs">${i.incident_description || i.incident_notes || 'No especificada'}</p>
-                    </div>
-
-                    <div class="space-y-2">
-                        <textarea id="workshop-notes-${i.id}" rows="2" 
-                                  class="w-full bg-[#1a232e] border border-[#324d67] rounded-lg p-2 text-white text-xs"
-                                  placeholder="Notas del taller...">${i.workshop_notes || ''}</textarea>
-                        
-                        <div class="flex gap-2">
-                            <button onclick="window.workshopView.resolveIncident('${i.id}', 'driver_fault')" 
-                                    class="flex-1 py-2 bg-red-600 text-white text-xs font-bold rounded-lg hover:bg-red-500">
-                                CULPA DEL CONDUCTOR
-                            </button>
-                            <button onclick="window.workshopView.resolveIncident('${i.id}', 'vehicle_fault')" 
-                                    class="flex-1 py-2 bg-orange-600 text-white text-xs font-bold rounded-lg hover:bg-orange-500">
-                                FALLA DE UNIDAD
-                            </button>
-                        </div>
-                        <button onclick="window.workshopView.resolveIncident('${i.id}', 'resolved')" 
-                                class="w-full py-2 bg-green-600 text-white text-xs font-bold rounded-lg hover:bg-green-500">
-                            MARCAR COMO RESUELTA
-                        </button>
-                    </div>
-                </div>
-            `).join('');
-
-        } catch (error) {
-            console.error('Error cargando incidencias:', error);
+    renderRecipeList() {
+        const tbody = document.getElementById('shop-parts-list');
+        const laborCost = parseFloat(document.getElementById('shop-labor-cost').value) || 0;
+        let partsTotal = 0;
+        if(!this.tempRecipeItems.length) { tbody.innerHTML = '<tr><td colspan="3" class="text-center p-4">Sin insumos.</td></tr>'; } 
+        else {
+            tbody.innerHTML = this.tempRecipeItems.map(i => { 
+                partsTotal += i.qty * i.cost; 
+                return `<tr class="hover:bg-[#192633]"><td class="p-2 font-bold text-primary">${i.name}</td><td class="p-2 text-center">${i.qty}</td><td class="p-2 text-right text-green-400 font-mono">$${(i.qty*i.cost).toFixed(2)}</td></tr>`; 
+            }).join('');
         }
+        document.getElementById('shop-total-cost').innerText = `$${(partsTotal + laborCost).toLocaleString(undefined, {minimumFractionDigits: 2})}`;
     }
 
-    async resolveIncident(tripId, resolution) {
-        const notes = document.getElementById(`workshop-notes-${tripId}`)?.value;
-        
-        let newStatus = 'completed';
-        let incidentStatus = 'resolved';
-        
-        if (resolution === 'driver_fault') {
-            incidentStatus = 'driver_fault';
-            // El viaje se completa pero queda registro de la falta
-        } else if (resolution === 'vehicle_fault') {
-            incidentStatus = 'vehicle_fault';
-            // La unidad necesita mantenimiento
-            await supabase
-                .from('vehicles')
-                .update({ status: 'maintenance' })
-                .eq('id', this.currentVehicle?.id);
-        }
+    async saveShopService() {
+        if (!this.selectedVehicle) return alert('Escanea o selecciona una unidad.');
+        const btn = document.getElementById('btn-save-shop');
+        const serviceName = document.getElementById('shop-service-name').value;
+        const laborCost = parseFloat(document.getElementById('shop-labor-cost').value) || 0;
+        const currentKm = parseInt(document.getElementById('shop-current-km').value) || 0;
+        const waitTime = document.getElementById('shop-wait-time').value;
 
-        const updates = {
-            status: newStatus,
-            incident_status: incidentStatus,
-            incident_resolved_at: new Date().toISOString(),
-            workshop_notes: notes,
-            completed_at: new Date().toISOString()
-        };
+        if (!serviceName) return alert('Define el nombre del trabajo.');
 
-        const { error } = await supabase
-            .from('trips')
-            .update(updates)
-            .eq('id', tripId);
-
-        if (error) {
-            alert('Error: ' + error.message);
-        } else {
-            alert('✅ Incidencia resuelta');
-            this.loadIncidents();
-            this.loadCompletedTrips();
-        }
-    }
-
-    // ========== RESTO DE MÉTODOS ==========
-    async loadVehicleByEcoOrPlate() {
-        const input = document.getElementById('manual-vehicle-input');
-        if (!input.value.trim()) {
-            alert('Ingresa un número económico o placa');
-            return;
-        }
-
-        const searchTerm = input.value.trim().toUpperCase();
-        
-        try {
-            const { data: vehicles, error } = await supabase
-                .from('vehicles')
-                .select('*')
-                .or(`economic_number.ilike.%${searchTerm}%,plate.ilike.%${searchTerm}%`)
-                .limit(1);
-
-            if (error) throw error;
-            if (!vehicles || vehicles.length === 0) {
-                alert('Vehículo no encontrado');
-                return;
-            }
-
-            await this.handleScannedVehicle(vehicles[0]);
-        } catch (error) {
-            console.error('Error buscando vehículo:', error);
-            alert('Error al buscar vehículo');
-        }
-    }
-
-    async initScanner() {
-        if (this.html5QrCode) {
-            try {
-                await this.html5QrCode.stop();
-                this.html5QrCode.clear();
-            } catch (e) {
-                console.log('Error deteniendo scanner:', e);
-            }
-        }
-
-        const readerElement = document.getElementById('reader');
-        if (!readerElement) return;
-
-        try {
-            if (typeof Html5Qrcode === 'undefined') {
-                await this.loadHtml5Qrcode();
-            }
-
-            this.html5QrCode = new Html5Qrcode("reader");
-            
-            const qrCodeSuccessCallback = async (decodedText) => {
-                try {
-                    await this.html5QrCode.stop();
-                    
-                    const { data: vehicle, error } = await supabase
-                        .from('vehicles')
-                        .select('*')
-                        .eq('id', decodedText)
-                        .single();
-
-                    if (error || !vehicle) {
-                        this.showScannerMessage('Vehículo no encontrado', 'error');
-                        return;
-                    }
-
-                    await this.handleScannedVehicle(vehicle);
-                } catch (error) {
-                    console.error('Error al procesar QR:', error);
-                    this.showScannerMessage('Error al procesar QR', 'error');
-                }
-            };
-
-            const config = { fps: 10, qrbox: { width: 250, height: 250 } };
-
-            await this.html5QrCode.start(
-                { facingMode: "environment" },
-                config,
-                qrCodeSuccessCallback,
-                () => {}
-            );
-        } catch (error) {
-            console.error('Error iniciando escáner:', error);
-            readerElement.innerHTML = '<p class="text-red-500 p-4">Error al iniciar la cámara</p>';
-        }
-    }
-
-    loadHtml5Qrcode() {
-        return new Promise((resolve, reject) => {
-            const script = document.createElement('script');
-            script.src = 'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js';
-            script.onload = resolve;
-            script.onerror = reject;
-            document.head.appendChild(script);
-        });
-    }
-
-    showScannerMessage(message, type = 'info') {
-        const resultDiv = document.getElementById('scanner-result');
-        const messageEl = document.getElementById('scanner-message');
-        
-        if (resultDiv && messageEl) {
-            resultDiv.classList.remove('hidden');
-            messageEl.innerText = message;
-            
-            const bgColor = type === 'error' ? 'bg-red-500/10 border-red-500/30' : 'bg-orange-500/10 border-orange-500/30';
-            resultDiv.className = `mt-4 ${bgColor} p-4 rounded-lg`;
-        }
-    }
-
-    async handleScannedVehicle(vehicle) {
-        this.currentVehicle = vehicle;
-
-        document.getElementById('vehicle-info-panel').classList.remove('hidden');
-        document.getElementById('vehicle-plate').innerText = vehicle.plate || '--';
-        document.getElementById('vehicle-model').innerText = `${vehicle.brand || ''} ${vehicle.model || ''}`.trim() || '--';
-        document.getElementById('vehicle-eco').innerText = `ECO-${vehicle.economic_number || '?'}`;
-        document.getElementById('vehicle-km').innerText = `${vehicle.current_km || 0} km`;
-
-        const { data: activeTrip, error } = await supabase
-            .from('trips')
-            .select(`
-                *,
-                driver:driver_id(full_name, photo_url)
-            `)
-            .eq('vehicle_id', vehicle.id)
-            .in('status', ['approved_for_taller', 'in_progress', 'awaiting_return_checklist', 'incident_report'])
-            .maybeSingle();
-
-        if (error) {
-            console.error('Error buscando viaje activo:', error);
-        }
-
-        if (activeTrip) {
-            this.currentTrip = activeTrip;
-            this.currentDriver = activeTrip.driver;
-            
-            document.getElementById('vehicle-driver').innerText = activeTrip.driver?.full_name || '--';
-
-            let receptionType = '';
-            let receptionMode = null;
-            
-            if (activeTrip.status === 'approved_for_taller') {
-                receptionType = 'Recepción Inicial (Salida)';
-                receptionMode = 'initial';
-                document.getElementById('reception-type-badge').className = 'text-orange-500 font-bold';
-            } else if (activeTrip.status === 'awaiting_return_checklist') {
-                receptionType = 'Recepción Final (Retorno)';
-                receptionMode = 'final';
-                document.getElementById('reception-type-badge').className = 'text-green-500 font-bold';
-            } else if (activeTrip.status === 'incident_report') {
-                receptionType = 'INCIDENCIA - En revisión';
-                receptionMode = 'incident';
-                document.getElementById('reception-type-badge').className = 'text-red-500 font-bold';
-            } else {
-                receptionType = 'Vehículo en uso';
-                receptionMode = null;
-                document.getElementById('reception-type-badge').className = 'text-blue-500 font-bold';
-            }
-
-            document.getElementById('reception-type-container').classList.remove('hidden');
-            document.getElementById('reception-type-badge').innerText = receptionType;
-            this.receptionMode = receptionMode;
-
-            if (receptionMode && receptionMode !== 'incident') {
-                document.getElementById('btn-start-process').classList.remove('hidden');
-            } else {
-                document.getElementById('btn-start-process').classList.add('hidden');
-            }
-        } else {
-            document.getElementById('vehicle-driver').innerText = 'Sin viaje activo';
-            document.getElementById('reception-type-container').classList.add('hidden');
-            document.getElementById('btn-start-process').classList.add('hidden');
-        }
-    }
-
-    async startProcess() {
-        if (!this.receptionMode || !this.currentTrip) {
-            alert('No hay un proceso válido para iniciar');
-            return;
-        }
-
-        this.switchMode('process');
-        
-        const header = document.getElementById('process-header');
-        const vehicleInfo = document.getElementById('process-vehicle-info');
-        const conductorInfo = document.getElementById('process-conductor');
-
-        vehicleInfo.innerText = `ECO-${this.currentVehicle.economic_number} · ${this.currentVehicle.plate}`;
-        conductorInfo.innerText = `Conductor: ${this.currentDriver?.full_name || '--'}`;
-
-        if (this.receptionMode === 'initial') {
-            header.innerHTML = `
-                <h3 class="text-white font-bold text-lg flex items-center gap-2">
-                    <span class="material-symbols-outlined text-orange-500">engineering</span> Recepción Inicial
-                </h3>
-                <span class="text-xs bg-orange-500/20 text-orange-500 px-3 py-1 rounded-full">Paso 1: Fotos</span>
-            `;
-            this.renderInitialProcess();
-        } else {
-            header.innerHTML = `
-                <h3 class="text-white font-bold text-lg flex items-center gap-2">
-                    <span class="material-symbols-outlined text-green-500">assignment_return</span> Recepción Final
-                </h3>
-                <span class="text-xs bg-green-500/20 text-green-500 px-3 py-1 rounded-full">Paso 2: Checklist</span>
-            `;
-            this.renderFinalProcess();
-        }
-    }
-
-    renderInitialProcess() {
-        const content = document.getElementById('process-content');
-        
-        content.innerHTML = `
-            <div class="bg-[#111a22] p-4 rounded-xl border border-[#324d67]">
-                <h4 class="text-xs font-bold text-[#92adc9] uppercase mb-4">Fotos requeridas</h4>
-                
-                <div class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
-                    <button onclick="window.workshopView.takePhoto('front')" class="p-4 bg-[#233648] rounded-lg text-white text-xs hover:bg-primary/20 transition-colors flex flex-col items-center gap-2">
-                        <span class="material-symbols-outlined text-3xl">photo_camera</span> Frente
-                    </button>
-                    <button onclick="window.workshopView.takePhoto('back')" class="p-4 bg-[#233648] rounded-lg text-white text-xs hover:bg-primary/20 transition-colors flex flex-col items-center gap-2">
-                        <span class="material-symbols-outlined text-3xl">photo_camera</span> Atrás
-                    </button>
-                    <button onclick="window.workshopView.takePhoto('left')" class="p-4 bg-[#233648] rounded-lg text-white text-xs hover:bg-primary/20 transition-colors flex flex-col items-center gap-2">
-                        <span class="material-symbols-outlined text-3xl">photo_camera</span> Izquierdo
-                    </button>
-                    <button onclick="window.workshopView.takePhoto('right')" class="p-4 bg-[#233648] rounded-lg text-white text-xs hover:bg-primary/20 transition-colors flex flex-col items-center gap-2">
-                        <span class="material-symbols-outlined text-3xl">photo_camera</span> Derecho
-                    </button>
-                    <button onclick="window.workshopView.takePhoto('front-angle')" class="p-4 bg-[#233648] rounded-lg text-white text-xs hover:bg-primary/20 transition-colors flex flex-col items-center gap-2">
-                        <span class="material-symbols-outlined text-3xl">photo_camera</span> Frontal Angular
-                    </button>
-                    <button onclick="window.workshopView.takePhoto('rear-angle')" class="p-4 bg-[#233648] rounded-lg text-white text-xs hover:bg-primary/20 transition-colors flex flex-col items-center gap-2">
-                        <span class="material-symbols-outlined text-3xl">photo_camera</span> Trasero Angular
-                    </button>
-                </div>
-
-                <div id="photos-preview" class="grid grid-cols-3 gap-2 mt-4"></div>
-            </div>
-
-            <div class="bg-[#111a22] p-4 rounded-xl border border-[#324d67]">
-                <h4 class="text-xs font-bold text-[#92adc9] uppercase mb-4">Foto del Conductor</h4>
-                <button onclick="window.workshopView.takeDriverPhoto()" class="w-full p-4 bg-[#233648] rounded-lg text-white hover:bg-primary/20 transition-colors flex items-center justify-center gap-2">
-                    <span class="material-symbols-outlined">photo_camera</span> Tomar Foto
-                </button>
-                <div id="driver-photo-preview" class="mt-4 hidden">
-                    <img id="driver-photo-img" class="w-32 h-32 object-cover rounded-lg border-2 border-primary" />
-                </div>
-            </div>
-
-            <div class="bg-blue-500/10 border border-blue-500/30 p-4 rounded-lg">
-                <p class="text-blue-400 text-sm flex items-center gap-2">
-                    <span class="material-symbols-outlined">info</span>
-                    Al completar se generará un código de acceso para el guardia
-                </p>
-            </div>
-        `;
-
-        this.validateInitialProcess();
-    }
-
-    renderFinalProcess() {
-        const content = document.getElementById('process-content');
-        
-        content.innerHTML = `
-            <div class="bg-[#111a22] p-4 rounded-xl border border-[#324d67]">
-                <h4 class="text-xs font-bold text-[#92adc9] uppercase mb-4">Checklist de Retorno</h4>
-                
-                <div class="space-y-3">
-                    <label class="flex items-center gap-3 p-3 bg-[#1a232e] rounded-lg cursor-pointer hover:bg-[#233648]">
-                        <input type="checkbox" id="check-liquid" onchange="window.workshopView.updateChecklist('liquid', this.checked)" class="w-5 h-5 accent-primary">
-                        <span class="text-white text-sm">Líquido de frenos</span>
-                    </label>
-                    <label class="flex items-center gap-3 p-3 bg-[#1a232e] rounded-lg cursor-pointer hover:bg-[#233648]">
-                        <input type="checkbox" id="check-oil" onchange="window.workshopView.updateChecklist('oil', this.checked)" class="w-5 h-5 accent-primary">
-                        <span class="text-white text-sm">Aceite</span>
-                    </label>
-                    <label class="flex items-center gap-3 p-3 bg-[#1a232e] rounded-lg cursor-pointer hover:bg-[#233648]">
-                        <input type="checkbox" id="check-coolant" onchange="window.workshopView.updateChecklist('coolant', this.checked)" class="w-5 h-5 accent-primary">
-                        <span class="text-white text-sm">Anticongelante</span>
-                    </label>
-                    <label class="flex items-center gap-3 p-3 bg-[#1a232e] rounded-lg cursor-pointer hover:bg-[#233648]">
-                        <input type="checkbox" id="check-lights" onchange="window.workshopView.updateChecklist('lights', this.checked)" class="w-5 h-5 accent-primary">
-                        <span class="text-white text-sm">Luces</span>
-                    </label>
-                    <label class="flex items-center gap-3 p-3 bg-[#1a232e] rounded-lg cursor-pointer hover:bg-[#233648]">
-                        <input type="checkbox" id="check-tires" onchange="window.workshopView.updateChecklist('tires', this.checked)" class="w-5 h-5 accent-primary">
-                        <span class="text-white text-sm">Llantas</span>
-                    </label>
-                </div>
-            </div>
-
-            <div class="bg-[#111a22] p-4 rounded-xl border border-[#324d67]">
-                <h4 class="text-xs font-bold text-[#92adc9] uppercase mb-4">Fotos de Entrega</h4>
-                
-                <div class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
-                    <button onclick="window.workshopView.takeDeliveryPhoto('front')" class="p-4 bg-[#233648] rounded-lg text-white text-xs hover:bg-primary/20 transition-colors flex flex-col items-center gap-2">
-                        <span class="material-symbols-outlined text-3xl">photo_camera</span> Frente
-                    </button>
-                    <button onclick="window.workshopView.takeDeliveryPhoto('back')" class="p-4 bg-[#233648] rounded-lg text-white text-xs hover:bg-primary/20 transition-colors flex flex-col items-center gap-2">
-                        <span class="material-symbols-outlined text-3xl">photo_camera</span> Atrás
-                    </button>
-                    <button onclick="window.workshopView.takeDeliveryPhoto('left')" class="p-4 bg-[#233648] rounded-lg text-white text-xs hover:bg-primary/20 transition-colors flex flex-col items-center gap-2">
-                        <span class="material-symbols-outlined text-3xl">photo_camera</span> Izquierdo
-                    </button>
-                    <button onclick="window.workshopView.takeDeliveryPhoto('right')" class="p-4 bg-[#233648] rounded-lg text-white text-xs hover:bg-primary/20 transition-colors flex flex-col items-center gap-2">
-                        <span class="material-symbols-outlined text-3xl">photo_camera</span> Derecho
-                    </button>
-                    <button onclick="window.workshopView.takeDeliveryPhoto('front-angle')" class="p-4 bg-[#233648] rounded-lg text-white text-xs hover:bg-primary/20 transition-colors flex flex-col items-center gap-2">
-                        <span class="material-symbols-outlined text-3xl">photo_camera</span> Frontal Angular
-                    </button>
-                    <button onclick="window.workshopView.takeDeliveryPhoto('rear-angle')" class="p-4 bg-[#233648] rounded-lg text-white text-xs hover:bg-primary/20 transition-colors flex flex-col items-center gap-2">
-                        <span class="material-symbols-outlined text-3xl">photo_camera</span> Trasero Angular
-                    </button>
-                </div>
-
-                <div id="delivery-photos-preview" class="grid grid-cols-3 gap-2 mt-4"></div>
-            </div>
-
-            <div class="bg-[#111a22] p-4 rounded-xl border border-[#324d67]">
-                <h4 class="text-xs font-bold text-[#92adc9] uppercase mb-4">¿Detectaste alguna falla?</h4>
-                <textarea id="incident-description" rows="3" class="w-full bg-[#1a232e] border border-[#324d67] rounded-lg p-3 text-white text-sm" placeholder="Describe la falla en detalle..."></textarea>
-                <div class="mt-3 flex gap-3">
-                    <button onclick="window.workshopView.reportIncident()" class="flex-1 py-2 bg-red-500/10 text-red-500 border border-red-500/30 rounded-lg text-sm font-bold hover:bg-red-500 hover:text-white transition-colors">
-                        REPORTAR INCIDENCIA
-                    </button>
-                </div>
-            </div>
-        `;
-
-        this.checklistItems = {
-            liquid: false,
-            oil: false,
-            coolant: false,
-            lights: false,
-            tires: false
-        };
-        this.deliveryPhotos = [];
-        this.validateFinalProcess();
-    }
-
-    updatePhotosPreview() {
-        const preview = document.getElementById('photos-preview');
-        if (!preview) return;
-
-        if (this.receptionPhotos.length === 0) {
-            preview.innerHTML = '';
-            return;
-        }
-
-        preview.innerHTML = this.receptionPhotos.map(photo => `
-            <div class="relative group">
-                <img src="${photo.url}" class="w-full h-20 object-cover rounded-lg border border-primary/50" />
-                <span class="absolute bottom-1 left-1 text-[8px] bg-black/70 text-white px-1 rounded">${photo.position}</span>
-            </div>
-        `).join('');
-    }
-
-    updateDeliveryPhotosPreview() {
-        const preview = document.getElementById('delivery-photos-preview');
-        if (!preview) return;
-
-        if (this.deliveryPhotos.length === 0) {
-            preview.innerHTML = '';
-            return;
-        }
-
-        preview.innerHTML = this.deliveryPhotos.map(photo => `
-            <div class="relative group">
-                <img src="${photo.url}" class="w-full h-20 object-cover rounded-lg border border-primary/50" />
-                <span class="absolute bottom-1 left-1 text-[8px] bg-black/70 text-white px-1 rounded">${photo.position}</span>
-            </div>
-        `).join('');
-    }
-
-    updateChecklist(item, value) {
-        this.checklistItems[item] = value;
-        this.validateFinalProcess();
-    }
-
-    validateInitialProcess() {
-        const isValid = this.receptionPhotos.length >= 6 && this.driverPhoto !== null;
-        const btn = document.getElementById('btn-complete-process');
-        if (btn) {
-            btn.disabled = !isValid;
-            btn.innerHTML = isValid ? 'COMPLETAR RECEPCIÓN INICIAL' : `FOTOS: ${this.receptionPhotos.length}/6 · CONDUCTOR: ${this.driverPhoto ? '✓' : '✗'}`;
-        }
-    }
-
-    validateFinalProcess() {
-        const allChecklistChecked = Object.values(this.checklistItems).every(v => v === true);
-        const isValid = allChecklistChecked && this.deliveryPhotos.length >= 6;
-        const btn = document.getElementById('btn-complete-process');
-        if (btn) {
-            btn.disabled = !isValid;
-            btn.innerHTML = isValid ? 'COMPLETAR RECEPCIÓN FINAL' : `CHECKLIST: ${Object.values(this.checklistItems).filter(v => v).length}/5 · FOTOS: ${this.deliveryPhotos.length}/6`;
-        }
-    }
-
-    async completeProcess() {
-        if (!this.currentTrip || !this.receptionMode) return;
-
-        const btn = document.getElementById('btn-complete-process');
         btn.disabled = true;
-        btn.innerHTML = 'PROCESANDO...';
+        btn.innerHTML = 'Procesando...';
 
         try {
-            if (this.receptionMode === 'initial') {
-                // Generar código de acceso para el guardia (6 dígitos)
-                const accessCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-                
-                const updateData = {
-                    status: 'driver_accepted',
-                    workshop_reception_photos: this.receptionPhotos,
-                    workshop_driver_photo: this.driverPhoto,
-                    workshop_reception_at: new Date().toISOString(),
-                    access_code: accessCode
-                };
-                
-                console.log('✅ Recepción inicial completada. Código generado:', accessCode);
-                
-                const { error } = await supabase
-                    .from('trips')
-                    .update(updateData)
-                    .eq('id', this.currentTrip.id);
-
-                if (error) throw error;
-                
-                alert(`✅ RECEPCIÓN COMPLETADA\n\nCódigo de acceso para el guardia: ${accessCode}\n\nEl conductor debe usar este código al pasar por la garita.`);
-
-            } else {
-                const incidentDescription = document.getElementById('incident-description')?.value;
-                const hasIncident = incidentDescription && incidentDescription.trim() !== '';
-                
-                let newStatus = 'completed';
-                let incidentStatus = null;
-                const newKm = (this.currentVehicle.current_km || 0) + 100;
-
-                if (hasIncident) {
-                    newStatus = 'incident_report';
-                    incidentStatus = 'pending';
-                }
-
-                const updateData = {
-                    status: newStatus,
-                    workshop_return_checklist: this.checklistItems,
-                    workshop_return_photos: this.deliveryPhotos,
-                    workshop_completed_at: new Date().toISOString(),
-                    entry_km: newKm,
-                    incident_description: incidentDescription || null,
-                    incident_status: incidentStatus
-                };
-
-                console.log('Actualizando viaje con:', updateData);
-
-                const { error: tripError } = await supabase
-                    .from('trips')
-                    .update(updateData)
-                    .eq('id', this.currentTrip.id);
-
-                if (tripError) throw tripError;
-
-                const { error: vehicleError } = await supabase
-                    .from('vehicles')
-                    .update({ current_km: newKm })
-                    .eq('id', this.currentVehicle.id);
-
-                if (vehicleError) throw vehicleError;
-
-                if (hasIncident) {
-                    alert('⚠️ INCIDENCIA REPORTADA\n\nEl conductor deberá esperar hasta que se resuelva la incidencia.\nLa unidad quedará en revisión.');
-                } else {
-                    alert('✅ Recepción final completada');
+            // 1. Subir fotos
+            let uploadedPhotos = [];
+            for (let file of this.capturedImages) {
+                const fileName = `${this.selectedVehicle.id}/maint_${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`;
+                const { error: uploadError } = await supabase.storage.from('vehicle_documents').upload(fileName, file);
+                if (!uploadError) {
+                    const { data: { publicUrl } } = supabase.storage.from('vehicle_documents').getPublicUrl(fileName);
+                    uploadedPhotos.push({ url: publicUrl });
                 }
             }
 
-            this.cancelProcess();
-            await this.loadPendingRequests();
-            await this.loadPendingLists();
-            await this.loadIncidents();
-            await this.loadCompletedTrips();
-            this.switchMode('scanner');
+            // 2. Registrar en Logística y Mecánica
+            const partsCost = this.tempRecipeItems.reduce((sum, i) => sum + (i.qty * i.cost), 0);
+            const { error: logErr } = await supabase.from('vehicle_logs').insert([{
+                vehicle_id: this.selectedVehicle.id,
+                date: new Date().toISOString().split('T')[0],
+                odometer: currentKm,
+                service_name: serviceName,
+                parts_used: this.tempRecipeItems.map(i => `${i.qty} - ${i.name}`).join(', '),
+                total_cost: partsCost + laborCost,
+                parts_cost: partsCost,
+                labor_cost: laborCost,
+                mechanic: 'Taller Interno',
+                notes: document.getElementById('shop-notes').value,
+                wait_time: waitTime,
+                photos: uploadedPhotos
+            }]);
 
-        } catch (error) {
-            console.error('Error completando proceso:', error);
-            alert('Error: ' + error.message);
+            if (logErr) throw logErr;
+
+            // 3. Descontar Inventario
+            for (let item of this.tempRecipeItems) {
+                await supabase.from('inventory_items').update({ stock: item.stock - item.qty }).eq('id', item.id);
+            }
+
+            // 4. Actualizar Vehículo (Status, KM y Salud)
+            await supabase.from('vehicles').update({ 
+                status: 'active', 
+                current_km: currentKm,
+                components: this.selectedVehicle.components 
+            }).eq('id', this.selectedVehicle.id);
+
+            alert('✅ Trabajo registrado y unidad liberada.');
+            window.location.reload();
+
+        } catch (e) {
+            alert('Error: ' + e.message);
             btn.disabled = false;
-            btn.innerHTML = this.receptionMode === 'initial' ? 'COMPLETAR RECEPCIÓN INICIAL' : 'COMPLETAR RECEPCIÓN FINAL';
         }
     }
 
-    async reportIncident() {
-        const description = document.getElementById('incident-description')?.value;
-        if (!description || description.trim() === '') {
-            alert('Describe la incidencia en detalle');
-            return;
-        }
-
-        if (!confirm('¿Reportar esta incidencia? El conductor deberá esperar hasta que se resuelva.')) return;
-
-        try {
-            const updateData = {
-                status: 'incident_report',
-                workshop_return_checklist: this.checklistItems,
-                workshop_return_photos: this.deliveryPhotos,
-                workshop_completed_at: new Date().toISOString(),
-                incident_description: description,
-                incident_status: 'pending'
-            };
-
-            const { error } = await supabase
-                .from('trips')
-                .update(updateData)
-                .eq('id', this.currentTrip.id);
-
-            if (error) throw error;
-
-            alert('⚠️ Incidencia reportada. El conductor deberá esperar la resolución.');
-            this.cancelProcess();
-            await this.loadPendingRequests();
-            await this.loadPendingLists();
-            await this.loadIncidents();
-            await this.loadCompletedTrips();
-            this.switchMode('scanner');
-
-        } catch (error) {
-            console.error('Error reportando incidencia:', error);
-            alert('Error al reportar incidencia');
-        }
+    // --- RENDERIZADO TABLAS ---
+    renderDashboard() {
+        const tbody = document.getElementById('maintenance-list');
+        if(!this.logs.length) { tbody.innerHTML = '<tr><td colspan="4" class="text-center py-10">Sin datos.</td></tr>'; return; }
+        tbody.innerHTML = this.logs.slice(0,10).map(log => `
+            <tr><td class="px-6 py-4">${log.date}</td><td class="px-6 py-4">ECO-${log.vehicles?.economic_number}</td><td class="px-6 py-4">${log.service_name}</td><td class="px-6 py-4 text-right font-bold text-green-400">$${log.total_cost.toLocaleString()}</td></tr>
+        `).join('');
     }
 
-    cancelProcess() {
-        this.currentTrip = null;
-        this.currentVehicle = null;
-        this.currentDriver = null;
-        this.receptionPhotos = [];
-        this.deliveryPhotos = [];
-        this.driverPhoto = null;
-        this.checklistItems = {
-            liquid: false,
-            oil: false,
-            coolant: false,
-            lights: false,
-            tires: false
-        };
-        this.receptionMode = null;
-
-        this.switchMode('scanner');
-        setTimeout(() => this.initScanner(), 100);
-        this.stopCamera();
+    renderDatabaseTable() {
+        const tbody = document.getElementById('database-table');
+        tbody.innerHTML = this.logs.map(l => `
+            <tr class="hover:bg-[#1a212b] border-b border-[#324d67]/30">
+                <td class="p-3 text-[10px] text-slate-500">${l.id.split('-')[0]}</td>
+                <td class="p-3">${l.date}</td>
+                <td class="p-3 font-bold text-white">ECO-${l.vehicles?.economic_number}</td>
+                <td class="p-3">${l.service_name}</td>
+                <td class="p-3 font-bold text-green-400">$${l.total_cost.toLocaleString()}</td>
+            </tr>
+        `).join('');
     }
 
-    stopCamera() {
-        if (this.currentCameraStream) {
-            this.currentCameraStream.getTracks().forEach(track => track.stop());
-            this.currentCameraStream = null;
-        }
+    renderCompletedTab() {
+        const container = document.getElementById('completed-list');
+        if(!this.logs.length) { container.innerHTML = '<p class="col-span-full text-center py-20 text-slate-500">Nada aún.</p>'; return; }
+        container.innerHTML = this.logs.map(log => `
+            <div class="bg-[#1c2127] border border-[#324d67] rounded-xl p-5 shadow-lg relative overflow-hidden">
+                <div class="absolute top-0 right-0 bg-green-600 text-white text-[9px] font-black px-3 py-1 rounded-bl-lg uppercase">Liberado</div>
+                <div class="mb-4">
+                    <h4 class="text-white font-black text-xl">ECO-${log.vehicles?.economic_number} <span class="text-slate-500 text-sm ml-2">${log.vehicles?.plate || ''}</span></h4>
+                    <p class="text-primary text-sm font-bold">${log.service_name}</p>
+                </div>
+                <div class="grid grid-cols-2 gap-2 text-[11px] text-[#92adc9] mb-4">
+                    <div class="bg-[#111a22] p-2 rounded">📅 ${log.date}</div>
+                    <div class="bg-[#111a22] p-2 rounded">⏱️ Espera: ${log.wait_time || 'N/A'}</div>
+                    <div class="bg-[#111a22] p-2 rounded col-span-2">📍 Km: ${log.odometer}</div>
+                </div>
+                ${log.photos && log.photos.length > 0 ? `
+                    <div class="grid grid-cols-4 gap-2 mt-2">
+                        ${log.photos.map(p => `<img src="${p.url}" class="w-full h-16 object-cover rounded border border-[#324d67] cursor-pointer" onclick="window.taller.viewPhoto('${p.url}')">`).join('')}
+                    </div>
+                ` : ''}
+                <div class="mt-4 text-right">
+                    <span class="text-xl font-black text-green-400 font-mono">$${log.total_cost.toLocaleString()}</span>
+                </div>
+            </div>
+        `).join('');
     }
 
-    async loadPendingLists() {
-        try {
-            const { data: initialTrips, error: initialError } = await supabase
-                .from('trips')
-                .select(`
-                    id,
-                    created_at,
-                    vehicles:vehicle_id(economic_number, plate),
-                    driver:driver_id(full_name, photo_url)
-                `)
-                .eq('status', 'approved_for_taller')
-                .order('created_at', { ascending: false });
-
-            if (initialError) throw initialError;
-
-            const initialList = document.getElementById('pending-initial-list');
-            if (initialList) {
-                if (!initialTrips || initialTrips.length === 0) {
-                    initialList.innerHTML = '<p class="text-slate-500 text-center text-xs">Sin recepciones pendientes</p>';
-                } else {
-                    initialList.innerHTML = initialTrips.map(t => `
-                        <div class="bg-[#151b23] p-3 rounded-lg border border-orange-500/30">
-                            <div class="flex items-center gap-2">
-                                <div class="w-8 h-8 rounded-full bg-slate-700 bg-cover bg-center" 
-                                     style="background-image: url('${t.driver?.photo_url || ''}')"></div>
-                                <div class="flex-1">
-                                    <p class="text-white font-bold text-xs">ECO-${t.vehicles?.economic_number || '?'}</p>
-                                    <p class="text-[10px] text-[#92adc9] truncate">${t.driver?.full_name || '--'}</p>
-                                </div>
-                                <button onclick="window.workshopView.resumeProcess('${t.id}')" class="text-xs bg-orange-500/20 text-orange-500 px-2 py-1 rounded">
-                                    Retomar
-                                </button>
-                            </div>
-                        </div>
-                    `).join('');
-                }
-            }
-
-            const { data: finalTrips, error: finalError } = await supabase
-                .from('trips')
-                .select(`
-                    id,
-                    created_at,
-                    vehicles:vehicle_id(economic_number, plate),
-                    driver:driver_id(full_name, photo_url)
-                `)
-                .eq('status', 'awaiting_return_checklist')
-                .order('created_at', { ascending: false });
-
-            if (finalError) throw finalError;
-
-            const finalList = document.getElementById('pending-final-list');
-            if (finalList) {
-                if (!finalTrips || finalTrips.length === 0) {
-                    finalList.innerHTML = '<p class="text-slate-500 text-center text-xs">Sin retornos pendientes</p>';
-                } else {
-                    finalList.innerHTML = finalTrips.map(t => `
-                        <div class="bg-[#151b23] p-3 rounded-lg border border-green-500/30">
-                            <div class="flex items-center gap-2">
-                                <div class="w-8 h-8 rounded-full bg-slate-700 bg-cover bg-center" 
-                                     style="background-image: url('${t.driver?.photo_url || ''}')"></div>
-                                <div class="flex-1">
-                                    <p class="text-white font-bold text-xs">ECO-${t.vehicles?.economic_number || '?'}</p>
-                                    <p class="text-[10px] text-[#92adc9] truncate">${t.driver?.full_name || '--'}</p>
-                                </div>
-                                <button onclick="window.workshopView.resumeProcess('${t.id}')" class="text-xs bg-green-500/20 text-green-500 px-2 py-1 rounded">
-                                    Retomar
-                                </button>
-                            </div>
-                        </div>
-                    `).join('');
-                }
-            }
-
-        } catch (error) {
-            console.error('Error cargando listas:', error);
+    // --- CALENDARIO ---
+    renderCalendar() {
+        const grid = document.getElementById('calendar-grid');
+        const days = new Date(this.currentYear, this.currentMonth + 1, 0).getDate();
+        const start = new Date(this.currentYear, this.currentMonth, 1).getDay();
+        grid.innerHTML = '';
+        for(let i=0; i<start; i++) grid.innerHTML += '<div></div>';
+        for(let day=1; day<=days; day++) {
+            const dateStr = `${this.currentYear}-${String(this.currentMonth+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+            const items = this.schedules.filter(s => s.scheduled_date === dateStr);
+            grid.innerHTML += `
+                <div onclick="window.taller.openScheduleModal('${dateStr}')" class="bg-[#111a22] border border-[#324d67] p-2 rounded min-h-[60px] cursor-pointer hover:border-primary">
+                    <span class="text-white text-[10px] font-bold">${day}</span>
+                    <div class="space-y-1 mt-1">${items.map(it => `<div class="bg-primary/20 text-primary text-[8px] px-1 rounded truncate">ECO-${it.vehicles?.economic_number}</div>`).join('')}</div>
+                </div>
+            `;
         }
     }
 
-    async loadCompletedTrips() {
-        try {
-            const { data: trips, error } = await supabase
-                .from('trips')
-                .select(`
-                    id,
-                    created_at,
-                    completed_at,
-                    vehicles:vehicle_id(economic_number, plate),
-                    driver:driver_id(full_name)
-                `)
-                .in('status', ['completed'])
-                .order('completed_at', { ascending: false })
-                .limit(20);
-
-            if (error) throw error;
-
-            const list = document.getElementById('completed-list');
-            if (list) {
-                if (!trips || trips.length === 0) {
-                    list.innerHTML = '<p class="text-slate-500 text-center text-xs">Sin viajes completados</p>';
-                } else {
-                    list.innerHTML = trips.map(t => `
-                        <div class="bg-[#151b23] p-3 rounded-lg border border-slate-700">
-                            <div class="flex justify-between items-start">
-                                <div>
-                                    <p class="text-white font-bold text-sm">ECO-${t.vehicles?.economic_number || '?'}</p>
-                                    <p class="text-[10px] text-[#92adc9]">${t.driver?.full_name || '--'}</p>
-                                </div>
-                                <span class="text-[10px] text-green-400">${t.completed_at ? new Date(t.completed_at).toLocaleDateString() : ''}</span>
-                            </div>
-                        </div>
-                    `).join('');
-                }
-            }
-
-        } catch (error) {
-            console.error('Error cargando completados:', error);
+    setupScanner() {
+        if(document.getElementById('reader')) {
+            this.html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: 200 });
+            this.html5QrcodeScanner.render((text) => {
+                const v = this.vehicles.find(x => x.id === text.trim() || x.plate === text.trim());
+                if(v) this.loadVehicleForService(v.id);
+            });
         }
     }
 
-    async resumeProcess(tripId) {
-        try {
-            const { data: trip, error } = await supabase
-                .from('trips')
-                .select(`
-                    *,
-                    vehicle:vehicle_id(*),
-                    driver:driver_id(*)
-                `)
-                .eq('id', tripId)
-                .single();
-
-            if (error) throw error;
-
-            this.currentTrip = trip;
-            this.currentVehicle = trip.vehicle;
-            this.currentDriver = trip.driver;
-            
-            if (trip.status === 'approved_for_taller') {
-                this.receptionMode = 'initial';
-            } else if (trip.status === 'awaiting_return_checklist') {
-                this.receptionMode = 'final';
-            }
-
-            await this.handleScannedVehicle(trip.vehicle);
-            this.startProcess();
-
-        } catch (error) {
-            console.error('Error retomando proceso:', error);
-            alert('Error al retomar el proceso');
-        }
-    }
+    destroy() { if(this.html5QrcodeScanner) this.html5QrcodeScanner.clear(); }
 }
