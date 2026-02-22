@@ -134,6 +134,18 @@ export class DriverView {
                             </div>
                             <p class="text-green-200 text-[8px] mt-2">Muestra este código al guardia al salir</p>
                         </div>
+
+                        <!-- Mensaje para ir a taller de regreso (aparece cuando el guardia escanea el retorno) -->
+                        <div id="return-to-workshop-container" class="hidden mt-4 bg-gradient-to-r from-purple-600 to-blue-600 p-5 rounded-2xl animate-pulse">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-white text-[8px] font-bold uppercase opacity-80">Viaje finalizado</p>
+                                    <p class="text-white text-xl font-black leading-tight">Dirígete a taller para revisión final</p>
+                                </div>
+                                <span class="material-symbols-outlined text-4xl text-white/50">engineering</span>
+                            </div>
+                            <p class="text-purple-200 text-[8px] mt-2">El guardia ha registrado tu retorno. Pasa a taller para la revisión final de la unidad.</p>
+                        </div>
                     </section>
 
                     <!-- PESTAÑA SOLICITUD - Formulario para pedir unidad -->
@@ -288,11 +300,12 @@ export class DriverView {
                                     </div>
                                 </div>
 
-                                <!-- Botón para finalizar viaje y regresar a taller -->
-                                <button onclick="window.conductorModule.finalizarViaje()" 
-                                        class="w-full py-4 bg-purple-600 text-white font-black rounded-xl uppercase text-lg shadow-lg hover:bg-purple-500 transition-colors">
-                                    FINALIZAR VIAJE Y REGRESAR A TALLER
-                                </button>
+                                <!-- Mensaje informativo: NO puede finalizar manualmente -->
+                                <div class="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4 text-center">
+                                    <span class="material-symbols-outlined text-2xl text-blue-400 mb-2">info</span>
+                                    <p class="text-white text-xs">Al regresar a base, el guardia escaneará tu unidad y el viaje finalizará automáticamente.</p>
+                                    <p class="text-blue-400 text-[10px] mt-1">No es necesario finalizar manualmente</p>
+                                </div>
 
                                 <!-- Notas del viaje -->
                                 <div class="bg-[#192633] rounded-xl p-4 border border-[#233648]">
@@ -561,8 +574,9 @@ export class DriverView {
                         this.showNotification('🚗 Viaje iniciado', 'El guardia ha autorizado tu salida', 'success');
                     }
                     
-                    // Mostrar resumen cuando el viaje ha terminado y debe ir a taller
-                    if (payload.new.status === 'returned') {
+                    // Mostrar mensaje de ir a taller cuando el guardia escanea el retorno
+                    if (payload.new.status === 'awaiting_return_checklist') {
+                        this.showReturnToWorkshopMessage();
                         this.showNotification('🏁 Viaje finalizado', 'Dirígete a taller para la revisión final', 'warning');
                         this.cargarResumenViaje();
                         this.switchTab('taller-final');
@@ -571,7 +585,7 @@ export class DriverView {
                     // Viaje completado - Permitir nueva solicitud
                     if (payload.new.status === 'completed') {
                         this.showNotification('✅ Unidad liberada', 'Puedes solicitar una nueva unidad', 'success');
-                        this.currentTrip = null; // Limpiar el viaje actual
+                        this.currentTrip = null;
                         this.routeStops = [];
                         this.isReturning = false;
                         await this.loadDashboardState();
@@ -587,6 +601,18 @@ export class DriverView {
             .subscribe((status) => {
                 console.log('📡 Estado de suscripción:', status);
             });
+    }
+
+    showReturnToWorkshopMessage() {
+        const container = document.getElementById('return-to-workshop-container');
+        if (container) {
+            container.classList.remove('hidden');
+            
+            // Ocultar después de 10 segundos pero mantener visible en la interfaz
+            setTimeout(() => {
+                container.classList.add('opacity-80');
+            }, 10000);
+        }
     }
 
     showIncidentMessage(trip) {
@@ -718,9 +744,10 @@ export class DriverView {
                 }
                 break;
                 
-            case 'returned':
-                this.showNotification('🏁 Viaje terminado', 'Dirígete a taller para la revisión final', 'warning');
+            case 'awaiting_return_checklist':
+                this.showNotification('🏁 Viaje finalizado', 'Dirígete a taller para la revisión final', 'warning');
                 this.stopTracking();
+                this.showReturnToWorkshopMessage();
                 this.cargarResumenViaje();
                 this.switchTab('taller-final');
                 break;
@@ -731,7 +758,6 @@ export class DriverView {
                 break;
                 
             case 'completed':
-                // Ya se manejó arriba, solo aseguramos que la UI se actualice
                 await this.loadDashboardState();
                 this.switchTab('unidad');
                 break;
@@ -813,47 +839,7 @@ export class DriverView {
         }
     }
 
-    // ==================== FUNCIÓN PARA FINALIZAR VIAJE ====================
-    
-    async finalizarViaje() {
-        if (!this.currentTrip || this.currentTrip.status !== 'in_progress') {
-            this.showNotification('❌ Error', 'No hay un viaje en progreso', 'error');
-            return;
-        }
-
-        const confirmar = confirm('¿Estás seguro que deseas finalizar el viaje y regresar a taller?');
-        if (!confirmar) return;
-
-        try {
-            const { error } = await supabase
-                .from('trips')
-                .update({ 
-                    status: 'returned',
-                    end_time: new Date().toISOString(),
-                    entry_km: Math.round(this.tripLogistics.totalDistance),
-                    return_details: {
-                        total_distance: Math.round(this.tripLogistics.totalDistance * 10) / 10,
-                        max_speed: Math.round(this.tripLogistics.maxSpeed),
-                        average_speed: Math.round(this.tripLogistics.averageSpeed || 0),
-                        moving_time: Math.round(this.tripLogistics.movingTime / 60), // en minutos
-                        idle_time: Math.round(this.tripLogistics.idleTime / 60), // en minutos
-                        returned_at: new Date().toISOString()
-                    }
-                })
-                .eq('id', this.currentTrip.id);
-
-            if (error) throw error;
-
-            this.stopTracking();
-            this.showNotification('🏁 Viaje finalizado', 'Dirígete a taller para la revisión final', 'success');
-            
-            // La actualización en tiempo real cambiará la pestaña automáticamente
-
-        } catch (error) {
-            console.error('Error finalizando viaje:', error);
-            this.showNotification('❌ Error', 'No se pudo finalizar el viaje', 'error');
-        }
-    }
+    // ==================== ELIMINADO: finalizarViaje() - Ahora lo hace el guardia automáticamente ====================
 
     // ==================== GPS Y MAPA ====================
     
@@ -1648,8 +1634,6 @@ export class DriverView {
 
             this.showNotification('✅ Unidad liberada', 'Puedes solicitar una nueva unidad', 'success');
             
-            // La actualización en tiempo real limpiará el currentTrip y cambiará la UI
-            
         } catch (error) {
             console.error('Error liberando unidad:', error);
             this.showNotification('❌ Error', 'No se pudo liberar la unidad', 'error');
@@ -1744,7 +1728,7 @@ export class DriverView {
             'approved_for_taller': { text: 'Dirígete a taller (Paso 1)', color: 'bg-orange-500' },
             'driver_accepted': { text: 'Listo para salir', color: 'bg-green-500' },
             'in_progress': { text: 'En ruta', color: 'bg-primary' },
-            'returned': { text: 'Regresado - Ve a taller (Paso 2)', color: 'bg-purple-500' },
+            'awaiting_return_checklist': { text: 'Regresado - Ve a taller (Paso 2)', color: 'bg-purple-500' },
             'incident_report': { text: 'INCIDENCIA - En espera', color: 'bg-red-500' },
             'completed': { text: 'Viaje completado', color: 'bg-emerald-500' }
         };
@@ -1754,6 +1738,7 @@ export class DriverView {
         const noUnitsMsg = document.getElementById('no-units-message');
         const profileStatus = document.getElementById('profile-status');
         const solicitudBtn = document.querySelector('[onclick="window.conductorModule.switchTab(\'solicitud\')"]');
+        const returnMsg = document.getElementById('return-to-workshop-container');
 
         // Si hay un viaje y no está completado, mostrar información
         if (trip && statusMap[trip.status] && trip.status !== 'completed') {
@@ -1778,6 +1763,14 @@ export class DriverView {
             if (titleUnits) titleUnits.classList.add('hidden');
             if (unitsContent) unitsContent.classList.add('hidden');
             if (noUnitsMsg) noUnitsMsg.classList.add('hidden');
+            
+            // Mostrar mensaje de retorno a taller si aplica
+            if (trip.status === 'awaiting_return_checklist') {
+                if (returnMsg) returnMsg.classList.remove('hidden');
+                this.cargarResumenViaje();
+            } else {
+                if (returnMsg) returnMsg.classList.add('hidden');
+            }
             
             // Deshabilitar botón de solicitud
             if (solicitudBtn) {
@@ -1820,6 +1813,8 @@ export class DriverView {
             
             const accessContainer = document.getElementById('access-code-container');
             if (accessContainer) accessContainer.classList.add('hidden');
+            
+            if (returnMsg) returnMsg.classList.add('hidden');
             
             // Restaurar mensajes normales de taller
             const normalMsg = document.getElementById('taller-normal-message');
