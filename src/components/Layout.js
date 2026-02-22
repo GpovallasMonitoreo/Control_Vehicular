@@ -36,7 +36,7 @@ export class Layout {
                 <a href="#tracking" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[#92adc9] hover:text-white hover:bg-[#324d67]/30 transition-all mb-1 group relative overflow-hidden">
                     <div class="absolute inset-0 bg-gradient-to-r from-emerald-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
                     <span class="material-symbols-outlined text-[22px] group-hover:text-emerald-400 transition-colors">satellite_alt</span> 
-                    <span class="font-medium text-sm group-hover:text-white relative z-10">Torre GPS</span>
+                    <span class="font-medium text-sm group-hover:text-white relative z-10">Torre de Control GPS</span>
                     <span class="ml-auto w-2 h-2 rounded-full bg-emerald-500 animate-pulse relative z-10"></span>
                 </a>
 
@@ -67,14 +67,9 @@ export class Layout {
                     <span class="font-medium text-sm">Stock y Recetas</span>
                 </a>
                 
-                <a href="#maintenance" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[#92adc9] hover:text-white hover:bg-[#324d67]/30 transition-all mb-1">
+                <a href="#maintenance" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[#92adc9] hover:text-white hover:bg-[#324d67]/30 transition-all">
                     <span class="material-symbols-outlined text-[22px]">build_circle</span> 
-                    <span class="font-medium text-sm">Taller General</span>
-                </a>
-
-                <a href="#taller" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-purple-400 hover:text-white hover:bg-purple-500/20 transition-all border border-purple-500/20 mb-1 shadow-sm">
-                    <span class="material-symbols-outlined text-[22px]">home_repair_service</span> 
-                    <span class="font-medium text-sm">Área de Reparación</span>
+                    <span class="font-medium text-sm">Taller Central</span>
                 </a>
                 
                 <div class="text-xs font-bold text-[#92adc9] uppercase tracking-wider mt-6 mb-2 px-2">Analítica y SLA</div>
@@ -87,7 +82,7 @@ export class Layout {
         } 
         
         // ============================================
-        // MENÚ PARA TALLER
+        // MENÚ PARA TALLER (ACTUALIZADO CON WORKSHOPVIEW)
         // ============================================
         else if (this.role === 'taller') {
             menuItems = `
@@ -102,15 +97,10 @@ export class Layout {
                     <span class="material-symbols-outlined text-[22px]">qr_code_scanner</span> 
                     <span class="font-medium text-sm">Escáner de Unidades</span>
                 </a>
-
-                <a href="#taller" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-purple-400 hover:text-white hover:bg-purple-500/20 transition-all border border-purple-500/20 mb-1 shadow-sm">
-                    <span class="material-symbols-outlined text-[22px]">home_repair_service</span> 
-                    <span class="font-medium text-sm">Área de Reparación</span>
-                </a>
                 
                 <a href="#taller-inventory" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[#92adc9] hover:text-white hover:bg-purple-500/20 transition-all mb-1">
                     <span class="material-symbols-outlined text-[22px]">inventory</span> 
-                    <span class="font-medium text-sm">Maestro de Unidades</span>
+                    <span class="font-medium text-sm">Inventario</span>
                 </a>
                 
                 <a href="#taller-stock" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[#92adc9] hover:text-white hover:bg-purple-500/20 transition-all mb-1">
@@ -190,10 +180,12 @@ export class Layout {
     render(contentHTML) {
         const hasValidSession = this.hasValidSession();
         
+        // Para invitados (login) o conductores, solo contenido sin sidebar
         if (!hasValidSession || this.role === 'driver') {
             return contentHTML;
         }
 
+        // Para admin, taller, guardia - layout completo con sidebar
         return `
         <div class="flex h-screen w-full bg-[#0d141c] font-display overflow-hidden">
             ${this.getSidebar()}
