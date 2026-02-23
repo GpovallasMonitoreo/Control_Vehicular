@@ -66,7 +66,6 @@ export class DriverView {
         <div class="fixed inset-0 w-full h-full bg-[#0d141c] font-display flex justify-center overflow-hidden">
             <div class="w-full md:max-w-md bg-[#111a22] h-full relative shadow-2xl border-x border-[#233648] flex flex-col">
                 
-                <!-- HEADER -->
                 <header class="w-full shrink-0 flex items-center justify-between border-b border-[#233648] px-5 py-4 bg-[#111a22] z-20">
                     <div class="flex items-center gap-4 flex-1 min-w-0">
                         <div id="profile-avatar" class="shrink-0 h-12 w-12 rounded-full border-2 border-primary bg-slate-700 bg-cover bg-center shadow-lg"></div>
@@ -93,25 +92,20 @@ export class DriverView {
 
                 <main class="flex-1 overflow-y-auto custom-scrollbar relative pb-24">
                     
-                    <!-- PESTAÑA UNIDAD - Vista principal -->
                     <section id="tab-unidad" class="tab-content block p-5 space-y-4">
                         <h3 class="text-white text-xs font-bold uppercase tracking-widest opacity-70 px-1">Unidades Disponibles</h3>
                         
-                        <!-- Loader -->
                         <div id="unidad-loader" class="flex justify-center py-10 hidden">
                             <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
                         </div>
                         
-                        <!-- Si no hay viaje activo, mostrar selector de unidades -->
                         <div id="unidad-content" class="space-y-3"></div>
                         
-                        <!-- Mensaje cuando no hay unidades -->
                         <div id="no-units-message" class="hidden text-slate-500 text-center py-10 border border-dashed border-[#233648] rounded-xl">
                             <span class="material-symbols-outlined text-4xl mb-2">directions_car_off</span>
                             <p class="text-sm">Sin unidades activas</p>
                         </div>
                         
-                        <!-- Si hay viaje activo, mostrar info de la unidad actual -->
                         <div id="current-trip-info" class="hidden">
                             <div class="bg-gradient-to-br from-primary/20 to-blue-600/20 border border-primary/30 p-5 rounded-2xl text-center backdrop-blur-sm">
                                 <p class="text-[10px] font-bold text-primary uppercase tracking-widest mb-2">Unidad Actual</p>
@@ -123,7 +117,6 @@ export class DriverView {
                             </div>
                         </div>
 
-                        <!-- Código de acceso para mostrar cuando el viaje está listo para salir -->
                         <div id="access-code-container" class="hidden mt-4 bg-gradient-to-r from-green-600 to-emerald-600 p-5 rounded-2xl animate-pulse">
                             <div class="flex items-center justify-between">
                                 <div>
@@ -135,7 +128,6 @@ export class DriverView {
                             <p class="text-green-200 text-[8px] mt-2">Muestra este código al guardia al salir</p>
                         </div>
 
-                        <!-- Mensaje para ir a taller de regreso (aparece cuando el guardia escanea el retorno) -->
                         <div id="return-to-workshop-container" class="hidden mt-4 bg-gradient-to-r from-purple-600 to-blue-600 p-5 rounded-2xl animate-pulse">
                             <div class="flex items-center justify-between">
                                 <div>
@@ -148,7 +140,6 @@ export class DriverView {
                         </div>
                     </section>
 
-                    <!-- PESTAÑA SOLICITUD - Formulario para pedir unidad -->
                     <section id="tab-solicitud" class="tab-content hidden p-5 space-y-4">
                         <div class="bg-[#192633] border border-[#233648] rounded-2xl p-5 shadow-xl">
                             <h3 class="text-white font-bold mb-4 flex items-center gap-2 border-b border-[#233648] pb-3">
@@ -186,7 +177,6 @@ export class DriverView {
                                            placeholder="Nombre del jefe directo">
                                 </div>
                                 
-                                <!-- Último checklist de la unidad seleccionada -->
                                 <div id="last-checklist-container" class="hidden bg-[#111a22] p-4 rounded-xl border border-[#324d67] mt-4">
                                     <h4 class="text-xs font-bold text-[#92adc9] uppercase mb-3">Último checklist de esta unidad</h4>
                                     <div id="last-checklist-content" class="text-sm text-white">
@@ -202,7 +192,6 @@ export class DriverView {
                         </div>
                     </section>
 
-                    <!-- PESTAÑA TALLER INICIAL - Recepción antes del viaje -->
                     <section id="tab-taller-inicial" class="tab-content hidden p-5 space-y-4">
                         <div class="bg-[#192633] border border-[#233648] rounded-2xl p-5 shadow-xl">
                             <h3 class="text-white font-bold mb-4 flex items-center gap-2 border-b border-[#233648] pb-3">
@@ -229,10 +218,8 @@ export class DriverView {
                         </div>
                     </section>
 
-                    <!-- PESTAÑA RUTA - Viaje en progreso -->
                     <section id="tab-ruta" class="tab-content hidden h-full flex flex-col">
                         <div class="p-5 space-y-4">
-                            <!-- Mensaje de espera cuando el viaje está listo pero no ha salido -->
                             <div id="route-waiting-msg" class="bg-[#192633] border border-[#233648] rounded-2xl p-8 text-center">
                                 <span class="material-symbols-outlined text-5xl text-[#324d67] mb-3">gpp_maybe</span>
                                 <h3 class="text-white font-bold text-lg">Esperando Salida</h3>
@@ -242,13 +229,10 @@ export class DriverView {
                                 </div>
                             </div>
 
-                            <!-- Panel de viaje activo con mapa y controles -->
                             <div id="active-trip-panel" class="hidden space-y-4">
-                                <!-- Contenedor del mapa -->
                                 <div class="bg-[#192633] rounded-xl overflow-hidden border border-[#233648] flex flex-col shadow-lg">
                                     <div id="driver-map" class="w-full h-48 z-0 relative bg-[#111a22]"></div>
                                     
-                                    <!-- Controles de ruta -->
                                     <div class="p-3 bg-[#111a22]">
                                         <div class="flex justify-between items-center mb-2">
                                             <p class="text-[10px] text-[#92adc9] uppercase font-bold flex items-center gap-1">
@@ -274,7 +258,6 @@ export class DriverView {
                                     </div>
                                 </div>
 
-                                <!-- Panel de estadísticas en vivo -->
                                 <div class="bg-[#192633] rounded-2xl p-5 border border-primary/30">
                                     <div class="grid grid-cols-2 gap-4 mb-4">
                                         <div class="bg-[#111a22] p-3 rounded-xl shadow-inner">
@@ -300,14 +283,12 @@ export class DriverView {
                                     </div>
                                 </div>
 
-                                <!-- Mensaje informativo: NO puede finalizar manualmente -->
                                 <div class="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4 text-center">
                                     <span class="material-symbols-outlined text-2xl text-blue-400 mb-2">info</span>
                                     <p class="text-white text-xs">Al regresar a base, el guardia escaneará tu unidad y el viaje finalizará automáticamente.</p>
                                     <p class="text-blue-400 text-[10px] mt-1">No es necesario finalizar manualmente</p>
                                 </div>
 
-                                <!-- Notas del viaje -->
                                 <div class="bg-[#192633] rounded-xl p-4 border border-[#233648]">
                                     <p class="text-[10px] text-[#92adc9] uppercase mb-2 flex items-center gap-1 font-bold">
                                         <span class="material-symbols-outlined text-sm">note_add</span> Notas del viaje
@@ -322,7 +303,6 @@ export class DriverView {
                                 </div>
                             </div>
 
-                            <!-- Indicador de estado GPS -->
                             <div class="bg-[#111a22] border border-[#233648] rounded-xl p-4 shadow-lg">
                                 <div id="gps-status-indicator" class="text-center">
                                     <div class="flex items-center justify-center gap-2 text-slate-400">
@@ -334,7 +314,6 @@ export class DriverView {
                         </div>
                     </section>
 
-                    <!-- PESTAÑA TALLER FINAL - Recepción después del viaje -->
                     <section id="tab-taller-final" class="tab-content hidden p-5 space-y-4">
                         <div class="bg-[#192633] border border-[#233648] rounded-2xl p-5 shadow-xl">
                             <h3 class="text-white font-bold mb-4 flex items-center gap-2 border-b border-[#233648] pb-3">
@@ -342,13 +321,11 @@ export class DriverView {
                             </h3>
                             
                             <div id="taller-final-content" class="space-y-4">
-                                <!-- Mensaje normal -->
                                 <div id="taller-normal-message" class="bg-purple-500/10 border border-purple-500/30 p-4 rounded-xl text-center">
                                     <span class="material-symbols-outlined text-4xl text-purple-500 mb-2">info</span>
                                     <p class="text-white text-sm">Has regresado del viaje. El taller está realizando la revisión final.</p>
                                 </div>
 
-                                <!-- Mensaje de percance/incidencia -->
                                 <div id="taller-incident-message" class="hidden bg-red-500/10 border border-red-500/30 p-4 rounded-xl text-center">
                                     <span class="material-symbols-outlined text-4xl text-red-500 mb-2">warning</span>
                                     <p class="text-white text-sm font-bold">INCIDENCIA REPORTADA</p>
@@ -370,7 +347,6 @@ export class DriverView {
                                     </div>
                                 </div>
                                 
-                                <!-- Barra de progreso -->
                                 <div class="bg-[#111a22] p-4 rounded-xl">
                                     <p class="text-[10px] text-[#92adc9] uppercase mb-2">Estado de la revisión</p>
                                     <div class="flex justify-between text-[10px] text-[#92adc9] mb-2">
@@ -383,7 +359,6 @@ export class DriverView {
                                     </div>
                                 </div>
                                 
-                                <!-- Botón de confirmación (solo visible cuando el taller libera) -->
                                 <div id="conductor-confirmacion-container" class="hidden">
                                     <button onclick="window.conductorModule.confirmarLiberacionTaller()" 
                                             class="w-full py-5 bg-green-600 text-white font-black rounded-xl uppercase text-lg hover:bg-green-500 transition-all shadow-lg">
@@ -394,7 +369,6 @@ export class DriverView {
                         </div>
                     </section>
 
-                    <!-- PESTAÑA PERFIL -->
                     <section id="tab-perfil" class="tab-content hidden p-5 space-y-5">
                         <div class="bg-white rounded-3xl p-6 shadow-2xl">
                             <div class="flex justify-between items-start mb-6">
@@ -446,7 +420,6 @@ export class DriverView {
                     </section>
                 </main>
 
-                <!-- NAVEGACIÓN -->
                 <nav class="absolute bottom-0 w-full bg-[#111a22] border-t border-[#233648] flex justify-around items-center h-20 z-30">
                     <button onclick="window.conductorModule.switchTab('unidad')" id="nav-unidad" class="nav-btn active text-primary flex flex-col items-center gap-1">
                         <span class="material-symbols-outlined">directions_car</span>
@@ -466,31 +439,29 @@ export class DriverView {
                     </button>
                 </nav>
 
-                <!-- MODAL DE EMERGENCIA -->
                 <div id="modal-emergency" class="hidden absolute inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
                     <div class="bg-[#1c2127] w-full max-w-md rounded-3xl p-6 border border-red-500/30">
                         <span class="material-symbols-outlined text-5xl text-red-500 mb-4 block">emergency</span>
-                        <h3 class="text-white font-bold text-lg mb-2">Reporte de Incidente</h3>
-                        <p class="text-[#92adc9] text-sm mb-6">Describe la situación</p>
+                        <h3 class="text-white font-bold text-lg mb-2">Reporte de Incidente / Emergencia</h3>
+                        <p class="text-[#92adc9] text-sm mb-6">Describe la situación ocurrida durante el viaje. Esto alertará a la central de inmediato.</p>
                         
                         <div class="space-y-3">
                             <textarea id="emergency-desc" rows="3" 
                                       class="w-full bg-[#111a22] border border-[#233648] text-white p-4 rounded-xl"
-                                      placeholder="Describe lo sucedido..."></textarea>
+                                      placeholder="Describe lo sucedido (ej: Choque, ponchadura, falla de motor)..."></textarea>
                             
                             <button onclick="window.conductorModule.activateEmergency()" 
-                                    class="w-full py-4 bg-red-600 text-white font-black rounded-xl uppercase text-sm">
-                                REPORTAR EMERGENCIA
+                                    class="w-full py-4 bg-red-600 hover:bg-red-500 text-white font-black rounded-xl uppercase text-sm shadow-lg shadow-red-900/50 transition-all">
+                                REPORTAR EMERGENCIA / INCIDENTE
                             </button>
                             <button onclick="document.getElementById('modal-emergency').classList.add('hidden')" 
-                                    class="w-full py-3 text-[#92adc9] hover:text-white transition-colors text-xs uppercase">
+                                    class="w-full py-3 text-[#92adc9] hover:text-white transition-colors text-xs uppercase font-bold">
                                 Cancelar
                             </button>
                         </div>
                     </div>
                 </div>
 
-                <!-- MODAL DE NOTIFICACIÓN -->
                 <div id="notification-modal" class="hidden absolute inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
                     <div id="notification-content" class="bg-[#1c2127] w-full max-w-sm rounded-3xl p-6 border border-primary/30 animate-fade-in-up"></div>
                 </div>
@@ -839,8 +810,6 @@ export class DriverView {
         }
     }
 
-    // ==================== ELIMINADO: finalizarViaje() - Ahora lo hace el guardia automáticamente ====================
-
     // ==================== GPS Y MAPA ====================
     
     startTracking() {
@@ -1008,8 +977,7 @@ export class DriverView {
         const dLon = this.deg2rad(lon2 - lon1);
         const a = 
             Math.sin(dLat/2) * Math.sin(dLat/2) +
-            Math.cos(this.deg2rad(lat1)) * Math.cos(this.deg2rad(lat2)) * 
-            Math.sin(dLon/2) * Math.sin(dLon/2);
+            Math.cos(this.deg2rad(lat1)) * Math.cos(this.deg2rad(lat2)) * Math.sin(dLon/2) * Math.sin(dLon/2);
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
         return R * c;
     }
@@ -1858,6 +1826,7 @@ export class DriverView {
         this.showNotification('✅ Nota guardada', 'Se agregó al registro del viaje', 'success');
     }
 
+    // ========== ESTA ES LA FUNCIÓN CLAVE ACTUALIZADA ==========
     async activateEmergency() {
         const description = document.getElementById('emergency-desc')?.value;
         
@@ -1867,7 +1836,7 @@ export class DriverView {
         }
         
         if (!this.currentTrip) {
-            alert('No hay un viaje activo');
+            alert('No hay un viaje activo al cual vincular este incidente.');
             return;
         }
         
@@ -1875,6 +1844,7 @@ export class DriverView {
         const expiryTime = new Date(Date.now() + 30 * 60000);
 
         try {
+            // 1. Mantenemos el log de emergencia dentro del viaje (como estaba)
             await this.updateTripInDatabase({
                 emergency_code: emergencyCode,
                 emergency_expiry: expiryTime.toISOString(),
@@ -1886,7 +1856,24 @@ export class DriverView {
                 }]
             });
 
-            alert(`🚨 EMERGENCIA REGISTRADA\nCódigo: ${emergencyCode}\nMantén la calma, ayuda en camino.`);
+            // 2. NUEVO: Insertar en la tabla de incidentes para que el SLA y Admin lo vean
+            const { error: incidentError } = await supabase.from('incidents').insert([{
+                driver_id: this.userId,
+                vehicle_id: this.currentTrip.vehicle_id,
+                trip_id: this.currentTrip.id,
+                type: 'siniestro',        // Importante para el SLA
+                severity: 'critical',     // Nivel de severidad para descontar puntos
+                description: description,
+                status: 'pending',        // Abierto para revisión
+                created_at: new Date().toISOString()
+            }]);
+
+            if (incidentError) {
+                console.error("Error guardando en tabla incidents:", incidentError);
+                // No detenemos el flujo si solo falla la tabla SLA, la emergencia en el trip ya se guardó
+            }
+
+            alert(`🚨 EMERGENCIA REGISTRADA\nCódigo: ${emergencyCode}\nMantén la calma, ayuda en camino. Tu incidente ya fue notificado a la base.`);
             
             const modal = document.getElementById('modal-emergency');
             if (modal) modal.classList.add('hidden');
@@ -1896,7 +1883,7 @@ export class DriverView {
             
         } catch (error) {
             console.error('Error reportando emergencia:', error);
-            alert('Error al reportar emergencia');
+            alert('Error al reportar emergencia en la plataforma.');
         }
     }
 
