@@ -233,7 +233,10 @@ export class InventoryView {
             
         } catch (error) {
             console.error("Error cargando inventario:", error);
-            document.getElementById('grid-vehicles').innerHTML = '<p class="text-red-500 col-span-full text-center">Error al conectar con la base de datos.</p>';
+            const grid = document.getElementById('grid-vehicles');
+            if (grid) {
+                grid.innerHTML = '<p class="text-red-500 col-span-full text-center">Error al conectar con la base de datos.</p>';
+            }
         }
     }
 
@@ -262,6 +265,8 @@ export class InventoryView {
 
     renderVehiclesGrid() {
         const grid = document.getElementById('grid-vehicles');
+        if (!grid) return; // SEGURO ANTI-CRASH: Evita errores si cambiaste de vista antes de cargar
+
         if(this.vehicles.length === 0) {
             grid.innerHTML = `
                 <div class="col-span-full text-center py-20 bg-[#111a22] border border-[#324d67] border-dashed rounded-xl">
@@ -322,6 +327,8 @@ export class InventoryView {
 
     renderDriversTable() {
         const tbody = document.getElementById('table-drivers');
+        if (!tbody) return; // SEGURO ANTI-CRASH
+
         if(this.drivers.length === 0) {
             tbody.innerHTML = '<tr><td colspan="4" class="p-4 text-center text-slate-500">No hay conductores registrados.</td></tr>';
             return;
@@ -358,6 +365,8 @@ export class InventoryView {
 
     renderInspectionsList() {
         const container = document.getElementById('inspections-list');
+        if (!container) return; // SEGURO ANTI-CRASH
+
         if(this.inspections.length === 0) {
             container.innerHTML = '<div class="bg-[#1c2127] border border-[#324d67] rounded-xl p-10 text-center"><p class="text-slate-500">No hay inspecciones de entrada/salida registradas.</p></div>';
             return;
@@ -417,6 +426,8 @@ export class InventoryView {
     openVehicleRegister() {
         const modal = document.getElementById('global-modal');
         const content = document.getElementById('global-modal-content');
+        if (!modal || !content) return;
+
         content.className = "bg-[#1c2127] w-full max-w-4xl rounded-2xl shadow-2xl p-6 border border-[#324d67] animate-fade-in-up overflow-y-auto max-h-[90vh] custom-scrollbar";
         
         content.innerHTML = `
@@ -695,12 +706,12 @@ export class InventoryView {
         this.updateActiveModalInfo();
         
         const modal = document.getElementById('global-modal');
-        modal.classList.remove('hidden');
+        if (modal) modal.classList.remove('hidden');
     }
 
     updateActiveModalInfo() {
         const content = document.getElementById('global-modal-content');
-        if(!this.selectedVehicle) return;
+        if(!this.selectedVehicle || !content) return; // SEGURO ANTI-CRASH
 
         const totalTripKm = this.vehicleTrips.reduce((sum, trip) => sum + Number(trip.distance_km || 0), 0);
         const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${this.selectedVehicle.id}&color=111a22`;
@@ -1002,8 +1013,10 @@ export class InventoryView {
             if(btn) btn.className = "py-4 px-6 text-sm font-bold border-b-2 border-transparent text-[#92adc9] hover:text-white transition-colors flex items-center gap-2 whitespace-nowrap";
             if(content) content.classList.replace('block', 'hidden');
         }
-        document.getElementById(`veh-tab-${num}`).className = "py-4 px-6 text-sm font-bold border-b-2 border-primary text-primary transition-colors flex items-center gap-2 bg-primary/10 whitespace-nowrap";
-        document.getElementById(`veh-tab-content-${num}`).classList.replace('hidden', 'block');
+        const activeBtn = document.getElementById(`veh-tab-${num}`);
+        const activeContent = document.getElementById(`veh-tab-content-${num}`);
+        if(activeBtn) activeBtn.className = "py-4 px-6 text-sm font-bold border-b-2 border-primary text-primary transition-colors flex items-center gap-2 bg-primary/10 whitespace-nowrap";
+        if(activeContent) activeContent.classList.replace('hidden', 'block');
     }
 
     // --- NUEVO LÓGICA DE SALUD DE COMPONENTES ---
@@ -1020,7 +1033,7 @@ export class InventoryView {
         }
 
         const container = document.getElementById('components-container');
-        if(!container) return;
+        if(!container) return; // SEGURO ANTI-CRASH
         
         container.innerHTML = comps.map((c, i) => `
             <div class="component-row bg-[#1c2127] p-3 rounded-lg border border-[#233648] hover:border-primary/50 transition-colors">
@@ -1056,7 +1069,7 @@ export class InventoryView {
 
     addComponentRow() {
         const container = document.getElementById('components-container');
-        if(!container) return;
+        if(!container) return; // SEGURO ANTI-CRASH
         
         const newRow = document.createElement('div');
         newRow.className = "component-row bg-[#1c2127] p-3 rounded-lg border border-[#233648] hover:border-primary/50 transition-colors animate-fade-in";
@@ -1241,6 +1254,8 @@ export class InventoryView {
     openDocumentUpload(vehicleId) {
         const modal = document.getElementById('global-modal');
         const content = document.getElementById('global-modal-content');
+        if (!modal || !content) return; // SEGURO ANTI-CRASH
+
         content.className = "bg-[#1c2127] w-full max-w-md rounded-2xl shadow-2xl p-6 border border-[#324d67] animate-fade-in-up font-display";
         
         content.innerHTML = `
@@ -1340,6 +1355,7 @@ export class InventoryView {
         
         const modal = document.getElementById('global-modal');
         const content = document.getElementById('global-modal-content');
+        if (!modal || !content) return; // SEGURO ANTI-CRASH
         
         const typeNames = {
             'license': 'Tarjeta de Circulación',
@@ -1470,6 +1486,8 @@ export class InventoryView {
     openTripRegister(vehicleId) {
         const modal = document.getElementById('global-modal');
         const content = document.getElementById('global-modal-content');
+        if (!modal || !content) return; // SEGURO ANTI-CRASH
+
         content.className = "bg-[#1c2127] w-full max-w-sm rounded-2xl shadow-2xl p-6 border border-[#324d67] animate-fade-in-up font-display";
         content.innerHTML = `
             <h3 class="font-bold text-white mb-4 flex items-center gap-2 border-b border-[#324d67] pb-2 uppercase tracking-widest text-xs">
@@ -1527,6 +1545,7 @@ export class InventoryView {
 
         const modal = document.getElementById('global-modal');
         const content = document.getElementById('global-modal-content');
+        if (!modal || !content) return; // SEGURO ANTI-CRASH
         
         // 1. Construir las opciones del select con las "Recetas" cargadas de service_templates
         let serviceOptions = '<option value="">Selecciona una receta / servicio...</option>';
