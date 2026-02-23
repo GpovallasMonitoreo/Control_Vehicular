@@ -1520,6 +1520,131 @@ export class InventoryView {
         }
     }
 
+    // --- REGISTRO DE MANTENIMIENTO Y RECETAS ---
+    openLogRegister(vehicleId) {
+        const vehicle = this.vehicles.find(v => v.id === vehicleId);
+        if(!vehicle) return;
+
+        const modal = document.getElementById('global-modal');
+        const content = document.getElementById('global-modal-content');
+        
+        // 1. Construir las opciones del select con las "Recetas" cargadas de service_templates
+        let serviceOptions = '<option value="">Selecciona una receta / servicio...</option>';
+        if (this.services && this.services.length > 0) {
+            this.services.forEach(srv => {
+                serviceOptions += `<option value="${srv.name}">${srv.name}</option>`;
+            });
+        }
+
+        // 2. Renderizar el modal
+        content.className = "bg-[#1c2127] w-full max-w-lg rounded-2xl shadow-2xl p-6 border border-[#324d67] animate-fade-in-up font-display";
+        content.innerHTML = `
+            <div class="flex justify-between items-center mb-6 border-b border-[#324d67] pb-4">
+                <h3 class="font-black text-xl text-white flex items-center gap-2">
+                    <span class="material-symbols-outlined text-green-500">build</span> Registrar Servicio
+                </h3>
+                <button onclick="document.getElementById('global-modal').classList.add('hidden')" class="text-slate-400 hover:text-white transition-colors bg-[#233648] p-2 rounded-full">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            
+            <div class="space-y-4">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="text-[10px] font-bold text-[#92adc9] uppercase block mb-1">Fecha del Servicio</label>
+                        <input type="date" id="log-date" class="w-full bg-[#111a22] border border-[#324d67] text-white rounded-lg px-3 py-2 outline-none focus:border-primary text-sm" value="${new Date().toISOString().split('T')[0]}">
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-bold text-[#92adc9] uppercase block mb-1">Km al Servicio</label>
+                        <input type="number" id="log-odometer" class="w-full bg-[#111a22] border border-[#324d67] text-white rounded-lg px-3 py-2 outline-none focus:border-primary text-sm font-mono" value="${vehicle.current_km || 0}">
+                    </div>
+                </div>
+                
+                <div>
+                    <label class="text-[10px] font-bold text-[#92adc9] uppercase block mb-1">Tipo de Servicio (Receta)</label>
+                    <select id="log-service-name" class="w-full bg-[#111a22] border border-[#324d67] text-white rounded-lg px-3 py-2 outline-none focus:border-primary text-sm font-bold">
+                        ${serviceOptions}
+                        <option value="Servicio Especial / Otro">Servicio Especial / Otro</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="text-[10px] font-bold text-[#92adc9] uppercase block mb-1">Taller o Mecánico asignado</label>
+                    <input type="text" id="log-mechanic" class="w-full bg-[#111a22] border border-[#324d67] text-white rounded-lg px-3 py-2 outline-none focus:border-primary text-sm" placeholder="Ej: Taller Interno o nombre del mecánico">
+                </div>
+
+                <div>
+                    <label class="text-[10px] font-bold text-[#92adc9] uppercase block mb-1">Refacciones aplicadas / Notas</label>
+                    <textarea id="log-notes" rows="2" class="w-full bg-[#111a22] border border-[#324d67] text-white rounded-lg px-3 py-2 outline-none focus:border-primary text-sm" placeholder="Detalla qué se le hizo a la unidad..."></textarea>
+                </div>
+                
+                <div>
+                    <label class="text-[10px] font-bold text-[#92adc9] uppercase block mb-1">Inversión Total / Costo ($)</label>
+                    <input type="number" id="log-cost" class="w-full bg-[#111a22] border border-[#324d67] text-white rounded-lg px-3 py-2 outline-none focus:border-primary text-sm font-mono text-green-400 font-bold" placeholder="0.00" value="0">
+                </div>
+
+                <div class="pt-4 flex gap-3 border-t border-[#324d67] mt-2">
+                    <button onclick="document.getElementById('global-modal').classList.add('hidden')" class="flex-1 bg-[#233648] hover:bg-[#2d445a] text-white py-3 rounded-xl font-bold transition-all text-sm">Cancelar</button>
+                    <button id="btn-save-log" onclick="window.invModule.saveLogRegister('${vehicleId}')" class="flex-1 bg-green-600 hover:bg-green-500 text-white py-3 rounded-xl font-bold shadow-lg transition-all flex items-center justify-center gap-2 text-sm shadow-green-900/20">
+                        <span class="material-symbols-outlined text-[18px]">save</span> Guardar Bitácora
+                    </button>
+                </div>
+            </div>
+        `;
+        modal.classList.remove('hidden');
+    }
+
+    async saveLogRegister(vehicleId) {
+        const btn = document.getElementById('btn-save-log');
+        const date = document.getElementById('log-date').value;
+        const serviceName = document.getElementById('log-service-name').value;
+        const odometer = document.getElementById('log-odometer').value;
+        const mechanic = document.getElementById('log-mechanic').value;
+        const notes = document.getElementById('log-notes').value;
+        const cost = document.getElementById('log-cost').value;
+
+        if (!date || !serviceName || !odometer) {
+            return this.showToast('La fecha, el servicio y el kilometraje son obligatorios.', 'Atención', 'warning');
+        }
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="animate-spin material-symbols-outlined">sync</span> Guardando...';
+
+        try {
+            // 1. Guardar en la tabla de bitácora (vehicle_logs)
+            const { error: logError } = await supabase.from('vehicle_logs').insert([{
+                vehicle_id: vehicleId,
+                date: date,
+                service_name: serviceName,
+                odometer: parseInt(odometer),
+                mechanic: mechanic,
+                parts_used: notes,
+                total_cost: parseFloat(cost) || 0,
+                quantity: 1
+            }]);
+
+            if (logError) throw logError;
+
+            // 2. Si el kilometraje introducido es mayor al actual, actualizar el odómetro del vehículo
+            const currentKm = Number(this.selectedVehicle.current_km || 0);
+            if (parseInt(odometer) > currentKm) {
+                await supabase.from('vehicles').update({ current_km: parseInt(odometer) }).eq('id', vehicleId);
+            }
+
+            this.showToast('Mantenimiento registrado con éxito.', 'Éxito', 'success');
+            document.getElementById('global-modal').classList.add('hidden');
+            
+            // 3. Recargar la información del vehículo para que aparezca en la lista y cambiar a la pestaña 3
+            await this.openVehicleDetail(vehicleId); 
+            this.switchVehicleTab(3);
+
+        } catch (error) {
+            this.showToast('Error al guardar el servicio: ' + error.message, 'Error', 'error');
+            btn.disabled = false;
+            btn.innerHTML = '<span class="material-symbols-outlined text-[18px]">save</span> Guardar Bitácora';
+        }
+    }
+
     // --- LIMPIEZA ---
     destroy() {
         if (this.realtimeChannel) {
