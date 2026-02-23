@@ -1723,6 +1723,40 @@ export class InventoryView {
         }
     }
 
+    // --- IMPRESIÓN DE QR ---
+    printQR(qrUrl, plate) {
+        const printWindow = window.open('', '_blank');
+        printWindow.document.write(`
+            <html>
+                <head>
+                    <title>QR Unidad ${plate}</title>
+                    <style>
+                        body { 
+                            display: flex; flex-direction: column; align-items: center; justify-content: center; 
+                            height: 100vh; margin: 0; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; 
+                            text-align: center;
+                        }
+                        img { width: 300px; height: 300px; margin-bottom: 20px; }
+                        h1 { font-size: 50px; margin: 0; letter-spacing: 2px; text-transform: uppercase; }
+                        p { font-size: 20px; color: #555; margin-top: 10px; font-weight: bold; }
+                    </style>
+                </head>
+                <body>
+                    <img src="${qrUrl}" alt="QR Vehículo">
+                    <h1>${plate}</h1>
+                    <p>ESCANEAR PARA EXPEDIENTE (COV)</p>
+                    <script>
+                        window.onload = () => { 
+                            window.print(); 
+                            setTimeout(window.close, 500); 
+                        }
+                    </script>
+                </body>
+            </html>
+        `);
+        printWindow.document.close();
+    }
+
     // --- LIMPIEZA ---
     destroy() {
         if (this.realtimeChannel) {
