@@ -18,6 +18,9 @@ export class InventoryView {
         this.realtimeChannel = null; 
         
         window.invModule = this;
+        
+        // Opción nuclear para evitar errores de caché/HMR con el botón
+        window.abrirRegistroGlobal = (id) => this.openLogRegister(id);
     }
 
     render() {
@@ -785,7 +788,7 @@ export class InventoryView {
                     <span class="material-symbols-outlined text-[18px]">photo_library</span> Galería de Inspecciones
                 </button>
                 <div class="ml-auto flex items-center py-2 pl-4">
-                    <button onclick="window.invModule.openLogRegister('${this.selectedVehicle.id}')" class="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg font-bold text-xs flex items-center gap-2 shadow-lg shadow-green-900/20 transition-transform hover:scale-105 whitespace-nowrap">
+                    <button onclick="window.abrirRegistroGlobal('${this.selectedVehicle.id}')" class="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg font-bold text-xs flex items-center gap-2 shadow-lg shadow-green-900/20 transition-transform hover:scale-105 whitespace-nowrap">
                         <span class="material-symbols-outlined text-[16px]">build</span> Registrar Servicio
                     </button>
                 </div>
@@ -1538,7 +1541,7 @@ export class InventoryView {
         }
     }
 
-    // --- REGISTRO DE MANTENIMIENTO Y RECETAS ---
+    // --- REGISTRO DE MANTENIMIENTO, RECETAS Y DESCUENTO DE STOCK ---
     openLogRegister(vehicleId) {
         const vehicle = this.vehicles.find(v => v.id === vehicleId);
         if(!vehicle) return;
@@ -1593,13 +1596,14 @@ export class InventoryView {
                 </div>
 
                 <div>
-                    <label class="text-[10px] font-bold text-[#92adc9] uppercase block mb-1">Refacciones aplicadas / Notas</label>
-                    <textarea id="log-notes" rows="2" class="w-full bg-[#111a22] border border-[#324d67] text-white rounded-lg px-3 py-2 outline-none focus:border-primary text-sm" placeholder="Detalla qué se le hizo a la unidad..."></textarea>
+                    <label class="text-[10px] font-bold text-[#92adc9] uppercase block mb-1">Refacciones adicionales / Notas</label>
+                    <textarea id="log-notes" rows="2" class="w-full bg-[#111a22] border border-[#324d67] text-white rounded-lg px-3 py-2 outline-none focus:border-primary text-sm" placeholder="Las refacciones de la receta se añadirán automáticamente..."></textarea>
                 </div>
                 
                 <div>
-                    <label class="text-[10px] font-bold text-[#92adc9] uppercase block mb-1">Inversión Total / Costo ($)</label>
-                    <input type="number" id="log-cost" class="w-full bg-[#111a22] border border-[#324d67] text-white rounded-lg px-3 py-2 outline-none focus:border-primary text-sm font-mono text-green-400 font-bold" placeholder="0.00" value="0">
+                    <label class="text-[10px] font-bold text-[#92adc9] uppercase block mb-1">Costo Adicional / Total Manual ($)</label>
+                    <input type="number" id="log-cost" class="w-full bg-[#111a22] border border-[#324d67] text-white rounded-lg px-3 py-2 outline-none focus:border-primary text-sm font-mono text-green-400 font-bold" placeholder="0" value="0">
+                    <p class="text-[10px] text-[#92adc9] mt-1">Si la receta tiene insumos, su costo se sumará automáticamente. Pon aquí la mano de obra extra si aplica.</p>
                 </div>
 
                 <div class="pt-4 flex gap-3 border-t border-[#324d67] mt-2">
@@ -1619,8 +1623,8 @@ export class InventoryView {
         const serviceName = document.getElementById('log-service-name').value;
         const odometer = document.getElementById('log-odometer').value;
         const mechanic = document.getElementById('log-mechanic').value;
-        const notes = document.getElementById('log-notes').value;
-        const cost = document.getElementById('log-cost').value;
+        let notes = document.getElementById('log-notes').value;
+        let cost = parseFloat(document.getElementById('log-cost').value) || 0;
 
         if (!date || !serviceName || !odometer) {
             return this.showToast('La fecha, el servicio y el kilometraje son obligatorios.', 'Atención', 'warning');
@@ -1630,7 +1634,61 @@ export class InventoryView {
         btn.innerHTML = '<span class="animate-spin material-symbols-outlined">sync</span> Guardando...';
 
         try {
-            // 1. Guardar en la tabla de bitácora (vehicle_logs)
+            // 1. Buscar la receta seleccionada para ver si tiene insumos
+            const selectedRecipe = this.services.find(s => s.name === serviceName);
+            let usedParts = [];
+            
+            if (selectedRecipe && selectedRecipe.service_template_items) {
+                // Calcular el costo base de la receta (Insumos + Mano de obra de la plantilla)
+                let partsCost = selectedRecipe.service_template_items.reduce((acc, si) => acc + (si.quantity * (si.inventory_items?.cost || 0)), 0);
+                let recipeBaseCost = partsCost + (Number(selectedRecipe.labor_cost) || 0);
+                
+                // Sumamos el costo de la receta al costo extra manual que haya puesto el usuario
+                cost = cost + recipeBaseCost;
+
+                // Armar lista de refacciones utilizadas para las notas y preparar deducción de stock
+                usedParts = selectedRecipe.service_template_items.map(item => {
+                    const itemName = item.inventory_items?.name || 'Insumo desconocido';
+                    return {
+                        id: item.inventory_items?.id,
+                        name: itemName,
+                        qty: item.quantity
+                    };
+                });
+                
+                if (usedParts.length > 0) {
+                     const partsString = usedParts.map(p => `${p.qty}x ${p.name}`).join(', ');
+                     notes = notes ? `${notes}\n[Receta]: ${partsString}` : `[Receta]: ${partsString}`;
+                }
+            }
+
+            // 2. Descontar del inventario (solo si hay refacciones configuradas en la receta)
+            if (usedParts.length > 0) {
+                for (const part of usedParts) {
+                    if (part.id) {
+                        // Obtener el stock actual del insumo directamente de la BD para no fallar
+                        const { data: itemData, error: fetchError } = await supabase
+                            .from('inventory_items')
+                            .select('stock')
+                            .eq('id', part.id)
+                            .single();
+                            
+                        if (fetchError) throw fetchError;
+                        
+                        const newStock = Math.max(0, (itemData.stock || 0) - part.qty); // Evita tener stock en negativo
+                        
+                        // Actualizar el stock
+                        const { error: updateError } = await supabase
+                            .from('inventory_items')
+                            .update({ stock: newStock })
+                            .eq('id', part.id);
+                            
+                        if (updateError) throw updateError;
+                    }
+                }
+            }
+
+            // 3. Guardar en la tabla de bitácora (vehicle_logs)
             const { error: logError } = await supabase.from('vehicle_logs').insert([{
                 vehicle_id: vehicleId,
                 date: date,
@@ -1638,27 +1696,28 @@ export class InventoryView {
                 odometer: parseInt(odometer),
                 mechanic: mechanic,
                 parts_used: notes,
-                total_cost: parseFloat(cost) || 0,
+                total_cost: cost,
                 quantity: 1
             }]);
 
             if (logError) throw logError;
 
-            // 2. Si el kilometraje introducido es mayor al actual, actualizar el odómetro del vehículo
+            // 4. Si el kilometraje introducido es mayor al actual, actualizar el odómetro del vehículo
             const currentKm = Number(this.selectedVehicle.current_km || 0);
             if (parseInt(odometer) > currentKm) {
                 await supabase.from('vehicles').update({ current_km: parseInt(odometer) }).eq('id', vehicleId);
             }
 
-            this.showToast('Mantenimiento registrado con éxito.', 'Éxito', 'success');
+            this.showToast('Mantenimiento registrado y stock actualizado.', 'Éxito', 'success');
             document.getElementById('global-modal').classList.add('hidden');
             
-            // 3. Recargar la información del vehículo para que aparezca en la lista y cambiar a la pestaña 3
+            // 5. Recargar la información del vehículo para que aparezca en la lista y cambiar a la pestaña 3
             await this.openVehicleDetail(vehicleId); 
             this.switchVehicleTab(3);
 
         } catch (error) {
-            this.showToast('Error al guardar el servicio: ' + error.message, 'Error', 'error');
+            console.error("Error detallado:", error);
+            this.showToast('Error al guardar: ' + error.message, 'Error', 'error');
             btn.disabled = false;
             btn.innerHTML = '<span class="material-symbols-outlined text-[18px]">save</span> Guardar Bitácora';
         }
