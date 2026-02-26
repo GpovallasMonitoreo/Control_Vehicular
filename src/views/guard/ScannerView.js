@@ -245,35 +245,34 @@ export class ScannerView {
             
             // Si es un código de 6 dígitos (QR del conductor)
             if (/^[A-Z0-9]{6}$/.test(cleanCode)) {
-                // MODIFICADO: Ahora busca también viajes en progreso (para el Retorno)
                 let { data: trip, error } = await supabase
                     .from('trips')
                     .select('*, profiles:driver_id(*), vehicles:vehicle_id(*)')
                     .eq('access_code', cleanCode)
-                    .in('status', ['driver_accepted', 'in_progress']) // <-- Añadido soporte para in_progress
+                    .in('status', ['driver_accepted', 'in_progress']) 
                     .maybeSingle();
 
                 if (trip) {
                     this.pendingTrip = trip;
                     
-                    // MODIFICADO: Determinar acción en base al estado del viaje
                     if (trip.status === 'driver_accepted') {
-                        // Es una Salida
+                        // Es una Salida (Flujo Directo)
                         this.currentAction = 'exit';
                         document.getElementById('step-1-blocker').classList.remove('hidden');
-                        document.getElementById('step-1-message').innerText = 'Código válido - Autorizar salida';
+                        document.getElementById('step-1-message').innerText = 'Código válido - Autorizando salida';
+                        // MODIFICADO: Llamamos directamente a ExitConfirmation (Ya no InputCode)
                         this.renderExitConfirmation(trip);
                     } else if (trip.status === 'in_progress') {
-                        // Es un Retorno
+                        // Es un Retorno (Flujo Directo)
                         this.currentAction = 'return';
                         document.getElementById('step-1-blocker').classList.remove('hidden');
-                        document.getElementById('step-1-message').innerText = 'Código válido - Autorizar retorno';
+                        document.getElementById('step-1-message').innerText = 'Código válido - Autorizando retorno';
                         this.renderReturnConfirmation(trip);
                     }
                     return;
                 }
 
-                // Si no se encuentra en driver_accepted o in_progress, buscar como código de emergencia
+                // Buscar como código de emergencia
                 const { data: emergencyTrip } = await supabase
                     .from('trips')
                     .select('*, profiles:driver_id(*), vehicles:vehicle_id(*)')
@@ -294,7 +293,7 @@ export class ScannerView {
                 throw new Error("Código inválido o expirado");
             }
 
-            // Si es UUID, buscar por vehicle_id (QR Físico de la unidad)
+            // Si es UUID (QR Físico de la unidad) - Se mantiene el flujo original
             if (!isUUID) {
                 throw new Error("Código no válido. Escanea el QR de la unidad o el QR del conductor.");
             }
@@ -320,7 +319,7 @@ export class ScannerView {
                     this.currentAction = action;
                     document.getElementById('step-1-blocker').classList.remove('hidden');
                     document.getElementById('step-1-message').innerText = actionMessage;
-                    this.renderAccessCodeInput(trip); // Como es QR de la unidad, el guardia debe teclear el código
+                    this.renderAccessCodeInput(trip); 
                     break;
                     
                 case 'in_progress':
@@ -363,7 +362,7 @@ export class ScannerView {
         }
     }
 
-    // UI para ingresar código de acceso (solo si escanea el QR físico de la unidad)
+    // UI para ingresar código de acceso (solo si el guardia escaneó el QR FÍSICO de la unidad)
     renderAccessCodeInput(trip) {
         const area = document.getElementById('result-area');
         
@@ -409,7 +408,8 @@ export class ScannerView {
         document.getElementById('btn-verify-code').onclick = () => {
             const inputCode = document.getElementById('driver-code-input').value.trim().toUpperCase();
             if (inputCode === trip.access_code) {
-                this.registerExit(trip);
+                // MODIFICADO: Cambiamos a la confirmación de salida
+                this.renderExitConfirmation(trip);
             } else {
                 alert('❌ Código incorrecto');
             }
@@ -456,7 +456,6 @@ export class ScannerView {
         document.getElementById('btn-register-return').onclick = () => this.registerReturn(trip);
     }
 
-    // Mensaje para cuando ya debe ir a taller
     renderWorkshopReturnMessage(trip) {
         const area = document.getElementById('result-area');
         
