@@ -5,6 +5,10 @@ export class DriverView {
         this.activeTab = 'unidad';
         this.userId = null; 
         this.currentTrip = null;
+        
+        // NUEVO: Interruptor maestro para el GPS (Desactivado por ahora)
+        this.gpsEnabled = false; 
+        
         this.watchPositionId = null;
         this.gpsRetryCount = 0;
         this.maxGpsRetries = 3;
@@ -23,7 +27,7 @@ export class DriverView {
         this.driverMap = null;
         this.myLocationMarker = null;
         this.driverMarkers = [];
-        this.estimatedTimeMinutes = 0; // NUEVO: Para guardar el tiempo estimado
+        this.estimatedTimeMinutes = 0; 
         
         // Sistema de logística completo
         this.tripLogistics = {
@@ -73,7 +77,7 @@ export class DriverView {
                         <div class="flex-1 min-w-0">
                             <h2 id="profile-name" class="text-white text-sm font-bold truncate">Cargando...</h2>
                             <div class="flex items-center gap-2 mt-0.5">
-                                <span id="gps-header-indicator" class="relative flex h-2 w-2">
+                                <span id="gps-header-indicator" class="relative flex h-2 w-2 hidden">
                                     <span class="animate-ping absolute h-full w-full rounded-full bg-green-400 opacity-75"></span>
                                     <span class="relative rounded-full h-2 w-2 bg-green-500"></span>
                                 </span>
@@ -277,7 +281,7 @@ export class DriverView {
                                     </div>
                                 </div>
 
-                                <div class="bg-[#192633] rounded-2xl p-5 border border-primary/30">
+                                <div id="live-stats-panel" class="hidden bg-[#192633] rounded-2xl p-5 border border-primary/30">
                                     <div class="grid grid-cols-2 gap-4 mb-4">
                                         <div class="bg-[#111a22] p-3 rounded-xl shadow-inner">
                                             <p class="text-[8px] text-[#92adc9] uppercase font-bold">Velocidad</p>
@@ -304,8 +308,7 @@ export class DriverView {
 
                                 <div class="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4 text-center">
                                     <span class="material-symbols-outlined text-2xl text-blue-400 mb-2">qr_code_scanner</span>
-                                    <p class="text-white text-xs">El GPS rastrea tu ruta por seguridad.</p>
-                                    <p class="text-blue-400 text-[10px] mt-1 font-bold">El guardia marca tu inicio y fin de ruta escaneando tu QR.</p>
+                                    <p class="text-white text-xs font-bold">El guardia marca tu inicio y fin de ruta escaneando tu QR.</p>
                                 </div>
 
                                 <div class="bg-[#192633] rounded-xl p-4 border border-[#233648]">
@@ -322,7 +325,7 @@ export class DriverView {
                                 </div>
                             </div>
 
-                            <div class="bg-[#111a22] border border-[#233648] rounded-xl p-4 shadow-lg mt-4">
+                            <div class="hidden bg-[#111a22] border border-[#233648] rounded-xl p-4 shadow-lg mt-4" id="gps-container">
                                 <div id="gps-status-indicator" class="text-center">
                                     <div class="flex items-center justify-center gap-2 text-slate-400">
                                         <span class="material-symbols-outlined">gps_fixed</span>
@@ -352,7 +355,7 @@ export class DriverView {
                                     <p class="text-red-400 text-[10px] mt-3">La unidad está en espera hasta que se resuelva la incidencia</p>
                                 </div>
                                 
-                                <div class="bg-[#111a22] border border-[#324d67] p-4 rounded-xl">
+                                <div id="resumen-viaje-panel" class="hidden bg-[#111a22] border border-[#324d67] p-4 rounded-xl">
                                     <p class="text-[10px] text-[#92adc9] uppercase mb-3">Resumen del viaje</p>
                                     <div class="grid grid-cols-2 gap-3">
                                         <div>
@@ -425,11 +428,11 @@ export class DriverView {
                                         <span class="text-slate-600">Inicio:</span>
                                         <span id="summary-start-time" class="text-slate-900 font-bold">--:--</span>
                                     </div>
-                                    <div class="flex justify-between">
+                                    <div class="flex justify-between hidden">
                                         <span class="text-slate-600">Distancia:</span>
                                         <span id="summary-distance" class="text-slate-900 font-bold">0 km</span>
                                     </div>
-                                    <div class="flex justify-between">
+                                    <div class="flex justify-between hidden">
                                         <span class="text-slate-600">Consumo:</span>
                                         <span id="summary-fuel" class="text-slate-900 font-bold">0 L</span>
                                     </div>
@@ -560,7 +563,6 @@ export class DriverView {
                     
                     // Iniciar seguimiento cuando el viaje está en progreso (Guardia escaneó QR SALIDA)
                     if (payload.new.status === 'in_progress') {
-                        // NUEVO: Aquí seteamos el tiempo de inicio (Guardia controla, no GPS)
                         if (!this.tripLogistics.startTime) {
                             this.tripLogistics.startTime = new Date();
                             this.updateTripInDatabase({ start_time: this.tripLogistics.startTime.toISOString() });
@@ -568,7 +570,6 @@ export class DriverView {
                         this.startTracking();
                         this.showNotification('🚗 Viaje iniciado', 'El guardia ha autorizado tu salida', 'success');
                         
-                        // Ocultamos el QR de salida
                         const accessContainer = document.getElementById('access-code-container');
                         if (accessContainer) accessContainer.classList.add('hidden');
                     }
@@ -580,7 +581,6 @@ export class DriverView {
                         this.cargarResumenViaje();
                         this.switchTab('taller-final');
                         
-                        // Ocultamos el QR de retorno si estaba abierto
                         const accessContainer = document.getElementById('access-code-container');
                         if (accessContainer) accessContainer.classList.add('hidden');
                     }
@@ -765,7 +765,7 @@ export class DriverView {
         await this.loadDashboardState();
     }
 
-    // ==================== MOSTRAR CÓDIGO DE ACCESO (MODIFICADO) ====================
+    // ==================== MOSTRAR CÓDIGO DE ACCESO ====================
     
     showAccessCode(code, type = 'exit') {
         const container = document.getElementById('access-code-container');
@@ -777,10 +777,8 @@ export class DriverView {
         if (container && display && qrImage) {
             display.innerText = code;
             
-            // Generar imagen QR usando API pública (QR Server)
             qrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${code}`;
             
-            // Ajustar textos según sea entrada o salida
             if (type === 'return') {
                 instructionTitle.innerText = "Código QR de Retorno";
                 instructionText.innerText = "Muestra este código al guardia al ENTRAR a base";
@@ -802,7 +800,7 @@ export class DriverView {
     setupEventListeners() {
         document.addEventListener('visibilitychange', () => {
             if (this.currentTrip?.status === 'in_progress') {
-                console.log('GPS continúa en background');
+                console.log('App en background');
             }
         });
 
@@ -846,6 +844,9 @@ export class DriverView {
     // ==================== GPS Y MAPA ====================
     
     startTracking() {
+        // Bloqueo temporal para no encender el GPS
+        if (!this.gpsEnabled) return; 
+
         if (!navigator.geolocation) {
             alert("El dispositivo no tiene sensor GPS.");
             return;
@@ -880,8 +881,6 @@ export class DriverView {
     }
 
     handleFirstPosition(pos) {
-        // NOTA: El startTime ya no se inicializa aquí, se inicializa cuando el guardia escanea (status -> in_progress).
-        // Solo verificamos que el tracker visual esté prendido.
         const gpsIndicator = document.getElementById('gps-status-indicator');
         if (gpsIndicator) {
             gpsIndicator.innerHTML = `
@@ -894,6 +893,7 @@ export class DriverView {
 
         const gpsHeader = document.getElementById('gps-header-indicator');
         if (gpsHeader) {
+            gpsHeader.classList.remove('hidden');
             gpsHeader.innerHTML = `
                 <span class="animate-ping absolute h-full w-full rounded-full bg-green-400 opacity-75"></span>
                 <span class="relative rounded-full h-2 w-2 bg-green-500"></span>
@@ -1015,10 +1015,15 @@ export class DriverView {
         `;
 
         const gpsHeader = document.getElementById('gps-header-indicator');
-        if (gpsHeader) gpsHeader.innerHTML = `<span class="relative rounded-full h-2 w-2 bg-red-500"></span>`;
+        if (gpsHeader) {
+            gpsHeader.classList.remove('hidden');
+            gpsHeader.innerHTML = `<span class="relative rounded-full h-2 w-2 bg-red-500"></span>`;
+        }
     }
 
     stopTracking() {
+        if (!this.gpsEnabled) return; // Bloqueo temporal de GPS
+
         if (this.watchPositionId) {
             navigator.geolocation.clearWatch(this.watchPositionId);
             this.watchPositionId = null;
@@ -1035,7 +1040,7 @@ export class DriverView {
 
             const gpsHeader = document.getElementById('gps-header-indicator');
             if (gpsHeader) {
-                gpsHeader.innerHTML = `<span class="relative rounded-full h-2 w-2 bg-slate-500"></span>`;
+                gpsHeader.classList.add('hidden');
             }
         }
     }
@@ -1047,6 +1052,7 @@ export class DriverView {
 
         try {
             const L = window.L;
+            // Si el GPS está inactivo usará coordenadas por defecto (CDMX en este caso)
             const center = this.tripLogistics.lastPosition 
                 ? [this.tripLogistics.lastPosition.lat, this.tripLogistics.lastPosition.lng] 
                 : [19.4326, -99.1332];
@@ -1079,7 +1085,7 @@ export class DriverView {
             this.renderRouteStops();
             this.updateMapMarkers();
             this.updateReturnButtonUI();
-            this.estimateRouteTime(); // Llama a calcular el tiempo
+            this.estimateRouteTime(); 
 
             setTimeout(() => this.driverMap.invalidateSize(), 400);
         } catch (e) {
@@ -1138,42 +1144,37 @@ export class DriverView {
         });
         this.renderRouteStops();
         this.updateMapMarkers();
-        this.estimateRouteTime(); // Recalcula el tiempo
+        this.estimateRouteTime(); 
     }
 
     removeRouteStop(index) {
         if (this.routeStops[index].type === 'return') { 
             this.isReturning = false; 
             this.updateReturnButtonUI(); 
-            // Si cancela regreso, se oculta el código QR
             const accessContainer = document.getElementById('access-code-container');
             if (accessContainer) accessContainer.classList.add('hidden');
         }
         this.routeStops.splice(index, 1);
         this.renderRouteStops();
         this.updateMapMarkers();
-        this.estimateRouteTime(); // Recalcula el tiempo
+        this.estimateRouteTime(); 
     }
 
-    // NUEVO: API OSRM para estimar tiempo
     async estimateRouteTime() {
         const timeEl = document.getElementById('route-estimated-time');
         if (!timeEl) return;
         
-        // Si hay menos de 2 puntos, no se puede calcular ruta de A a B
         if (this.routeStops.length === 0) {
             timeEl.innerText = '-- min';
             return;
         }
 
         let coordinates = [];
-        // Si hay una posicion actual, incluyela como origen
         if (this.tripLogistics.lastPosition) {
             coordinates.push(`${this.tripLogistics.lastPosition.lng},${this.tripLogistics.lastPosition.lat}`);
         }
         this.routeStops.forEach(stop => coordinates.push(`${stop.lng},${stop.lat}`));
 
-        // OSRM requiere al menos 2 coordenadas
         if (coordinates.length < 2) {
             timeEl.innerText = '-- min';
             return;
@@ -1189,7 +1190,6 @@ export class DriverView {
                 const durationSeconds = data.routes[0].duration;
                 this.estimatedTimeMinutes = Math.ceil(durationSeconds / 60);
                 
-                // Formateo visual (ej: "1h 15min" o "45 min")
                 if (this.estimatedTimeMinutes > 60) {
                     const h = Math.floor(this.estimatedTimeMinutes / 60);
                     const m = this.estimatedTimeMinutes % 60;
@@ -1206,15 +1206,13 @@ export class DriverView {
         }
     }
 
-    // MODIFICADO: Muestra el QR al marcar el regreso para que el guardia lo escanee.
     toggleReturnTrip() {
         this.isReturning = !this.isReturning;
         
         if (this.isReturning) {
-            this.addRouteStop(19.4326, -99.1332, 'Base Central', 'return'); // O la coordenada de tu base
+            this.addRouteStop(19.4326, -99.1332, 'Base Central', 'return'); 
             this.showNotification('Regreso marcado', 'Muestra el QR al guardia para registrar entrada', 'success');
             
-            // Re-mostrar el QR pero en modo Retorno
             if (this.currentTrip && this.currentTrip.access_code) {
                 this.showAccessCode(this.currentTrip.access_code, 'return');
             }
@@ -1224,7 +1222,6 @@ export class DriverView {
             this.updateMapMarkers();
             this.estimateRouteTime();
             
-            // Ocultar QR si cancela regreso
             const accessContainer = document.getElementById('access-code-container');
             if (accessContainer) accessContainer.classList.add('hidden');
         }
@@ -1310,7 +1307,6 @@ export class DriverView {
 
     // ==================== FUNCIONES DE SOLICITUD Y MÚLTIPLES RUTAS ====================
     
-    // NUEVO: Agrega un campo dinámico de input para un destino extra.
     addDestinoInput() {
         const container = document.getElementById('destinos-container');
         if (!container) return;
@@ -1329,7 +1325,6 @@ export class DriverView {
         container.appendChild(div);
     }
     
-    // NUEVO: Re-numera los inputs de destinos si se elimina uno
     updateDestinosCount() {
         const container = document.getElementById('destinos-container');
         if (!container) return;
@@ -1468,7 +1463,6 @@ export class DriverView {
         }, 500);
     }
 
-    // MODIFICADO: Adaptado para capturar los múltiples inputs de destinos
     async enviarSolicitud() {
         if (this.currentTrip && this.currentTrip.status !== 'completed') {
             this.showNotification('❌ No disponible', 'Ya tienes un viaje en curso', 'error');
@@ -1484,7 +1478,6 @@ export class DriverView {
         const motivo = document.getElementById('solicitud-motivo').value;
         const jefeDirecto = document.getElementById('solicitud-jefe').value;
         
-        // RECOLECTAR MÚLTIPLES DESTINOS
         const destinoInputs = document.querySelectorAll('.solicitud-destino-input');
         let destinosArray = [];
         destinoInputs.forEach(input => {
@@ -1496,7 +1489,7 @@ export class DriverView {
         if (!motivo) { alert('Por favor ingresa el motivo del viaje'); return; }
         if (!jefeDirecto) { alert('Por favor ingresa el nombre del jefe directo'); return; }
 
-        const destinoPrincipalStr = destinosArray.join(' -> '); // Se concatena como ruta principal
+        const destinoPrincipalStr = destinosArray.join(' -> '); 
 
         const btn = document.querySelector('[onclick="window.conductorModule.enviarSolicitud()"]');
         if (btn) {
@@ -1513,10 +1506,10 @@ export class DriverView {
                 vehicle_id: vehicleId,
                 status: 'requested',
                 access_code: accessCode,
-                destination: destinoPrincipalStr, // Ahora guarda toda la cadena de lugares
+                destination: destinoPrincipalStr, 
                 supervisor: jefeDirecto,
                 request_details: {
-                    destinos_lista: destinosArray, // Guardamos el array para el back office
+                    destinos_lista: destinosArray, 
                     destination: destinoPrincipalStr,
                     motivo: motivo,
                     supervisor: jefeDirecto,
@@ -1530,7 +1523,6 @@ export class DriverView {
 
             if (error) throw error;
 
-            // Limpiar formulario y resetear a 1 solo input
             const destinosContainer = document.getElementById('destinos-container');
             if(destinosContainer) {
                 destinosContainer.innerHTML = `
@@ -1566,6 +1558,7 @@ export class DriverView {
     // ==================== RESUMEN Y ESTADOS ====================
 
     cargarResumenViaje() {
+        // Al estar el GPS apagado, no calcularemos distancias ahora, dejamos esto seguro
         const distanciaEl = document.getElementById('resumen-distancia');
         const combustibleEl = document.getElementById('resumen-combustible');
         
@@ -1689,11 +1682,9 @@ export class DriverView {
             
             if (solicitudBtn) { solicitudBtn.classList.add('opacity-50'); solicitudBtn.disabled = true; }
             
-            // Lógica para QR Visibles según Estado
             if (trip.status === 'driver_accepted' && trip.access_code) {
                 this.showAccessCode(trip.access_code, 'exit');
             } else if (this.isReturning && trip.status === 'in_progress') {
-                // Si está en progreso pero marcó regreso, mostramos el QR de entrada
                 this.showAccessCode(trip.access_code, 'return');
             }
             
