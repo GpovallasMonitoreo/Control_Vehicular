@@ -50,13 +50,13 @@ export class ScannerView {
                             <div id="reader" class="w-full flex-1 bg-black min-h-[300px]"></div>
                             <div class="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black via-black/90 to-transparent p-4 text-center z-10">
                                 <p class="text-white text-xs font-bold flex items-center justify-center gap-2 uppercase tracking-tighter">
-                                    <span class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span> ESCANEAR QR DE UNIDAD
+                                    <span class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span> ESCANEAR QR (VEHÍCULO O CONDUCTOR)
                                 </p>
                             </div>
                          </div>
                          
                          <div class="flex gap-2">
-                            <input id="scan-input" type="text" class="flex-1 bg-[#111a22] border border-[#324d67] text-white font-black rounded-xl p-4 placeholder-slate-600 focus:border-primary outline-none text-center tracking-[4px] text-lg font-mono uppercase" placeholder="UUID MANUAL DE UNIDAD">
+                            <input id="scan-input" type="text" class="flex-1 bg-[#111a22] border border-[#324d67] text-white font-black rounded-xl p-4 placeholder-slate-600 focus:border-primary outline-none text-center tracking-[4px] text-lg font-mono uppercase" placeholder="CÓDIGO O UUID MANUAL">
                             <button id="btn-validate" class="bg-primary hover:bg-blue-600 text-white font-bold px-6 rounded-xl transition-all shadow-lg">
                                 <span class="material-symbols-outlined">search</span>
                             </button>
@@ -69,9 +69,8 @@ export class ScannerView {
                                 <span class="material-symbols-outlined text-7xl text-slate-700">qr_code_scanner</span>
                             </div>
                             <h3 class="text-2xl font-black text-white mb-2 uppercase tracking-tighter">Escáner Activo</h3>
-                            <p class="text-[#92adc9] text-sm max-w-xs mx-auto">Escanee el QR de la unidad para iniciar el proceso correspondiente.</p>
+                            <p class="text-[#92adc9] text-sm max-w-xs mx-auto">Escanee el QR de la unidad o el QR generado en la app del conductor.</p>
                             
-                            <!-- Información de códigos de emergencia -->
                             <div id="emergency-info-panel" class="hidden mt-6 w-full border-t border-[#324d67] pt-4 animate-fade-in">
                                 <p class="text-[10px] font-bold text-orange-500 uppercase mb-2 tracking-widest">Códigos de emergencia activos</p>
                                 <div id="emergency-codes-list" class="space-y-2 text-xs max-h-[200px] overflow-y-auto custom-scrollbar">
@@ -79,7 +78,6 @@ export class ScannerView {
                                 </div>
                             </div>
 
-                            <!-- Códigos de acceso generados por taller -->
                             <div id="access-codes-panel" class="mt-4 w-full border-t border-[#324d67] pt-4">
                                 <p class="text-[10px] font-bold text-emerald-500 uppercase mb-2 tracking-widest">Códigos de acceso activos</p>
                                 <div id="access-codes-list" class="space-y-2 text-xs max-h-[150px] overflow-y-auto custom-scrollbar">
@@ -213,7 +211,7 @@ export class ScannerView {
                     <span class="material-symbols-outlined text-7xl text-slate-700">qr_code_scanner</span>
                 </div>
                 <h3 class="text-2xl font-black text-white mb-2 uppercase tracking-tighter">Escáner Activo</h3>
-                <p class="text-[#92adc9] text-sm max-w-xs mx-auto">Escanee el QR de la unidad para iniciar el proceso correspondiente.</p>
+                <p class="text-[#92adc9] text-sm max-w-xs mx-auto">Escanee el QR de la unidad o el QR generado en la app del conductor.</p>
                 <div id="emergency-info-panel" class="hidden mt-6 w-full border-t border-[#324d67] pt-4 animate-fade-in">
                     <p class="text-[10px] font-bold text-orange-500 uppercase mb-2 tracking-widest">Códigos de emergencia activos</p>
                     <div id="emergency-codes-list" class="space-y-2 text-xs max-h-[200px] overflow-y-auto custom-scrollbar">
@@ -233,7 +231,7 @@ export class ScannerView {
         setTimeout(() => { this.isProcessing = false; }, 1000);
     }
 
-    // PASO 1: VALIDAR VEHÍCULO
+    // PASO 1: VALIDAR VEHÍCULO O CÓDIGO DE CONDUCTOR
     async handleStepOne(rawCode) {
         const cleanCode = rawCode.trim();
 
@@ -245,27 +243,37 @@ export class ScannerView {
         try {
             const isUUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(cleanCode);
             
-            // Si es un código de 6 dígitos (puede ser acceso normal o emergencia)
+            // Si es un código de 6 dígitos (QR del conductor)
             if (/^[A-Z0-9]{6}$/.test(cleanCode)) {
-                // Primero buscar como código de acceso normal
+                // MODIFICADO: Ahora busca también viajes en progreso (para el Retorno)
                 let { data: trip, error } = await supabase
                     .from('trips')
                     .select('*, profiles:driver_id(*), vehicles:vehicle_id(*)')
                     .eq('access_code', cleanCode)
-                    .eq('status', 'driver_accepted')
+                    .in('status', ['driver_accepted', 'in_progress']) // <-- Añadido soporte para in_progress
                     .maybeSingle();
 
                 if (trip) {
                     this.pendingTrip = trip;
-                    this.currentAction = 'exit';
                     
-                    document.getElementById('step-1-blocker').classList.remove('hidden');
-                    document.getElementById('step-1-message').innerText = 'Código válido - Autorizar salida';
-                    this.renderExitConfirmation(trip);
+                    // MODIFICADO: Determinar acción en base al estado del viaje
+                    if (trip.status === 'driver_accepted') {
+                        // Es una Salida
+                        this.currentAction = 'exit';
+                        document.getElementById('step-1-blocker').classList.remove('hidden');
+                        document.getElementById('step-1-message').innerText = 'Código válido - Autorizar salida';
+                        this.renderExitConfirmation(trip);
+                    } else if (trip.status === 'in_progress') {
+                        // Es un Retorno
+                        this.currentAction = 'return';
+                        document.getElementById('step-1-blocker').classList.remove('hidden');
+                        document.getElementById('step-1-message').innerText = 'Código válido - Autorizar retorno';
+                        this.renderReturnConfirmation(trip);
+                    }
                     return;
                 }
 
-                // Si no, buscar como código de emergencia
+                // Si no se encuentra en driver_accepted o in_progress, buscar como código de emergencia
                 const { data: emergencyTrip } = await supabase
                     .from('trips')
                     .select('*, profiles:driver_id(*), vehicles:vehicle_id(*)')
@@ -286,9 +294,9 @@ export class ScannerView {
                 throw new Error("Código inválido o expirado");
             }
 
-            // Si es UUID, buscar por vehicle_id
+            // Si es UUID, buscar por vehicle_id (QR Físico de la unidad)
             if (!isUUID) {
-                throw new Error("Código no válido. Escanea el QR de la unidad o ingresa código de 6 dígitos.");
+                throw new Error("Código no válido. Escanea el QR de la unidad o el QR del conductor.");
             }
 
             const { data: trip, error } = await supabase
@@ -312,7 +320,7 @@ export class ScannerView {
                     this.currentAction = action;
                     document.getElementById('step-1-blocker').classList.remove('hidden');
                     document.getElementById('step-1-message').innerText = actionMessage;
-                    this.renderAccessCodeInput(trip);
+                    this.renderAccessCodeInput(trip); // Como es QR de la unidad, el guardia debe teclear el código
                     break;
                     
                 case 'in_progress':
@@ -355,7 +363,7 @@ export class ScannerView {
         }
     }
 
-    // UI para ingresar código de acceso (solo para salida)
+    // UI para ingresar código de acceso (solo si escanea el QR físico de la unidad)
     renderAccessCodeInput(trip) {
         const area = document.getElementById('result-area');
         
