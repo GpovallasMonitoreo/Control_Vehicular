@@ -30,6 +30,9 @@ export class ScannerView {
                     <button onclick="window.location.reload()" class="px-4 py-2 rounded-lg bg-[#1c2127] border border-[#324d67] text-[#92adc9] text-xs font-bold hover:text-white transition-all flex items-center gap-2">
                         <span class="material-symbols-outlined text-sm">refresh</span> Reiniciar
                     </button>
+                    <button onclick="window.scannerView.logout()" class="px-4 py-2 rounded-lg bg-red-600/20 border border-red-500/30 text-red-500 text-xs font-bold hover:bg-red-600 hover:text-white transition-all flex items-center gap-2">
+                        <span class="material-symbols-outlined text-sm">logout</span> Salir
+                    </button>
                 </div>
             </div>
 
@@ -114,6 +117,33 @@ export class ScannerView {
         
         this.loadEmergencyCodes();
         this.loadAccessCodes();
+    }
+
+    // NUEVO: Función para cerrar sesión
+    async logout() {
+        if (!confirm('¿Estás seguro que deseas salir de la Caseta de Vigilancia?')) return;
+
+        try {
+            // Detener la cámara si está activa
+            if (this.html5QrCode) {
+                try {
+                    await this.html5QrCode.stop();
+                } catch (err) {
+                    console.log('La cámara ya estaba detenida o no se pudo detener:', err);
+                }
+            }
+
+            // Cerrar sesión en Supabase
+            await supabase.auth.signOut();
+
+        } catch (error) {
+            console.error('Error durante logout:', error);
+        } finally {
+            // Limpiar datos locales y redirigir
+            localStorage.clear();
+            window.location.hash = '#login';
+            window.location.reload();
+        }
     }
 
     async loadEmergencyCodes() {
