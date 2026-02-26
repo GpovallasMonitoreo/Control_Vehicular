@@ -218,7 +218,8 @@ export class InventoryView {
                 supabase.from('inventory_items').select('*').order('name').then(r => r.error ? {data: []} : r),
                 supabase.from('service_templates').select('*, service_template_items(quantity, inventory_items(id, name, cost, unit, stock, sku))').then(r => r.error ? {data: []} : r),
                 supabase.from('vehicle_documents').select('*').then(r => r.error ? {data: []} : r),
-                supabase.from('trips').select('*, profiles:driver_id(full_name)').order('created_at', { ascending: false }).then(r => r.error ? {data: []} : r)
+                // SE AÑADIÓ: fuel_outbound y fuel_return para el conteo de gasolina de cada viaje
+                supabase.from('trips').select('id, vehicle_id, status, destination, created_at, fuel_outbound, fuel_return, profiles:driver_id(full_name), workshop_reception_photos, workshop_return_photos').order('created_at', { ascending: false }).then(r => r.error ? {data: []} : r)
             ]);
 
             this.vehicles = vehRes.data || [];
@@ -268,7 +269,7 @@ export class InventoryView {
 
     renderVehiclesGrid() {
         const grid = document.getElementById('grid-vehicles');
-        if (!grid) return;
+        if (!grid) return; // SEGURO ANTI-CRASH
 
         if(this.vehicles.length === 0) {
             grid.innerHTML = `
@@ -330,7 +331,7 @@ export class InventoryView {
 
     renderDriversTable() {
         const tbody = document.getElementById('table-drivers');
-        if (!tbody) return;
+        if (!tbody) return; 
 
         if(this.drivers.length === 0) {
             tbody.innerHTML = '<tr><td colspan="4" class="p-4 text-center text-slate-500">No hay conductores registrados.</td></tr>';
@@ -714,7 +715,7 @@ export class InventoryView {
 
     updateActiveModalInfo() {
         const content = document.getElementById('global-modal-content');
-        if(!this.selectedVehicle || !content) return;
+        if(!this.selectedVehicle || !content) return; // SEGURO ANTI-CRASH
 
         const totalTripKm = this.vehicleTrips.reduce((sum, trip) => sum + Number(trip.distance_km || 0), 0);
         const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${this.selectedVehicle.id}&color=111a22`;
@@ -787,9 +788,6 @@ export class InventoryView {
                 <button onclick="window.invModule.switchVehicleTab(4)" id="veh-tab-4" class="py-4 px-6 text-sm font-bold border-b-2 border-transparent text-[#92adc9] hover:text-white transition-colors flex items-center gap-2 whitespace-nowrap">
                     <span class="material-symbols-outlined text-[18px]">photo_library</span> Galería de Inspecciones
                 </button>
-                <button onclick="window.invModule.switchVehicleTab(5)" id="veh-tab-5" class="py-4 px-6 text-sm font-bold border-b-2 border-transparent text-[#92adc9] hover:text-white transition-colors flex items-center gap-2 whitespace-nowrap">
-                    <span class="material-symbols-outlined text-[18px]">map</span> Viajes y Recorridos
-                </button>
                 <div class="ml-auto flex items-center py-2 pl-4">
                     <button onclick="window.abrirRegistroGlobal('${this.selectedVehicle.id}')" class="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg font-bold text-xs flex items-center gap-2 shadow-lg shadow-green-900/20 transition-transform hover:scale-105 whitespace-nowrap">
                         <span class="material-symbols-outlined text-[16px]">build</span> Registrar Servicio
@@ -839,7 +837,7 @@ export class InventoryView {
                                                 <span class="text-sm font-bold text-primary">${totalTripKm.toLocaleString()} km</span>
                                             </div>
                                         </div>
-                                        <button onclick="window.invModule.openTripRegister('${this.selectedVehicle.id}')" class="w-full bg-[#233648] hover:bg-[#2d445a] text-white py-2 rounded-lg font-bold text-xs flex items-center justify-center gap-2 transition-colors border border-[#324d67]">
+                                        <button onclick="window.invModule.openTripRegister('${this.selectedVehicle.id}')" class="hidden w-full bg-[#233648] hover:bg-[#2d445a] text-white py-2 rounded-lg font-bold text-xs flex items-center justify-center gap-2 transition-colors border border-[#324d67]">
                                             <span class="material-symbols-outlined text-[16px]">add_location</span> Sumar Trayecto Manual
                                         </button>
                                     </div>
@@ -874,6 +872,16 @@ export class InventoryView {
                         </div>
 
                     </div>
+                    
+                    <div class="mt-6 bg-[#111a22] border border-[#324d67] rounded-xl p-6 shadow-lg">
+                        <h3 class="font-bold text-white mb-4 flex items-center gap-2 border-b border-[#324d67] pb-2 uppercase tracking-widest text-xs">
+                            <span class="material-symbols-outlined text-primary">route</span> Historial de Recorridos (App Conductor)
+                        </h3>
+                        <div class="overflow-x-auto custom-scrollbar">
+                            ${this.renderAppTripsTable()}
+                        </div>
+                    </div>
+
                 </div>
 
                 <div id="veh-tab-content-2" class="hidden h-full overflow-y-auto p-6 custom-scrollbar">
@@ -1005,47 +1013,6 @@ export class InventoryView {
                     </div>
                 </div>
 
-                <div id="veh-tab-content-5" class="hidden h-full flex flex-col p-6">
-                    <div class="flex justify-between items-end mb-4 shrink-0">
-                        <div>
-                            <h3 class="font-bold text-white text-lg">Historial de Viajes (APP)</h3>
-                            <p class="text-xs text-[#92adc9]">Todos los trayectos registrados por los guardias.</p>
-                        </div>
-                    </div>
-
-                    <div class="bg-[#111a22] border border-[#324d67] rounded-xl overflow-hidden shadow-lg flex-1 flex flex-col">
-                        <div class="overflow-x-auto flex-1 custom-scrollbar">
-                            <table class="w-full text-left whitespace-nowrap">
-                                <thead class="bg-[#1c2127] text-[10px] font-bold text-[#92adc9] uppercase tracking-widest sticky top-0 border-b border-[#324d67]">
-                                    <tr>
-                                        <th class="p-4">Fecha Salida</th>
-                                        <th class="p-4">Conductor</th>
-                                        <th class="p-4">Destino / Rutas</th>
-                                        <th class="p-4">Estatus</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="divide-y divide-[#324d67] text-sm text-slate-300">
-                                    ${this.vehicleAppTrips.length === 0 ? `
-                                        <tr><td colspan="4" class="p-10 text-center text-slate-500"><span class="material-symbols-outlined text-4xl block mb-2 opacity-50">map</span> No hay viajes registrados en la app para esta unidad.</td></tr>
-                                    ` : this.vehicleAppTrips.map(trip => `
-                                        <tr class="hover:bg-[#192633] transition-colors">
-                                            <td class="p-4 font-medium">${window.invModule.formatDate(trip.created_at)}</td>
-                                            <td class="p-4 font-bold text-white">${trip.profiles?.full_name || 'Desconocido'}</td>
-                                            <td class="p-4 text-[#92adc9] max-w-[200px] truncate" title="${trip.destination || 'N/A'}">${trip.destination || 'N/A'}</td>
-                                            <td class="p-4">
-                                                ${trip.status === 'completed' ? '<span class="text-green-400 bg-green-500/10 px-2 py-1 rounded text-xs">Completado</span>' : 
-                                                  trip.status === 'in_progress' ? '<span class="text-blue-400 bg-blue-500/10 px-2 py-1 rounded text-xs">En Ruta</span>' :
-                                                  trip.status === 'incident_report' ? '<span class="text-red-400 bg-red-500/10 px-2 py-1 rounded text-xs">Incidencia</span>' :
-                                                  '<span class="text-orange-400 bg-orange-500/10 px-2 py-1 rounded text-xs">En Proceso</span>'}
-                                            </td>
-                                        </tr>
-                                    `).join('')}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-
             </div>
         `;
         
@@ -1053,8 +1020,83 @@ export class InventoryView {
         setTimeout(() => this.renderComponentsHealth(), 100);
     }
 
+    renderAppTripsTable() {
+        if (!this.vehicleAppTrips || this.vehicleAppTrips.length === 0) {
+            return `<div class="text-center py-6 text-slate-500">No hay recorridos registrados desde la App para esta unidad.</div>`;
+        }
+
+        return `
+        <table class="w-full text-left whitespace-nowrap">
+            <thead class="bg-[#1c2127] text-[10px] font-bold text-[#92adc9] uppercase tracking-widest border-b border-[#324d67]">
+                <tr>
+                    <th class="p-3">Fecha</th>
+                    <th class="p-3">Conductor</th>
+                    <th class="p-3">Destino(s) / Ruta</th>
+                    <th class="p-3">Estado</th>
+                    <th class="p-3 text-center">L. Gasolina (Ida)</th>
+                    <th class="p-3 text-center">L. Gasolina (Regreso)</th>
+                    <th class="p-3 text-center">Acción</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-[#324d67] text-sm text-slate-300">
+                ${this.vehicleAppTrips.map(t => `
+                    <tr class="hover:bg-[#192633] transition-colors">
+                        <td class="p-3 font-medium">${window.invModule.formatDate(t.created_at)}</td>
+                        <td class="p-3">${t.profiles?.full_name || 'Desconocido'}</td>
+                        <td class="p-3 max-w-[200px] truncate" title="${t.destination || ''}">${t.destination || 'N/A'}</td>
+                        <td class="p-3">
+                            <span class="bg-primary/10 text-primary px-2 py-1 rounded text-[10px] font-bold uppercase">${t.status}</span>
+                        </td>
+                        <td class="p-3 text-center">
+                            <input type="number" id="fuel-out-${t.id}" value="${t.fuel_outbound || ''}" class="w-20 bg-[#1c2127] border border-[#324d67] text-white rounded p-1 text-center text-xs outline-none focus:border-primary" placeholder="Ej: 10">
+                        </td>
+                        <td class="p-3 text-center">
+                            <input type="number" id="fuel-ret-${t.id}" value="${t.fuel_return || ''}" class="w-20 bg-[#1c2127] border border-[#324d67] text-white rounded p-1 text-center text-xs outline-none focus:border-primary" placeholder="Ej: 8">
+                        </td>
+                        <td class="p-3 text-center">
+                            <button id="btn-fuel-${t.id}" onclick="window.invModule.saveTripFuel('${t.id}')" class="bg-[#233648] hover:bg-green-600 text-white p-1.5 rounded transition-colors" title="Guardar Litros Gasolina">
+                                <span class="material-symbols-outlined text-[14px]">save</span>
+                            </button>
+                        </td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
+        `;
+    }
+
+    async saveTripFuel(tripId) {
+        const outEl = document.getElementById(`fuel-out-${tripId}`);
+        const retEl = document.getElementById(`fuel-ret-${tripId}`);
+        const fuelOut = parseFloat(outEl?.value) || 0;
+        const fuelRet = parseFloat(retEl?.value) || 0;
+
+        try {
+            const btn = document.getElementById(`btn-fuel-${tripId}`);
+            if(btn) btn.innerHTML = '<span class="material-symbols-outlined text-[14px] animate-spin">sync</span>';
+            
+            const { error } = await supabase.from('trips').update({
+                fuel_outbound: fuelOut,
+                fuel_return: fuelRet
+            }).eq('id', tripId);
+
+            if (error) throw error;
+
+            this.showToast('Registro de gasolina guardado correctamente', 'Éxito', 'success');
+            if(btn) btn.innerHTML = '<span class="material-symbols-outlined text-[14px]">save</span>';
+            
+            // Refrescamos en background los datos
+            this.loadAllData();
+        } catch (error) {
+            console.error('Error guardando gasolina:', error);
+            this.showToast('Error al guardar la información de gasolina', 'Error', 'error');
+            const btn = document.getElementById(`btn-fuel-${tripId}`);
+            if(btn) btn.innerHTML = '<span class="material-symbols-outlined text-[14px]">save</span>';
+        }
+    }
+
     switchVehicleTab(num) {
-        for(let i=1; i<=5; i++) { 
+        for(let i=1; i<=4; i++) { 
             const btn = document.getElementById(`veh-tab-${i}`);
             const content = document.getElementById(`veh-tab-content-${i}`);
             if(btn) btn.className = "py-4 px-6 text-sm font-bold border-b-2 border-transparent text-[#92adc9] hover:text-white transition-colors flex items-center gap-2 whitespace-nowrap";
@@ -1280,6 +1322,7 @@ export class InventoryView {
         return foundPhotos ? html : `<div class="text-center py-10 text-slate-500"><span class="material-symbols-outlined text-4xl mb-2 opacity-50">no_photography</span><p>No hay fotos de viajes registradas para esta unidad.</p></div>`;
     }
 
+    // VISOR DE IMÁGENES GLOBAL
     viewPhoto(url) {
         const modalId = 'photo-viewer-modal-' + Date.now();
         const modal = document.createElement('div');
@@ -1300,7 +1343,7 @@ export class InventoryView {
     openDocumentUpload(vehicleId) {
         const modal = document.getElementById('global-modal');
         const content = document.getElementById('global-modal-content');
-        if (!modal || !content) return; 
+        if (!modal || !content) return; // SEGURO ANTI-CRASH
 
         content.className = "bg-[#1c2127] w-full max-w-md rounded-2xl shadow-2xl p-6 border border-[#324d67] animate-fade-in-up font-display";
         
@@ -1320,6 +1363,7 @@ export class InventoryView {
                         <option value="license">Tarjeta de Circulación</option>
                         <option value="insurance">Póliza de Seguro</option>
                         <option value="verification">Verificación Ambiental</option>
+                        <option value="tenure">Tenencia o Refrendo</option>
                     </select>
                 </div>
                 <div>
@@ -1401,12 +1445,13 @@ export class InventoryView {
         
         const modal = document.getElementById('global-modal');
         const content = document.getElementById('global-modal-content');
-        if (!modal || !content) return;
+        if (!modal || !content) return; // SEGURO ANTI-CRASH
         
         const typeNames = {
             'license': 'Tarjeta de Circulación',
             'insurance': 'Póliza de Seguro',
-            'verification': 'Verificación Ambiental'
+            'verification': 'Verificación Ambiental',
+            'tenure': 'Tenencia o Refrendo'
         };
         
         content.className = "bg-[#1c2127] w-full max-w-2xl rounded-2xl shadow-2xl p-6 border border-[#324d67] animate-fade-in-up font-display";
@@ -1487,7 +1532,8 @@ export class InventoryView {
         const docs = [
             { type: 'license', title: 'Tarjeta Circulación', exp: this.selectedVehicle.license_expiry, status: this.selectedVehicle.license_status, icon: 'badge' },
             { type: 'insurance', title: 'Póliza de Seguro', exp: this.selectedVehicle.insurance_expiry, status: this.selectedVehicle.insurance_status, icon: 'shield' },
-            { type: 'verification', title: 'Verificación Ambiental', exp: this.selectedVehicle.verification_expiry, status: this.selectedVehicle.verification_status, icon: 'eco' }
+            { type: 'verification', title: 'Verificación Ambiental', exp: this.selectedVehicle.verification_expiry, status: this.selectedVehicle.verification_status, icon: 'eco' },
+            { type: 'tenure', title: 'Tenencia o Refrendo', exp: this.selectedVehicle.tenure_expiry, status: this.selectedVehicle.tenure_status || 'Sin Estado', icon: 'receipt_long' }
         ];
 
         return docs.map(d => {
@@ -1548,10 +1594,6 @@ export class InventoryView {
                     <input type="number" id="trip-dist" class="w-full bg-[#111a22] border border-[#324d67] text-white rounded-lg px-3 py-2 outline-none focus:border-primary font-mono text-lg" placeholder="Ej: 120">
                 </div>
                 <div>
-                    <label class="text-[10px] font-bold text-[#92adc9] uppercase block mb-1">Combustible Consumido (L)</label>
-                    <input type="number" id="trip-fuel" class="w-full bg-[#111a22] border border-[#324d67] text-white rounded-lg px-3 py-2 outline-none focus:border-primary font-mono text-lg" placeholder="Ej: 15">
-                </div>
-                <div>
                     <label class="text-[10px] font-bold text-[#92adc9] uppercase block mb-1">Propósito / Destino</label>
                     <input type="text" id="trip-dest" class="w-full bg-[#111a22] border border-[#324d67] text-white rounded-lg px-3 py-2 outline-none focus:border-primary" placeholder="Ej: Ruta foránea sin red">
                 </div>
@@ -1566,16 +1608,13 @@ export class InventoryView {
 
     async saveTrip(vehicleId) {
         const dist = parseFloat(document.getElementById('trip-dist').value);
-        const fuel = parseFloat(document.getElementById('trip-fuel').value) || 0; // NUEVO: Captura el combustible
         const dest = document.getElementById('trip-dest').value;
-        
         if(!dist || !dest || dist <= 0) return alert("Ingresa una distancia válida y un destino/motivo.");
 
         try {
             await supabase.from('vehicle_trips').insert([{
                 vehicle_id: vehicleId,
                 distance_km: dist,
-                fuel_consumed: fuel, // NUEVO: Se guarda el combustible en la base de datos
                 destination: dest,
                 start_date: new Date().toISOString()
             }]).catch(e => console.warn('Error guardando trip', e));
@@ -1598,8 +1637,9 @@ export class InventoryView {
 
         const modal = document.getElementById('global-modal');
         const content = document.getElementById('global-modal-content');
-        if (!modal || !content) return; 
+        if (!modal || !content) return; // SEGURO ANTI-CRASH
         
+        // 1. Construir las opciones del select con las "Recetas" cargadas de service_templates
         let serviceOptions = '<option value="">Selecciona una receta / servicio...</option>';
         if (this.services && this.services.length > 0) {
             this.services.forEach(srv => {
@@ -1607,6 +1647,7 @@ export class InventoryView {
             });
         }
 
+        // 2. Renderizar el modal
         content.className = "bg-[#1c2127] w-full max-w-lg rounded-2xl shadow-2xl p-6 border border-[#324d67] animate-fade-in-up font-display";
         content.innerHTML = `
             <div class="flex justify-between items-center mb-6 border-b border-[#324d67] pb-4">
@@ -1682,15 +1723,19 @@ export class InventoryView {
         btn.innerHTML = '<span class="animate-spin material-symbols-outlined">sync</span> Guardando...';
 
         try {
+            // 1. Buscar la receta seleccionada para ver si tiene insumos
             const selectedRecipe = this.services.find(s => s.name === serviceName);
             let usedParts = [];
             
             if (selectedRecipe && selectedRecipe.service_template_items) {
+                // Calcular el costo base de la receta (Insumos + Mano de obra de la plantilla)
                 let partsCost = selectedRecipe.service_template_items.reduce((acc, si) => acc + (si.quantity * (si.inventory_items?.cost || 0)), 0);
                 let recipeBaseCost = partsCost + (Number(selectedRecipe.labor_cost) || 0);
                 
+                // Sumamos el costo de la receta al costo extra manual que haya puesto el usuario
                 cost = cost + recipeBaseCost;
 
+                // Armar lista de refacciones utilizadas para las notas y preparar deducción de stock
                 usedParts = selectedRecipe.service_template_items.map(item => {
                     const itemName = item.inventory_items?.name || 'Insumo desconocido';
                     return {
@@ -1706,9 +1751,11 @@ export class InventoryView {
                 }
             }
 
+            // 2. Descontar del inventario (solo si hay refacciones configuradas en la receta)
             if (usedParts.length > 0) {
                 for (const part of usedParts) {
                     if (part.id) {
+                        // Obtener el stock actual del insumo directamente de la BD para no fallar
                         const { data: itemData, error: fetchError } = await supabase
                             .from('inventory_items')
                             .select('stock')
@@ -1717,8 +1764,9 @@ export class InventoryView {
                             
                         if (fetchError) throw fetchError;
                         
-                        const newStock = Math.max(0, (itemData.stock || 0) - part.qty); 
+                        const newStock = Math.max(0, (itemData.stock || 0) - part.qty); // Evita tener stock en negativo
                         
+                        // Actualizar el stock
                         const { error: updateError } = await supabase
                             .from('inventory_items')
                             .update({ stock: newStock })
@@ -1729,6 +1777,7 @@ export class InventoryView {
                 }
             }
 
+            // 3. Guardar en la tabla de bitácora (vehicle_logs)
             const { error: logError } = await supabase.from('vehicle_logs').insert([{
                 vehicle_id: vehicleId,
                 date: date,
@@ -1742,6 +1791,7 @@ export class InventoryView {
 
             if (logError) throw logError;
 
+            // 4. Si el kilometraje introducido es mayor al actual, actualizar el odómetro del vehículo
             const currentKm = Number(this.selectedVehicle.current_km || 0);
             if (parseInt(odometer) > currentKm) {
                 await supabase.from('vehicles').update({ current_km: parseInt(odometer) }).eq('id', vehicleId);
@@ -1750,6 +1800,7 @@ export class InventoryView {
             this.showToast('Mantenimiento registrado y stock actualizado.', 'Éxito', 'success');
             document.getElementById('global-modal').classList.add('hidden');
             
+            // 5. Recargar la información del vehículo para que aparezca en la lista y cambiar a la pestaña 3
             await this.openVehicleDetail(vehicleId); 
             this.switchVehicleTab(3);
 
